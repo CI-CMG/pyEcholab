@@ -1,4 +1,38 @@
-﻿#!/usr/bin/env python
+# coding=utf-8
+
+# Copyright (c) 2012, Zac Berkowitz
+#     National Oceanic and Atmospheric Administration (NOAA)
+#     Alaskan Fisheries Science Center (AFSC)
+#     Resource Assessment and Conservation Engineering (RACE)
+#     Midwater Assessment and Conservation Engineering (MACE)
+
+# All rights reserved.
+
+# Redistribution and use in source and binary forms, with or without modification,
+# are permitted provided that the following conditions are met:
+
+# 1.  Redistributions of source code must retain the above copyright notice, this
+#     list of conditions and the following disclaimer.
+
+# 2.  Redistributions in binary form must reproduce the above copyright notice,
+#     this list of conditions and the following disclaimer in the documentation
+#     and/or other materials provided with the distribution.
+
+# 3.  Neither the names of NOAA, AFSC, RACE, or MACE nor the names of its
+#     contributors may be used to endorse or promote products derived from this
+#     software without specific prior written permission.
+
+
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+# ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+# ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 '''
 .. module:: echolab._io.raw_file
@@ -6,35 +40,39 @@
     :synopsis:  A low-level interface for SIMRAD EK60/ER60 raw files
 
 
-    Provides the RawSimradFile class, a low-level object for 
+    Provides the RawSimradFile class, a low-level object for
         interacting with SIMRAD RAW formated datafiles.
 
+| Developed by:  Zac Berkowitz <zac.berkowitz@gmail.com> under contract for
+| National Oceanic and Atmospheric Administration (NOAA)
+| Alaska Fisheries Science Center (AFSC)
+| Midwater Assesment and Conservation Engineering Group (MACE)
+|
+| Maintained by:
+|       Zac Berkowitz <zac.berkowitz@gmail.com>
+|       Rick Towler   <rick.towler@noaa.gov>
 
-| Zac Berkowitz <zachary.berkowitz@noaa.gov>
-| National Oceanic and Atmospheric Administration
-| Alaska Fisheries Science Center
-| Midwater Assesment and Conservation Engineering Group
+$Id$
 '''
 from io import FileIO, SEEK_SET, SEEK_CUR, SEEK_END
 import struct
 import logging
-from echolab2 import parsers
 
 #Local package imports
-#from echolab import parsers
+import parsers
 
 __all__ = ['RawSimradFile']
 
 log = logging.getLogger(__name__)
 
 class SimradEOF(Exception):
-    
+
     def __init__(self, message='EOF Reached!'):
         self.message = message
-        
+
     def __str__(self):
         return self.message
-    
+
 class DatagramSizeError(Exception):
     def __init__(self, message, expected_size_tuple, file_pos=(None, None)):
         self.message = message
@@ -66,13 +104,13 @@ class DatagramReadError(Exception):
             errstr.append('@ (%sL, %s)' % (self.file_pos_bytes, self.file_pos_dgrams))
 
         return ' '.join(errstr)
- 
+
 class RawSimradFile(FileIO):
-    ''' 
+    '''
     A low-level extension of the built in python file object allowing the reading/writing
     of SIMRAD RAW files on datagram by datagram basis (instead of at the byte level)
 
-    
+
     '''
     #: Dict object with datagram header/python class key/value pairs
     DGRAM_TYPE_KEY = {'RAW': parsers.SimradRawParser(),
@@ -81,7 +119,7 @@ class RawSimradFile(FileIO):
                       'NME': parsers.SimradNMEAParser(),
                       'BOT': parsers.SimradBottomParser(),
                       'DEP': parsers.SimradDepthParser()}
-    
+
     def __init__(self, name, mode='rb', closefd=True, return_raw=False):
         FileIO.__init__(self, name, mode=mode, closefd=closefd)
         self._current_dgram_offset = 0
@@ -92,9 +130,9 @@ class RawSimradFile(FileIO):
         '''
         :param bytes_: byte offset
         :type bytes_: int
-        
+
         :param whence:
-        
+
         Seeks a file by bytes instead of datagrams.
         '''
 
@@ -126,9 +164,9 @@ class RawSimradFile(FileIO):
         end_pos = self._tell_bytes()
         offset = end_pos - old_pos
         self._seek_bytes(old_pos, SEEK_SET)
-        
+
         return offset
-    
+
     def _read_timestamp(self):
         '''
         Attempts to read the datagram timestamp.
@@ -147,7 +185,7 @@ class RawSimradFile(FileIO):
     def _read_dgram_header(self):
         '''
         :returns: dgram_size, dgram_type, (low_date, high_date)
-        
+
         Attempts to read the datagram header consisting of
         long dgram_size
         char[4] type
@@ -155,7 +193,7 @@ class RawSimradFile(FileIO):
         '''
 
         try:
-            dgram_size = self._read_dgram_size()        
+            dgram_size = self._read_dgram_size()
         except Exception:
             if self.at_eof():
                 raise SimradEOF()
@@ -164,9 +202,9 @@ class RawSimradFile(FileIO):
 
         buf = self._read_bytes(4)
 
-        if len(buf) != 4:       
+        if len(buf) != 4:
             if self.at_eof():
-                raise SimradEOF()            
+                raise SimradEOF()
             else:
                 self._seek_bytes(-len(buf), SEEK_CUR)
                 raise DatagramReadError('Short read while getting dgram type', (4, len(buf)),
@@ -174,8 +212,9 @@ class RawSimradFile(FileIO):
         else:
             dgram_type = buf
 
-        lowDateField, highDateField = self._read_timestamp()
         dgram_type = dgram_type.decode()
+
+        lowDateField, highDateField = self._read_timestamp()
 
         return dict(size=dgram_size, type=dgram_type, low_date=lowDateField, high_date=highDateField)
 
@@ -209,44 +248,51 @@ class RawSimradFile(FileIO):
             raise e
 
         if (header['low_date'], header['high_date']) == (0, 0):
-            log.warning('Datagram w/ timestamp of (0, 0) detected at %s:%sL:%d', self.name, str(self._tell_bytes()), self.tell())
+            log.warning('Skipping %s datagram w/ timestamp of (0, 0) at %sL:%d', header['type'], str(self._tell_bytes()), self.tell())
             self.skip()
-            return self._read_next_dgram 
+            return self._read_next_dgram()
 
+        # _ = self._read_dgram_size()
         self._seek_bytes(4, SEEK_CUR)
 
         if header['size'] < 16:
-            log.warning('Invalid datagram header: size: %d, type: %s, nt_date: %s.  dgram_size < 16', 
+            log.warning('Invalid datagram header: size: %d, type: %s, nt_date: %s.  dgram_size < 16',
                 header['size'], header['type'], str((header['low_date'], header['high_date'])))
 
             self._find_next_datagram()
+            return self._read_next_dgram()
 
 
         raw_dgram = self._read_bytes(header['size'])
         bytes_read = len(raw_dgram)
-        
+
         if bytes_read < header['size']:
-            self._seek_bytes(old_file_pos, SEEK_SET)
-            raise DatagramReadError('Short read while getting dgram data',
-                                    (header['size'], len(raw_dgram)), (old_file_pos, self.tell()))
-                
-        try:    
+            #self._seek_bytes(old_file_pos, SEEK_SET)
+            #raise DatagramReadError('Short read while getting dgram data',
+            #                        (header['size'], len(raw_dgram)), (old_file_pos, self.tell()))
+            log.warning('Datagram %d (@%d) shorter than expected length:  %d < %d', self.tell(),
+                        old_file_pos, bytes_read, header['size'])
+            self._find_next_datagram()
+            return self._read_next_dgram()
+
+        try:
             dgram_size_check = self._read_dgram_size()
-            
+
         except DatagramReadError as e:
             self._seek_bytes(old_file_pos, SEEK_SET)
             e.message = 'Short read while getting trailing dgram size check'
             raise e
- 
+
 
         if header['size'] != dgram_size_check:
+            # self._seek_bytes(old_file_pos, SEEK_SET)
             log.warning('Datagram failed size check:  %d != %d @ (%d, %d)',
                 header['size'], dgram_size_check, self._tell_bytes(), self.tell())
             log.warning('Skipping to next datagram...')
             self._find_next_datagram()
-             
-            return self._read_next_dgram() 
-        
+
+            return self._read_next_dgram()
+
         if self._return_raw:
             self._current_dgram_offset += 1
             return raw_dgram
@@ -260,7 +306,7 @@ class RawSimradFile(FileIO):
         :param raw_datagram_string: bytestring containing datagram (first 4
             bytes indicate datagram type, such as 'RAW0')
         :type raw_datagram_string: str
-        
+
         Returns a formated datagram object using the data in raw_datagram_string
         '''
 
@@ -271,14 +317,15 @@ class RawSimradFile(FileIO):
             #raise KeyError('Unknown datagram type %s, valid types: %s' % (str(dgram_type), str(self.DGRAM_TYPE_KEY.keys())))
             return raw_datagram_string
 
+
         nice_dgram = parser.from_string(raw_datagram_string)
         return nice_dgram
-      
+
     def _set_total_dgram_count(self):
         '''
         Skips quickly through the file counting datagrams and stores the
         resulting number in self._total_dgram_count
-        
+
         :raises: ValueError if self._total_dgram_count is not None (it has been set before)
         '''
         if self._total_dgram_count is not None:
@@ -302,18 +349,54 @@ class RawSimradFile(FileIO):
         self._seek_bytes(old_file_pos, SEEK_SET)
         self._current_dgram_offset = old_dgram_offset
 
+    # def _read_prev_dgram(self):
+    #   '''
+    #   Attempts to read the previous datagram
+    #   '''
+
+    #   old_file_pos = self._tell_bytes()
+    #   if self._current_dgram_offset == 0 or old_file_pos == 0L:
+    #       raise DatagramReadError('Already at start of file',
+    #           (None, None), (self._tell_bytes(), self.tell()))
+
+    #   #If for some reason we can't seek back 4 bytes.. probably at the
+    #   #beginning of the file again anyway somehow...
+    #   try:
+    #       self._seek_bytes(-4, 1)
+    #   except IOError:
+    #       raise DatagramReadError('Unable to seek backwards 4 bytes',
+    #       (4, None), (self._tell_bytes(), self.tell()))
+
+    #   dgram_size_check = self._read_dgram_size()
+
+    #   #Seek to the beginning of the datagram and read as normal
+    #   try:
+    #       byte_offset = -(8+dgram_size_check)
+    #       self._seek_bytes(byte_offset, 1)
+    #   except IOError:
+    #       raise DatagramReadError('Unable to seek back to beginning of previous datagram',
+    #       (byte_offset, None), file_pos=(self._tell_bytes(), self.tell()))
+
+    #   dgram = self._read_next_dgram()
+
+    #   #We will need to subtract two from the current_dgram_offset at some point
+    #   #Here we subtract 1.  in the prev() method we use skip_back() after
+    #   #to decriment by another 1
+    #   self._current_dgram_offset -= 1
+    #   return dgram
+
     def at_eof(self):
         old_pos = self._tell_bytes()
         self._seek_bytes(0, SEEK_END)
         eof_pos = self._tell_bytes()
-                    
+
         #Check to see if we're at the end of file and raise EOF
         if old_pos == eof_pos:
             return True
-      
+
         #Othereise, go back to where we were and re-raise the original
         #exception
-        else:  
+        else:
             offset = old_pos - eof_pos
             self._seek_bytes(offset, SEEK_END)
             return False
@@ -322,7 +405,7 @@ class RawSimradFile(FileIO):
         '''
         :param k: Number of datagrams to read
         :type k: int
-        
+
         Reads the next k datagrams.  A list of datagrams is returned if k > 1.  The entire
         file is read from the CURRENT POSITION if k < 0. (does not necessarily read from begining
         of file if previous datagrams were read)
@@ -334,7 +417,7 @@ class RawSimradFile(FileIO):
             except Exception:
                 if self.at_eof():
                     raise SimradEOF()
-                else:                
+                else:
                     raise
 
         elif k > 0:
@@ -345,10 +428,10 @@ class RawSimradFile(FileIO):
                 try:
                     dgram = self._read_next_dgram()
                     dgram_list.append(dgram)
-                
+
                 except Exception:
                     break
-                
+
             return dgram_list
 
         elif k < 0:
@@ -363,8 +446,8 @@ class RawSimradFile(FileIO):
         dgram_list = []
 
         for raw_dgram in self.iter_dgrams():
-            dgram_list.append(raw_dgram)        
-        
+            dgram_list.append(raw_dgram)
+
 #        while True:
 #            try:
 #                next_dgram = self._read_next_dgram()
@@ -372,7 +455,7 @@ class RawSimradFile(FileIO):
 #            except Exception:
 #                log.error('BLAH3')
 #                break
-#            
+#
         return dgram_list
 
     def _find_next_datagram(self):
@@ -396,7 +479,7 @@ class RawSimradFile(FileIO):
         '''
         Returns the header of the next datagram in the file.  The file position is
         reset back to the original location afterwards.
-        
+
         :returns: [dgram_size, dgram_type, (low_date, high_date)]
         '''
 
@@ -436,7 +519,7 @@ class RawSimradFile(FileIO):
         header = self.peek()
 
         if header['size'] < 16:
-            log.warning('Invalid datagram header: size: %d, type: %s, nt_date: %s.  dgram_size < 16', 
+            log.warning('Invalid datagram header: size: %d, type: %s, nt_date: %s.  dgram_size < 16',
                 header['size'], header['type'], str((header['low_date'], header['high_date'])))
 
             self._find_next_datagram()
@@ -449,9 +532,9 @@ class RawSimradFile(FileIO):
                 log.warning('Datagram failed size check:  %d != %d @ (%d, %d)',
                     header['size'], dgram_size_check, self._tell_bytes(), self.tell())
                 log.warning('Skipping to next datagram... (in skip)')
-                
+
                 self._find_next_datagram()
-                
+
         self._current_dgram_offset += 1
 
     def skip_back(self):
@@ -478,7 +561,7 @@ class RawSimradFile(FileIO):
             dgram_size = self._read_dgram_size()
 
         except DatagramSizeError:
-            print ('Error reading the datagram')
+            print('Error reading the datagram')
             self._seek_bytes(old_file_pos, SEEK_SET)
             raise
 
@@ -501,7 +584,7 @@ class RawSimradFile(FileIO):
             # yield new_dgram
 
             try:
-                new_dgram = next(self)        
+                new_dgram = next(self)
             except Exception:
                 log.debug('Caught EOF?')
                 raise StopIteration
