@@ -114,6 +114,9 @@ to provide feedback to the user as to the progress of the reading.
 
 '''
 
+from raw_file import RawSimradFile
+from util.date_conversion import nt_to_unix, unix_to_nt
+
 import os
 import datetime
 import logging
@@ -150,8 +153,65 @@ class EK60Reader(object):
         self.raw_data = {}
 
 
-    def read(self):
-        pass
+    def read_file(self, filename):
+
+        datagrams = {}
+        num_sample_datagrams = 0
+        sample_datagrams = datagrams.setdefault('sample', [])
+
+        with RawSimradFile(filename, 'r') as fid:
+
+            config_datagrams = {}
+            while fid.peek()['type'].startswith('CON'):
+                config_datagram = fid.read(1)
+                if config_datagram['type'] in config_datagrams:
+                    raise ValueError('Multiple config datagrams of type %s found', config_datagram['type'])
+
+
+                print(config_datagram)
+                config_datagrams[config_datagram['type']] = config_datagram
+
+            while True:
+                try:
+                    next_header = fid.peek()
+                except:
+                    break
+
+                datagram_timestamp = nt_to_unix((next_header['low_date'], next_header['high_date']))
+
+                try:
+                    new_datagram = fid.read(1)
+                except SimradEOF:
+                    break
+
+                channel = -1
+                if new_datagram['type'].startswith('RAW'):
+                    sample_datagrams.append(new_datagram)
+                    #sample_datagrams[-1]['channel'] = channel_map[new_datagram['channel']]
+                    channel = new_datagram['channel']
+                    sample_datagrams[-1]['channel'] = new_datagram['channel']
+                    sample_datagrams[-1]['file'] = filename
+                    sample_datagrams[-1]['file_ping'] = num_sample_datagrams # / len(channel_map)
+                    num_sample_datagrams += 1
+
+                if channel not in self.raw_data.keys():
+                    self.raw_data[channel] = EK60RawData(channel)
+
+
+                for key in new_datagram: #TODO parsers.py _unpack_contents directly into data object?
+                    if hasattr(self.raw_data[channel], key):
+                        attr_data = getattr(self.raw_data[channel], key)
+                        if isinstance(attr_data, list):
+                            attr_data.append(new_datagram[key])
+                            setattr(self.raw_data[channel], key, attr_data)
+                        else:
+                            setattr(self.raw_data[channel], key, new_datagram[key])
+
+
+        num_datagrams_read = num_sample_datagrams
+
+        return self.raw_data
+
 
     def append(self):
         pass
@@ -371,7 +431,7 @@ class EK60RawData(object):
         self.current_file = -1
 
         #  the channel ID is the unique identifier
-        self.channel_id = ''
+        self.channel_id = channel_id
 
         #  a counter incremented when a ping is added
         self.n_pings = 0
@@ -796,7 +856,7 @@ class NMEAData(object):
         out there.
     '''
 
-    import pynmea2
+    #import pynmea2 FIXME Uncomment once this is available.
 
     def __init__(self, file):
 
@@ -1025,4 +1085,3 @@ class TAGData(object):
                 if (sample_datagram['angle_athwartship_e']):
                     sample_datagram['angle_athwartship_e'] = resampleData(sample_datagram['angle_athwartship_e'],
                             sample_datagram['pulse_length'], self.target_pulse_length)
-
