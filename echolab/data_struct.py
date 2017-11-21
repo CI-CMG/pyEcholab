@@ -13,15 +13,15 @@ In general I see these pieces fitting together something like:
 
 Reader handles file IO. It opens a file and determines the number of channels in
 the file by reading the CON0 header. It then creates a RawData object for each channel,
-sticking them in a dictionary keyed by channel ID. It then calls the AppendFile
+sticking them in a dictionary keyed by channel ID. It then calls the append_file
 method of each RawData object, passing the full file path and the data from the CON0
-datagram. Then the reader reads the datagrams and calls RawData.AppendPing for
-each channel passing the ping data. AppendPing will determine if any array resizing
+datagram. Then the reader reads the datagrams and calls RawData.append_ping for
+each channel passing the ping data. append_ping will determine if any array resizing
 needs to be done (for example if the range has increased or we have filled all of the
 array columns and need to allocate more columns) and then it will populate the various
 RawData properties with that ping's data. If a new file is opened, it would again
-call the RawData.AppendFile method, and then append the pings from that file. When
-all files have been read, the RawData.Trim method would be called to clip unused
+call the RawData.append_file method, and then append the pings from that file. When
+all files have been read, the RawData.trim method would be called to clip unused
 portions of the data arrays (since we allocate in chunks).
 
 
@@ -156,6 +156,7 @@ class EK60Reader(object):
     def read_file(self, filename):
 
         datagrams = {}
+        sample_datagrams = datagrams.setdefault('sample', [])
 
         with RawSimradFile(filename, 'r') as fid:
 
@@ -179,33 +180,36 @@ class EK60Reader(object):
                 except SimradEOF:
                     break
 
-                
-
                 if 'channel' in new_datagram:
 
                     channel = new_datagram['channel']
                     if channel not in self.raw_data.keys():
                         self.raw_data[channel] = EK60RawData(channel)
 
+                    if new_datagram['type'].startswith('RAW'):
+                        sample_datagram = new_datagram #temporary for clarity
+                        self.raw_data[channel].append_ping(sample_datagram)
 
-                    ping_times = getattr(self.raw_data[channel], 'ping_time')
-                    ping_times.append(datagram_timestamp)
-                    setattr(self.raw_data[channel], 'ping_time', ping_times)
+
+                        #ping_times = getattr(self.raw_data[channel], 'ping_time')
+                        #ping_times.append(datagram_timestamp)
+                        #setattr(self.raw_data[channel], 'ping_time', ping_times)
 
 
-                    for key in new_datagram: #TODO parsers.py _unpack_contents directly into data object?
-                        if hasattr(self.raw_data[channel], key):
-                            attr_data = getattr(self.raw_data[channel], key)
-                            if isinstance(attr_data, list):
-                                attr_data.append(new_datagram[key])
-                                setattr(self.raw_data[channel], key, attr_data)
-                            else:
-                                setattr(self.raw_data[channel], key, new_datagram[key])
+                        #for key in new_datagram: 
+                        #    if hasattr(self.raw_data[channel], key):
+                        #        attr_data = getattr(self.raw_data[channel], key)
+                        #        if isinstance(attr_data, list):
+                        #            attr_data.append(new_datagram[key])
+                        #            setattr(self.raw_data[channel], key, attr_data)
+                        #        else:
+                        #            setattr(self.raw_data[channel], key, new_datagram[key])
 
 
         print(self.raw_data)
 
         return self.raw_data
+
 
 
     def append(self):
@@ -338,9 +342,9 @@ class CalibrationParameters(object):
         self.transducer_depth = 0.0
 
 
-    def FromRawData(self, raw_data, raw_file_idx=0):
+    def from_raw_data(self, raw_data, raw_file_idx=0):
         '''
-        FromRawData populated the CalibrationParameters object's properties given
+        from_raw_data populated the CalibrationParameters object's properties given
         a reference to a RawData object.
 
         This would query the RawFileData object specified by raw_file_idx in the
@@ -350,9 +354,9 @@ class CalibrationParameters(object):
         pass
 
 
-    def ReadEchoviewEcsFile(self, ecs_file, channel):
+    def read_echoview_ecs_file(self, ecs_file, channel):
         '''
-        ReadEchoviewEcsFile would read an echoview ecs file and parse out the
+        read_echoview_ecs_file would read an echoview ecs file and parse out the
         parameters for a given channel. This is low priority and this is really
         a place holder for an idea.
         '''
@@ -489,9 +493,9 @@ class EK60RawData(object):
         self.logger = logging.getLogger('EK60RawData')
 
 
-    def AppendFile(self, filename, config_data):
+    def append_file(self, filename, config_data):
         '''
-        AppendFile is called before adding pings from a new data file. It would create
+        append_file is called before adding pings from a new data file. It would create
         a RawFileData object, populate it, append it to the raw_file_data list, and update
         the current_file pointer.
 
@@ -506,14 +510,14 @@ class EK60RawData(object):
         pass
 
 
-    def AppendPing(self, sample_datagram):
+    def append_ping(self, sample_datagram):
         '''
-        AppendPing is called when adding a ping's worth of data to the object. It should accept
+        append_ping is called when adding a ping's worth of data to the object. It should accept
         the parsed values from the sample datagram. It will handle the details of managing
         the array sizes, resizing as needed (or rolling in the case of a fixed size). Append ping also
         updates the RawFileData object's end_ping and end_time values for the current file.
 
-        AppendPing will return True if the operation was successful and False if it failed. It
+        append_ping will return True if the operation was successful and False if it failed. It
         should also emit a warning if it fails.
 
         9/28 - Contrary to my previous thought, we will not resample raw data when appending
@@ -606,29 +610,29 @@ class EK60RawData(object):
         return True
 
 
-    def AppendRawData(self):
+    def append_raw_data(self):
         '''
-        AppendRawData would append another RawData object to this one. This would call
-        InsertRawData specifying the end ping number
+        append_raw_data would append another RawData object to this one. This would call
+        insert_raw_data specifying the end ping number
         '''
         pass
 
 
-    def DeletePings(self, remove=True, **kwargs):
+    def delete_pings(self, remove=True, **kwargs):
         '''
-        DeletePings deletes ping data defined by the start and end bounds.
+        delete_pings deletes ping data defined by the start and end bounds.
 
         If remove == True, the arrays are shrunk. If remove == False, the data
         defined by the start and end are set to NaN
         '''
 
         #  get the horizontal start and end indicies
-        h_index = self.GetIndices(**kwargs)
+        h_index = self.get_indices(**kwargs)
 
 
-    def InsertRawData(self, ping_number=None, ping_time=None, **kwargs):
+    def insert_raw_data(self, ping_number=None, ping_time=None, **kwargs):
         '''
-        InsertRawData would insert the contents of another RawData object at the specified location
+        insert_raw_data would insert the contents of another RawData object at the specified location
         into this one
 
         the location should be specified by either ping_number or ping_time
@@ -637,15 +641,15 @@ class EK60RawData(object):
         pass
 
 
-    def Trim(self):
+    def trim(self):
         '''
-        Trim deletes the empty portions of pre-allocated arrays. This should be called
+        trim deletes the empty portions of pre-allocated arrays. This should be called
         when you are done adding pings to a non-rolling raw_data instance.
         '''
         pass
 
 
-    def GetIndex(self, time=None, ping=None):
+    def get_index(self, time=None, ping=None):
 
         def nearest_idx(list, value):
             '''
@@ -678,9 +682,9 @@ class EK60RawData(object):
         return (index)
 
 
-    def GetIndices(self, start_ping=None, end_ping=None, start_time=None, end_time=None):
+    def get_indices(self, start_ping=None, end_ping=None, start_time=None, end_time=None):
         '''
-        GetIndices maps ping number and/or ping time to an index into the acoustic
+        get_indices maps ping number and/or ping time to an index into the acoustic
         data arrays.
 
         This should be extended to handle sample_start/sample_end, range_start/range_end
@@ -748,9 +752,9 @@ class EK60RawData(object):
         return (start_index, end_index)
 
 
-    def GetSv(self, cal_parameters=None, linear=False, **kwargs):
+    def get_sv(self, cal_parameters=None, linear=False, **kwargs):
         '''
-        GetSv returns a ProcessedData object containing Sv (or sv if linear is
+        get_sv returns a ProcessedData object containing Sv (or sv if linear is
         True).
 
         MATLAB readEKRaw eq: readEKRaw_Power2Sv.m
@@ -793,12 +797,12 @@ class EK60RawData(object):
         '''
 
         #  get the horizontal start and end indicies
-        h_index = self.GetIndices(**kwargs)
+        h_index = self.get_indices(**kwargs)
 
 
-    def GetTs(self, cal_parameters=None, linear=False, **kwargs):
+    def get_ts(self, cal_parameters=None, linear=False, **kwargs):
         '''
-        GetTs returns a ProcessedData object containing TS (or sigma_bs if linear is
+        get_ts returns a ProcessedData object containing TS (or sigma_bs if linear is
         True). (in MATLAB code TS == Sp and sigma_bs == sp)
 
         MATLAB readEKRaw eq: readEKRaw_Power2Sp.m
@@ -810,21 +814,21 @@ class EK60RawData(object):
         '''
 
         #  get the horizontal start and end indicies
-        h_index = self.GetIndices(**kwargs)
+        h_index = self.get_indices(**kwargs)
 
 
-    def GetPhysicalAngles(self, **kwargs):
+    def get_physical_angles(self, **kwargs):
         '''
-        GetPhysicalAngles returns a processed data object that contains the alongship and
+        get_physical_angles returns a processed data object that contains the alongship and
         athwartship angle data.
 
         This method would call getElectricalAngles to get a vertically aligned
 
         '''
 
-    def GetPower(self, **kwargs):
+    def get_power(self, **kwargs):
         '''
-        GetPower returns a processed data object that contains the power data.
+        get_power returns a processed data object that contains the power data.
 
         This method will vertically resample the raw power data according to the keyword inputs.
         By default we will resample to the highest resolution (shortest pulse length) in the object.
@@ -833,7 +837,7 @@ class EK60RawData(object):
 
         '''
 
-    def GetElectricalAngles(self, **kwargs):
+    def get_electrical_angles(self, **kwargs):
         '''
         '''
 
@@ -874,9 +878,9 @@ class NMEAData(object):
         self.logger = logging.getLogger('NMEAData')
 
 
-    def AddDatagram(self, time, text):
+    def add_datagram(self, time, text):
         '''
-        AddDatagram adds a NMEA datagram to the class. It adds it to the raw_datagram
+        add_datagram adds a NMEA datagram to the class. It adds it to the raw_datagram
         list as well as parsing the header and adding the talker+mesage ID to the
         type_index dict.
 
@@ -907,9 +911,9 @@ class NMEAData(object):
         self.n_raw = self.n_raw + 1
 
 
-    def GetDatagrams(self, type, raw=False):
+    def get_datagrams(self, type, raw=False):
         '''
-        GetDatagrams returns a list of the requested datagram type. By default the
+        get_datagrams returns a list of the requested datagram type. By default the
         datagram will be parsed. If raw == True the raw datagram text will be returned.
         '''
 
@@ -953,9 +957,9 @@ class TAGData(object):
 
 
 
-    def AddDatagram(self, time, text):
+    def add_datagram(self, time, text):
         '''
-        AddDatagram adds a TAG0 datagram to the
+        add_datagram adds a TAG0 datagram to the
 
         time is a datetime object
         text is a string containing the annotation text
@@ -1050,7 +1054,7 @@ class TAGData(object):
 
         #  if we're not allowing pulse_length to change, make sure it hasn't
         if (not self.allow_pulse_length_change) and (sample_datagram['pulse_length'] != self.target_pulse_length):
-            self.logger.warning('AppendPing failed: pulse_length does not match existing data and ' +
+            self.logger.warning('append_ping failed: pulse_length does not match existing data and ' +
                     'allow_pulse_length_change == False')
             return False
 
@@ -1080,3 +1084,5 @@ class TAGData(object):
                 if (sample_datagram['angle_athwartship_e']):
                     sample_datagram['angle_athwartship_e'] = resampleData(sample_datagram['angle_athwartship_e'],
                             sample_datagram['pulse_length'], self.target_pulse_length)
+
+
