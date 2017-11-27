@@ -206,6 +206,8 @@ class EK60Reader(object):
                         if new_datagram['channel'] not in self.raw_data.keys():
                             self.raw_data[channel] = EK60RawData(channel)
 
+                        self.raw_data[channel].append_file(filename, config_datagrams)
+
                         new_datagram['ping_time'] = datagram_timestamp
                         self.raw_data[channel].append_ping(new_datagram)
 
@@ -538,8 +540,10 @@ class EK60RawData(object):
         THIS PROBABLY SHOULD HAVE A DIFFERENT/BETTER NAME
 
         '''
-
-        pass
+        if (len(self.raw_file_data)) > 0 and self.raw_file_data[-1].data_file not in filename:
+            self.raw_file_data.append(RawFileData(filename))
+        elif len(self.raw_file_data) == 0:
+            self.raw_file_data.append(RawFileData(filename))
 
 
     def append_ping(self, sample_datagram):
@@ -614,7 +618,7 @@ class EK60RawData(object):
 
 
         #  check if power or angle data needs to be padded or trimmed
-        #  FIXME Ask how to determine this.
+        #  FIXME how to determine this.
 
 
         #  increment the ping counter
