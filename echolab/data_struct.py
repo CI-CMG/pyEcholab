@@ -118,7 +118,6 @@ from raw_file import RawSimradFile, SimradEOF
 from util.date_conversion import nt_to_unix, unix_to_nt
 
 import os
-import sys
 import datetime
 import logging
 import numpy as np
@@ -425,7 +424,7 @@ class EK60RawData(object):
     to_longest = 1
 
     def __init__(self, channel_id, n_pings=0, n_samples=1000, rolling=False,
-            chunk_width=200):
+            chunk_width=500):
         '''
         Creates a new, empty RawData object.
 
@@ -591,7 +590,8 @@ class EK60RawData(object):
 
         '''
 
-        print()
+
+        success = True
 
         #  handle intialization of data arrays on our first ping
         if (self.n_pings == 0 and self.rolling_array == False):
@@ -610,64 +610,117 @@ class EK60RawData(object):
         #  append the data in sample_datagram to our internal arrays
         self.ping_number.append(self.n_pings + 1)
 
-        # FIXME define these attributes in one place to be used here and in parsers.py
-        # FIXME or loop through checking key each time
-        # or throw error if attr is missing
-        self.ping_time.append(sample_datagram['ping_time'])
-        self.transducer_depth.append(sample_datagram['transducer_depth'])
-        self.frequency.append(sample_datagram['frequency'])
-        self.transmit_power.append(sample_datagram['transmit_power'])
-        self.pulse_length.append(sample_datagram['pulse_length'])
-        self.bandwidth.append(sample_datagram['bandwidth'])
-        self.sample_interval.append(sample_datagram['sample_interval'])
-        self.sound_velocity.append(sample_datagram['sound_velocity'])
-        self.absorption_coefficient.append(sample_datagram['absorption_coefficient'])
-        self.heave.append(sample_datagram['heave'])
-        self.pitch.append(sample_datagram['pitch'])
-        self.roll.append(sample_datagram['roll'])
-        self.temperature.append(sample_datagram['temperature'])
-        self.heading.append(sample_datagram['heading'])
-        self.transmit_mode.append(sample_datagram['transmit_mode'])
-        #self.sample_offset.append(sample_datagram['sample_offset'])
-        #self.sample_count.append(sample_datagram['sample_count'])
-
+        self.append_data(sample_datagram)
 
 
         #  check if power or angle data needs to be padded or trimmed
+        #  FIXME Ask how to determine this.
 
 
         #  increment the ping counter
-        print("self.n_pings", self.n_pings)
         self.n_pings = self.n_pings + 1
-        print("self.n_pings", self.n_pings)
 
         #  check if our 2d arrays need to be resized
         if self.n_pings >= len(self.power):
-            new_array_length = len(self.power) + self.chunk_width 
-            print("new_array_length", new_array_length)
-            new_array_width = max([self.power[0].size, len(sample_datagram['power'])]) 
-            print("new_array_width", new_array_width)
-            new_data_dims = [new_array_length, new_array_width]
-            self.power.resize(new_data_dims)
-            #self.angle_alongship_e.resize(new_data_dims)
-            #self.angles_athwartship_e.resize(new_data_dims)
+            self.resize_array()
 
         #  and finally copy the data into the arrays
-        print("self.n_pings", self.n_pings)
-        print("len(self.frequency)", len(self.frequency))
-        print("len(self.power)", len(self.power))
-        print("self.power[0].size", self.power[0].size)
-        print("len(sample_datagram['power'])", len(sample_datagram['power']))
         self.power[self.n_pings-1,:] = sample_datagram['power']
-        print("self.n_pings", self.n_pings)
+        #FIXME Add these to the sample datagram.
         #self.angles_alongship_e[self.n_pings-1,:] = sample_datagram['angles_alongship_e']
         #self.angles_athwartship_e[self.n_pings-1,:] = sample_datagram['angles_athwartship_e']
 
-        #  obviously there is no error handling now, but this method should have some and return false if
-        #  there is a problem. I think the only problem would be the inability to allocate an array when
-        #  expanding.
-        return True
+        return success
 
+
+    def append_data(self, datagram):
+        # FIXME define these attributes in one place to be used here and in parsers.py
+        # FIXME or loop through checking key each time
+        # or throw error if attr is missing
+
+        try:
+            ping_time = self.ping_time.copy()
+            ping_time.append(datagram['ping_time'])
+
+            transducer_depth = self.transducer_depth.copy()
+            transducer_depth.append(datagram['transducer_depth'])
+
+            frequency = self.frequency.copy()
+            frequency.append(datagram['frequency'])
+
+            transmit_power = self.transmit_power.copy()
+            transmit_power.append(datagram['transmit_power'])
+
+            pulse_length = self.pulse_length.copy()
+            pulse_length.append(datagram['pulse_length'])
+
+            bandwidth = self.bandwidth.copy()
+            bandwidth.append(datagram['bandwidth'])
+
+            sample_interval = self.sample_interval
+            sample_interval.append(datagram['sample_interval'])
+
+            sound_velocity = self.sound_velocity
+            sound_velocity.append(datagram['sound_velocity'])
+
+            absorption_coefficient = self.absorption_coefficient
+            absorption_coefficient.append(datagram['absorption_coefficient'])
+
+            heave = self.heave
+            heave.append(datagram['heave'])
+
+            pitch = self.pitch
+            pitch.append(datagram['pitch'])
+
+            roll = self.roll
+            roll.append(datagram['roll'])
+
+            temperature = self.temperature
+            temperature.append(datagram['temperature'])
+
+            heading = self.heading
+            heading.append(datagram['heading'])
+
+            transmit_mode = self.transmit_mode
+            transmit_mode.append(datagram['transmit_mode'])
+            #self.sample_offset.append(datagram['sample_offset']) 
+            #self.sample_count.append(datagram['sample_count'])
+        except KeyError as err:
+            #TODO Add filename and ping num in file.
+            log.warning("The key, %s, wasn't found in the sample datagram.  This datagram will not be included.", err)
+        else:
+            self.ping_time = ping_time.copy()
+            self.transducer_depth = transducer_depth.copy()
+            self.frequency = frequency.copy()
+            self.transmit_power = transmit_power.copy()
+            self.pulse_length = pulse_length.copy()
+            self.bandwidth = bandwidth.copy()
+            self.sample_interval = sample_interval.copy()
+            self.sound_velocity = sound_velocity.copy()
+            self.absorption_coefficient = absorption_coefficient.copy()
+            self.heave = heave.copy()
+            self.pitch = pitch.copy()
+            self.roll = roll.copy()
+            self.temperature = temperature.copy()
+            self.heading = heading.copy()
+            self.transmit_mode = transmit_mode.copy()
+
+
+    def resize_array(self):
+        new_array_length = len(self.power) + self.chunk_width 
+        new_array_width = max([self.power[0].size, len(sample_datagram['power'])]) 
+        new_data_dims = [new_array_length, new_array_width]
+
+        try:
+            self.power.resize(new_data_dims)
+            #self.angle_alongship_e.resize(new_data_dims)
+            #self.angles_athwartship_e.resize(new_data_dims)
+        except ValueError as err:
+            log.error('Error resizing numpy array:', err)
+            success = False
+        except Exception as err:
+            log.error('Error resizing numpy array:', type(err), err)
+            success = False
 
     def append_raw_data(self):
         '''
@@ -1036,9 +1089,9 @@ class TAGData(object):
 
 
 
-        def resampleData(self, data, pulse_length, target_pulse_length, is_power=False):
+        def resample_data(self, data, pulse_length, target_pulse_length, is_power=False):
             '''
-            resampleData resamples the power or angle data based on it's pulse length
+            resample_data resamples the power or angle data based on it's pulse length
             and the provided target pulse length. If is_power is True, we log transform the
             data to average in linear units (if needed).
 
@@ -1135,12 +1188,12 @@ class TAGData(object):
             if (self.allow_pulse_length_change):
                 #  here we need to change the vertical resolution of either the incoming data or the data
                 if (sample_datagram['power']):
-                    sample_datagram['power'] = resampleData(sample_datagram['power'],
+                    sample_datagram['power'] = resample_data(sample_datagram['power'],
                             sample_datagram['pulse_length'], self.target_pulse_length, is_power=True)
                 if (sample_datagram['angle_alongship_e']):
-                    sample_datagram['angle_alongship_e'] = resampleData(sample_datagram['angle_alongship_e'],
+                    sample_datagram['angle_alongship_e'] = resample_data(sample_datagram['angle_alongship_e'],
                             sample_datagram['pulse_length'], self.target_pulse_length)
                 if (sample_datagram['angle_athwartship_e']):
-                    sample_datagram['angle_athwartship_e'] = resampleData(sample_datagram['angle_athwartship_e'],
+                    sample_datagram['angle_athwartship_e'] = resample_data(sample_datagram['angle_athwartship_e'],
                             sample_datagram['pulse_length'], self.target_pulse_length)
 
