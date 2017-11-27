@@ -176,10 +176,13 @@ class EK60Reader(object):
 
                 config_datagrams[config_datagram['type']] = config_datagram
 
-            #channel_map  =  self._setup_config(config_datagrams, channel_names=channel_names,
-            #        channel_numbers=channel_numbers, frequencies=frequencies)
 
-            #num_channels = len(list(channel_map.keys()))
+            #TODO Replace raw_data obj instantiation and append_file with this.
+            #for channel in config_datagram['transceivers']:
+            #    channel_id = config_datagram['transceivers'][channel]['channel_id']
+            #    self.raw_data[channel] = EK60RawData(channel_id)
+
+            #self.raw_data[channel].append_file(filename, config_datagrams)
 
             while True:
                 try:
