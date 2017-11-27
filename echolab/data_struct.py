@@ -118,10 +118,12 @@ from raw_file import RawSimradFile, SimradEOF
 from util.date_conversion import nt_to_unix, unix_to_nt
 
 import os
+import sys
 import datetime
 import logging
 import numpy as np
 
+log = logging.getLogger(__name__)
 
 class EK60Reader(object):
 
@@ -153,9 +155,16 @@ class EK60Reader(object):
         self.raw_data = {}
 
 
+
+
     def read_file(self, filename):
 
         datagrams = {}
+        num_sample_datagrams = 0
+        num_sample_datagrams_skipped = 0
+        num_unknown_datagrams_skipped = 0
+        num_datagrams_parsed = 0
+
         sample_datagrams = datagrams.setdefault('sample', [])
 
         with RawSimradFile(filename, 'r') as fid:
@@ -165,7 +174,13 @@ class EK60Reader(object):
                 config_datagram = fid.read(1)
                 if config_datagram['type'] in config_datagrams:
                     raise ValueError('Multiple config datagrams of type %s found', config_datagram['type'])
+
                 config_datagrams[config_datagram['type']] = config_datagram
+
+            #channel_map  =  self._setup_config(config_datagrams, channel_names=channel_names,
+            #        channel_numbers=channel_numbers, frequencies=frequencies)
+
+            #num_channels = len(list(channel_map.keys()))
 
             while True:
                 try:
@@ -174,41 +189,47 @@ class EK60Reader(object):
                     break
 
                 datagram_timestamp = nt_to_unix((next_header['low_date'], next_header['high_date']))
+                num_datagrams_parsed += 1
+
 
                 try:
                     new_datagram = fid.read(1)
                 except SimradEOF:
                     break
 
-                if 'channel' in new_datagram:
 
-                    channel = new_datagram['channel']
-                    if channel not in self.raw_data.keys():
-                        self.raw_data[channel] = EK60RawData(channel)
+                if new_datagram['type'].startswith('RAW'):
 
-                    if new_datagram['type'].startswith('RAW'):
-                        sample_datagram = new_datagram #temporary for clarity
-                        self.raw_data[channel].append_ping(sample_datagram)
+                    #if new_datagram['channel'] in channel_map:
+                    if True:
+                        #channel = channel_map[new_datagram['channel']]
+                        channel = new_datagram['channel']
+                        if new_datagram['channel'] not in self.raw_data.keys():
+                            self.raw_data[channel] = EK60RawData(channel)
 
+                        new_datagram['ping_time'] = datagram_timestamp
+                        self.raw_data[channel].append_ping(new_datagram)
 
-                        #ping_times = getattr(self.raw_data[channel], 'ping_time')
-                        #ping_times.append(datagram_timestamp)
-                        #setattr(self.raw_data[channel], 'ping_time', ping_times)
-
-
-                        #for key in new_datagram: 
-                        #    if hasattr(self.raw_data[channel], key):
-                        #        attr_data = getattr(self.raw_data[channel], key)
-                        #        if isinstance(attr_data, list):
-                        #            attr_data.append(new_datagram[key])
-                        #            setattr(self.raw_data[channel], key, attr_data)
-                        #        else:
-                        #            setattr(self.raw_data[channel], key, new_datagram[key])
+                        num_sample_datagrams += 1
 
 
-        print(self.raw_data)
+                    else:
+                        num_sample_datagrams_skipped += 1
+
+                else:
+                    log.warning('Skipping unkown datagram type: %s @ %s', new_datagram['type'], datagram_timestamp)
+                    num_unknown_datagrams_skipped += 1
+
+                if not (num_datagrams_parsed % 10000):
+                    log.debug('    Parsed %d datagrams (%d sample).', num_datagrams_parsed, num_sample_datagrams)
+
+
+        num_datagrams_skipped = num_unknown_datagrams_skipped + num_sample_datagrams_skipped
+
+        log.info('  Read %d datagrams (%d skipped).', num_sample_datagrams, num_datagrams_skipped)
 
         return self.raw_data
+
 
 
 
@@ -388,11 +409,23 @@ class EK60RawData(object):
     #  define some instrument specific constants
     SAMPLES_PER_PULSE = 4
 
+    #FIXME Values?
+    RESAMPLE_LOWEST = 64
+    RESAMPLE_64 = 64
+    RESAMPLE_128 = 128
+    RESAMPLE_256 = 256
+    RESAMPLE_512 = 512
+    RESAMPLE_1024 = 1024
+    RESAMPLE_2048 = 2048
+    RESAMPLE_4096 = 4096
+    RESAMPLE_HIGHEST = 4096
+
+
     to_shortest = 0
     to_longest = 1
 
-    def __init__(self, channel_id, n_pings=500, n_samples=1000, rolling=False,
-            chunk_width=500):
+    def __init__(self, channel_id, n_pings=0, n_samples=1000, rolling=False,
+            chunk_width=200):
         '''
         Creates a new, empty RawData object.
 
@@ -558,10 +591,12 @@ class EK60RawData(object):
 
         '''
 
+        print()
+
         #  handle intialization of data arrays on our first ping
-        if (self.n_pings == 0 and self.rolling == False):
+        if (self.n_pings == 0 and self.rolling_array == False):
             #  assume the initial array size doesn't involve resizing
-            data_dims = [ len(sample_datagram['power']), self.chunk_width]
+            data_dims = [ self.chunk_width, len(sample_datagram['power'])]
 
             #  create acoustic data arrays - no need to fill with NaNs at this point
             self.power = np.empty(data_dims)
@@ -574,6 +609,10 @@ class EK60RawData(object):
 
         #  append the data in sample_datagram to our internal arrays
         self.ping_number.append(self.n_pings + 1)
+
+        # FIXME define these attributes in one place to be used here and in parsers.py
+        # FIXME or loop through checking key each time
+        # or throw error if attr is missing
         self.ping_time.append(sample_datagram['ping_time'])
         self.transducer_depth.append(sample_datagram['transducer_depth'])
         self.frequency.append(sample_datagram['frequency'])
@@ -589,20 +628,40 @@ class EK60RawData(object):
         self.temperature.append(sample_datagram['temperature'])
         self.heading.append(sample_datagram['heading'])
         self.transmit_mode.append(sample_datagram['transmit_mode'])
-        self.sample_offset.append(sample_datagram['sample_offset'])
-        self.sample_count.append(sample_datagram['sample_count'])
+        #self.sample_offset.append(sample_datagram['sample_offset'])
+        #self.sample_count.append(sample_datagram['sample_count'])
+
+
 
         #  check if power or angle data needs to be padded or trimmed
 
-        #  check if our 2d arrays need to be resized
-
-        #  and finally copy the data into the arrays
-        self.power[:,self.n_pings] = sample_datagram['power']
-        self.angles_alongship_e[:,self.n_pings] = sample_datagram['angles_alongship_e']
-        self.angles_athwartship_e[:,self.n_pings] = sample_datagram['angles_athwartship_e']
 
         #  increment the ping counter
+        print("self.n_pings", self.n_pings)
         self.n_pings = self.n_pings + 1
+        print("self.n_pings", self.n_pings)
+
+        #  check if our 2d arrays need to be resized
+        if self.n_pings >= len(self.power):
+            new_array_length = len(self.power) + self.chunk_width 
+            print("new_array_length", new_array_length)
+            new_array_width = max([self.power[0].size, len(sample_datagram['power'])]) 
+            print("new_array_width", new_array_width)
+            new_data_dims = [new_array_length, new_array_width]
+            self.power.resize(new_data_dims)
+            #self.angle_alongship_e.resize(new_data_dims)
+            #self.angles_athwartship_e.resize(new_data_dims)
+
+        #  and finally copy the data into the arrays
+        print("self.n_pings", self.n_pings)
+        print("len(self.frequency)", len(self.frequency))
+        print("len(self.power)", len(self.power))
+        print("self.power[0].size", self.power[0].size)
+        print("len(sample_datagram['power'])", len(sample_datagram['power']))
+        self.power[self.n_pings-1,:] = sample_datagram['power']
+        print("self.n_pings", self.n_pings)
+        #self.angles_alongship_e[self.n_pings-1,:] = sample_datagram['angles_alongship_e']
+        #self.angles_athwartship_e[self.n_pings-1,:] = sample_datagram['angles_athwartship_e']
 
         #  obviously there is no error handling now, but this method should have some and return false if
         #  there is a problem. I think the only problem would be the inability to allocate an array when
@@ -1084,5 +1143,4 @@ class TAGData(object):
                 if (sample_datagram['angle_athwartship_e']):
                     sample_datagram['angle_athwartship_e'] = resampleData(sample_datagram['angle_athwartship_e'],
                             sample_datagram['pulse_length'], self.target_pulse_length)
-
 
