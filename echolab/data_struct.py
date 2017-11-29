@@ -629,7 +629,7 @@ class EK60RawData(object):
 
         #  check if our 2d arrays need to be resized
         if self.n_pings >= len(self.power):
-            self.resize_array()
+            self.resize_array(sample_datagram)
 
         #  and finally copy the data into the arrays
         self.power[self.n_pings-1,:] = sample_datagram['power']
@@ -713,9 +713,9 @@ class EK60RawData(object):
             self.transmit_mode = transmit_mode.copy()
 
 
-    def resize_array(self):
+    def resize_array(self, datagram):
         new_array_length = len(self.power) + self.chunk_width 
-        new_array_width = max([self.power[0].size, len(sample_datagram['power'])]) 
+        new_array_width = max([self.power[0].size, len(datagram['power'])]) 
         new_data_dims = [new_array_length, new_array_width]
 
         try:
