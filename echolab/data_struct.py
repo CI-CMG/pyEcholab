@@ -177,12 +177,12 @@ class EK60Reader(object):
                 config_datagrams[config_datagram['type']] = config_datagram
 
 
-            #TODO Replace raw_data obj instantiation and append_file with this.
-            #for channel in config_datagram['transceivers']:
-            #    channel_id = config_datagram['transceivers'][channel]['channel_id']
-            #    self.raw_data[channel] = EK60RawData(channel_id)
-
-            #self.raw_data[channel].append_file(filename, config_datagrams)
+            channel_ids = {}
+            for channel in config_datagram['transceivers']:
+                channel_id = config_datagram['transceivers'][channel]['channel_id']
+                channel_ids[channel] = channel_id
+                self.raw_data[channel_id] = EK60RawData(channel_id)
+                self.raw_data[channel_id].append_file(filename, config_datagrams)
 
             while True:
                 try:
@@ -202,17 +202,10 @@ class EK60Reader(object):
 
                 if new_datagram['type'].startswith('RAW'):
 
-                    #if new_datagram['channel'] in channel_map:
-                    if True:
-                        #channel = channel_map[new_datagram['channel']]
-                        channel = new_datagram['channel']
-                        if new_datagram['channel'] not in self.raw_data.keys():
-                            self.raw_data[channel] = EK60RawData(channel)
-
-                        self.raw_data[channel].append_file(filename, config_datagrams)
-
+                    if new_datagram['channel'] in channel_ids:
+                        channel_id = channel_ids[new_datagram['channel']]
                         new_datagram['ping_time'] = datagram_timestamp
-                        self.raw_data[channel].append_ping(new_datagram)
+                        self.raw_data[channel_id].append_ping(new_datagram)
 
                         num_sample_datagrams += 1
 
