@@ -177,12 +177,12 @@ class EK60Reader(object):
                 config_datagrams[config_datagram['type']] = config_datagram
 
 
-            #TODO Replace raw_data obj instantiation and append_file with this.
-            #for channel in config_datagram['transceivers']:
-            #    channel_id = config_datagram['transceivers'][channel]['channel_id']
-            #    self.raw_data[channel] = EK60RawData(channel_id)
-
-            #self.raw_data[channel].append_file(filename, config_datagrams)
+            channel_ids = {}
+            for channel in config_datagram['transceivers']:
+                channel_id = config_datagram['transceivers'][channel]['channel_id']
+                channel_ids[channel] = channel_id
+                self.raw_data[channel_id] = EK60RawData(channel_id)
+                self.raw_data[channel_id].append_file(filename, config_datagrams)
 
             while True:
                 try:
@@ -202,17 +202,10 @@ class EK60Reader(object):
 
                 if new_datagram['type'].startswith('RAW'):
 
-                    #if new_datagram['channel'] in channel_map:
-                    if True:
-                        #channel = channel_map[new_datagram['channel']]
-                        channel = new_datagram['channel']
-                        if new_datagram['channel'] not in self.raw_data.keys():
-                            self.raw_data[channel] = EK60RawData(channel)
-
-                        self.raw_data[channel].append_file(filename, config_datagrams)
-
+                    if new_datagram['channel'] in channel_ids:
+                        channel_id = channel_ids[new_datagram['channel']]
                         new_datagram['ping_time'] = datagram_timestamp
-                        self.raw_data[channel].append_ping(new_datagram)
+                        self.raw_data[channel_id].append_ping(new_datagram)
 
                         num_sample_datagrams += 1
 
@@ -629,7 +622,7 @@ class EK60RawData(object):
 
         #  check if our 2d arrays need to be resized
         if self.n_pings >= len(self.power):
-            self.resize_array()
+            self.resize_array(sample_datagram)
 
         #  and finally copy the data into the arrays
         self.power[self.n_pings-1,:] = sample_datagram['power']
@@ -713,9 +706,9 @@ class EK60RawData(object):
             self.transmit_mode = transmit_mode.copy()
 
 
-    def resize_array(self):
+    def resize_array(self, datagram):
         new_array_length = len(self.power) + self.chunk_width 
-        new_array_width = max([self.power[0].size, len(sample_datagram['power'])]) 
+        new_array_width = max([self.power[0].size, len(datagram['power'])]) 
         new_data_dims = [new_array_length, new_array_width]
 
         try:
