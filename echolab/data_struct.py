@@ -154,6 +154,10 @@ class EK60Reader(object):
         self.raw_data = {}
 
 
+    def read_files(self, files):
+
+        for filename in files:
+            self.read_file(filename)
 
 
     def read_file(self, filename):
@@ -179,11 +183,13 @@ class EK60Reader(object):
 
             channel_ids = {}
             for channel in config_datagram['transceivers']:
-                channel_id = config_datagram['transceivers'][channel]['channel_id']
-                channel_ids[channel] = channel_id
-                self.raw_data[channel_id] = EK60RawData(channel_id)
-                self.raw_data[channel_id].append_file(filename, config_datagrams)
-
+                if channel_id not in self.raw_data:
+                    channel_id = config_datagram['transceivers'][channel]['channel_id']
+                    channel_ids[channel] = channel_id
+                    self.raw_data[channel_id] = EK60RawData(channel_id)
+                    #TODO ask, do we want it to skip duplicate files? if it gets the same filename more than once?
+                    self.raw_data[channel_id].append_file(filename, config_datagrams)
+ 
             while True:
                 try:
                     next_header = fid.peek()
@@ -214,7 +220,8 @@ class EK60Reader(object):
                         num_sample_datagrams_skipped += 1
 
                 else:
-                    log.warning('Skipping unkown datagram type: %s @ %s', new_datagram['type'], datagram_timestamp)
+                    #FIXME uncomment
+                    #log.warning('Skipping unkown datagram type: %s @ %s', new_datagram['type'], datagram_timestamp)
                     num_unknown_datagrams_skipped += 1
 
                 if not (num_datagrams_parsed % 10000):
@@ -536,10 +543,9 @@ class EK60RawData(object):
         THIS PROBABLY SHOULD HAVE A DIFFERENT/BETTER NAME
 
         '''
-        if (len(self.raw_file_data)) > 0 and self.raw_file_data[-1].data_file not in filename:
-            self.raw_file_data.append(RawFileData(filename))
-        elif len(self.raw_file_data) == 0:
-            self.raw_file_data.append(RawFileData(filename))
+
+        self.raw_file_data.append(RawFileData(filename))
+        self.current_file += 1
 
 
     def append_ping(self, sample_datagram):
