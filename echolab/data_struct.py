@@ -164,95 +164,115 @@ class EK60Reader(object):
         for filename in files:
             self.read_file(filename)
 
-        return self.raw_data
 
     def read_file(self, filename):
+        '''
+        Extract data from file and add to self.raw_data.
+        '''
 
-        datagrams = {}
+        with RawSimradFile(filename, 'r') as fid:
+
+            config_datagram = self.get_config_datagram(fid)
+
+            channel_ids = self.raw_data_setup(config_datagram, filename)
+ 
+            self.add_datagrams_to_raw_data(fid, channel_ids)
+
+
+    def get_config_datagram(self, fid):
+        '''
+        Get config datagram from file.
+        '''
+        config_datagrams = {}
+        while fid.peek()['type'].startswith('CON'):
+            config_datagram = fid.read(1)
+            if config_datagram['type'] in config_datagrams:
+                raise ValueError('Multiple config datagrams of type %s found', config_datagram['type'])
+            config_datagrams[config_datagram['type']] = config_datagram
+
+        return config_datagram
+
+    def raw_data_setup(self, config_datagram, filename):
+        '''
+        Add EK60RawData object to raw_data for each channel if not defined.
+        '''
+        channel_ids = {}
+        for channel in config_datagram['transceivers']:
+            channel_id = config_datagram['transceivers'][channel]['channel_id']
+            if channel_id not in self.raw_data:
+                if channel in channel_ids:
+                    #FIXME If these mappings vary from one file to the next, how should I handle that?
+                    pass
+
+                channel_ids[channel] = channel_id #Create channel map.
+                self.raw_data[channel_id] = EK60RawData(channel_id)
+            self.raw_data[channel_id].append_file(filename)
+        return channel_ids
+
+
+    def add_datagrams_to_raw_data(self, fid, channel_ids):
+        '''
+        Add datagrams from file to raw_data.
+        '''
+
         num_sample_datagrams = 0
         num_sample_datagrams_skipped = 0
         num_unknown_datagrams_skipped = 0
         num_datagrams_parsed = 0
-
-        sample_datagrams = datagrams.setdefault('sample', [])
-
-        with RawSimradFile(filename, 'r') as fid:
-
-            #Get config datagram.
-            config_datagrams = {}
-            while fid.peek()['type'].startswith('CON'):
-                config_datagram = fid.read(1)
-                if config_datagram['type'] in config_datagrams:
-                    raise ValueError('Multiple config datagrams of type %s found', config_datagram['type'])
-
-                config_datagrams[config_datagram['type']] = config_datagram
+        sample_datagrams = {}
+        sample_datagrams.setdefault('sample', [])
 
 
-            #Add EK60RawData object to raw_data for each channel.
-            channel_ids = {}
-            for channel in config_datagram['transceivers']:
-                channel_id = config_datagram['transceivers'][channel]['channel_id']
-                if channel_id not in self.raw_data:
-                    channel_ids[channel] = channel_id #Create channel map.
-                    self.raw_data[channel_id] = EK60RawData(channel_id)
+        while True:
+            try:
+                next_header = fid.peek()
+            except SimradEOF:
+                break
 
-            self.raw_data[channel_id].append_file(filename)
- 
-            #Add datagrams from file to raw_data.
-            while True:
-                try:
-                    next_header = fid.peek()
-                except SimradEOF:
-                    break
+            try:
+                new_datagram = fid.read(1)
+            except SimradEOF:
+                break
 
-                try:
-                    new_datagram = fid.read(1)
-                except SimradEOF:
-                    break
-
-
-                datagram_timestamp = nt_to_unix((next_header['low_date'], next_header['high_date']))
-
-                utc = timezone('utc')
-                if self.start_time is not None:
-                    start_time_utc = utc.localize(datetime.datetime.strptime(self.start_time, '%Y-%m-%d %H:%M:%S'))
-                    if datagram_timestamp < start_time_utc:
-                        continue
-                if self.end_time is not None:
-                    end_time_utc = utc.localize(datetime.datetime.strptime(self.end_time, '%Y-%m-%d %H:%M:%S'))
-                    if datagram_timestamp > end_time_utc:
-                        continue
-
-                num_datagrams_parsed += 1
-
-                if new_datagram['type'].startswith('RAW'):
-
-                    if new_datagram['channel'] in channel_ids:
-                        channel_id = channel_ids[new_datagram['channel']]
-                        new_datagram['ping_time'] = datagram_timestamp
-                        self.raw_data[channel_id].append_ping(new_datagram)
-
-                        num_sample_datagrams += 1
-
-
-                    else:
-                        num_sample_datagrams_skipped += 1
-
+            datagram_timestamp = nt_to_unix((next_header['low_date'], next_header['high_date']))
+    
+            utc = timezone('utc')
+            if self.start_time is not None:
+                start_time_utc = utc.localize(datetime.datetime.strptime(self.start_time, '%Y-%m-%d %H:%M:%S'))
+                if datagram_timestamp < start_time_utc:
+                    continue
+            if self.end_time is not None:
+                end_time_utc = utc.localize(datetime.datetime.strptime(self.end_time, '%Y-%m-%d %H:%M:%S'))
+                if datagram_timestamp > end_time_utc:
+                    continue
+    
+            num_datagrams_parsed += 1
+    
+            if new_datagram['type'].startswith('RAW'):
+    
+                if new_datagram['channel'] in channel_ids:
+                    channel_id = channel_ids[new_datagram['channel']]
+                    new_datagram['ping_time'] = datagram_timestamp
+                    self.raw_data[channel_id].append_ping(new_datagram)
+    
+                    num_sample_datagrams += 1
+    
+    
                 else:
-                    #FIXME uncomment
-                    #log.warning('Skipping unkown datagram type: %s @ %s', new_datagram['type'], datagram_timestamp)
-                    num_unknown_datagrams_skipped += 1
-
-                if not (num_datagrams_parsed % 10000):
-                    log.debug('    Parsed %d datagrams (%d sample).', num_datagrams_parsed, num_sample_datagrams)
+                    num_sample_datagrams_skipped += 1
+    
+            else:
+                #FIXME uncomment
+                #log.warning('Skipping unkown datagram type: %s @ %s', new_datagram['type'], datagram_timestamp)
+                num_unknown_datagrams_skipped += 1
+    
+            if not (num_datagrams_parsed % 10000):
+                log.debug('    Parsed %d datagrams (%d sample).', num_datagrams_parsed, num_sample_datagrams)
 
 
         num_datagrams_skipped = num_unknown_datagrams_skipped + num_sample_datagrams_skipped
         log.info('  Read %d datagrams (%d skipped).', num_sample_datagrams, num_datagrams_skipped)
-
-        return self.raw_data
-
-
+    
 
     def append(self):
         pass
