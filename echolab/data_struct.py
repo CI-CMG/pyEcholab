@@ -119,6 +119,7 @@ from util.date_conversion import nt_to_unix, unix_to_nt
 
 import os
 import datetime
+from pytz import timezone
 import logging
 import numpy as np
 
@@ -130,6 +131,8 @@ class EK60Reader(object):
             end_time=None,  start_ping=None,  end_ping=None,  frequencies=None,  channels=None):
 
         #  define a subset of data to read using time - if no times are provided read all data
+        #  Format: yyyy-mm-dd HH:MM:SS
+        #  Example: 2007-08-27 14:21:58.931255+00:00
         self.start_time = start_time
         self.end_time = end_time
 
@@ -156,9 +159,12 @@ class EK60Reader(object):
 
     def read_files(self, files):
 
+        if isinstance(files, str):
+            files = [files]
         for filename in files:
             self.read_file(filename)
 
+        return self.raw_data
 
     def read_file(self, filename):
 
@@ -172,6 +178,7 @@ class EK60Reader(object):
 
         with RawSimradFile(filename, 'r') as fid:
 
+            #Get config datagram.
             config_datagrams = {}
             while fid.peek()['type'].startswith('CON'):
                 config_datagram = fid.read(1)
@@ -181,30 +188,42 @@ class EK60Reader(object):
                 config_datagrams[config_datagram['type']] = config_datagram
 
 
+            #Add EK60RawData object to raw_data for each channel.
             channel_ids = {}
             for channel in config_datagram['transceivers']:
+                channel_id = config_datagram['transceivers'][channel]['channel_id']
                 if channel_id not in self.raw_data:
-                    channel_id = config_datagram['transceivers'][channel]['channel_id']
-                    channel_ids[channel] = channel_id
+                    channel_ids[channel] = channel_id #Create channel map.
                     self.raw_data[channel_id] = EK60RawData(channel_id)
-                    #TODO ask, do we want it to skip duplicate files? if it gets the same filename more than once?
-                    self.raw_data[channel_id].append_file(filename, config_datagrams)
+
+            self.raw_data[channel_id].append_file(filename)
  
+            #Add datagrams from file to raw_data.
             while True:
                 try:
                     next_header = fid.peek()
                 except SimradEOF:
                     break
 
-                datagram_timestamp = nt_to_unix((next_header['low_date'], next_header['high_date']))
-                num_datagrams_parsed += 1
-
-
                 try:
                     new_datagram = fid.read(1)
                 except SimradEOF:
                     break
 
+
+                datagram_timestamp = nt_to_unix((next_header['low_date'], next_header['high_date']))
+
+                utc = timezone('utc')
+                if self.start_time is not None:
+                    start_time_utc = utc.localize(datetime.datetime.strptime(self.start_time, '%Y-%m-%d %H:%M:%S'))
+                    if datagram_timestamp < start_time_utc:
+                        continue
+                if self.end_time is not None:
+                    end_time_utc = utc.localize(datetime.datetime.strptime(self.end_time, '%Y-%m-%d %H:%M:%S'))
+                    if datagram_timestamp > end_time_utc:
+                        continue
+
+                num_datagrams_parsed += 1
 
                 if new_datagram['type'].startswith('RAW'):
 
@@ -229,11 +248,9 @@ class EK60Reader(object):
 
 
         num_datagrams_skipped = num_unknown_datagrams_skipped + num_sample_datagrams_skipped
-
         log.info('  Read %d datagrams (%d skipped).', num_sample_datagrams, num_datagrams_skipped)
 
         return self.raw_data
-
 
 
 
@@ -530,7 +547,7 @@ class EK60RawData(object):
         self.logger = logging.getLogger('EK60RawData')
 
 
-    def append_file(self, filename, config_data):
+    def append_file(self, filename):
         '''
         append_file is called before adding pings from a new data file. It would create
         a RawFileData object, populate it, append it to the raw_file_data list, and update
