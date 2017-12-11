@@ -34,7 +34,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS 
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-u'''
+'''
 .. module:: echolab.util.unit_conversion
 
 
@@ -152,7 +152,7 @@ def unix_to_nt(unix_timestamp):
     
     sec_past_nt_epoch = (unix_datetime - UTC_NT_EPOCH).total_seconds()
 
-    onehundred_ns_intervals = long(sec_past_nt_epoch * 1e7)
+    onehundred_ns_intervals = int(sec_past_nt_epoch * 1e7)
     lowDateTime = onehundred_ns_intervals & 0xFFFFFFFF
     highDateTime = onehundred_ns_intervals >> 32
 
