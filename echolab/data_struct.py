@@ -116,6 +116,7 @@ to provide feedback to the user as to the progress of the reading.
 
 from raw_file import RawSimradFile, SimradEOF
 from util.date_conversion import nt_to_unix, unix_to_nt
+from collections import defaultdict
 
 import os
 import datetime
@@ -167,7 +168,7 @@ class EK60Reader(object):
 
     def read_file(self, filename):
         '''
-        Extract data from file and add to self.raw_data.
+        Read data from file and add to self.raw_data.
         '''
 
         with RawSimradFile(filename, 'r') as fid:
@@ -254,9 +255,7 @@ class EK60Reader(object):
                     channel_id = channel_ids[new_datagram['channel']]
                     new_datagram['ping_time'] = datagram_timestamp
                     self.raw_data[channel_id].append_ping(new_datagram)
-    
                     num_sample_datagrams += 1
-    
     
                 else:
                     num_sample_datagrams_skipped += 1
@@ -270,12 +269,10 @@ class EK60Reader(object):
                 log.debug('    Parsed %d datagrams (%d sample).', num_datagrams_parsed, num_sample_datagrams)
 
 
+
         num_datagrams_skipped = num_unknown_datagrams_skipped + num_sample_datagrams_skipped
         log.info('  Read %d datagrams (%d skipped).', num_sample_datagrams, num_datagrams_skipped)
-    
 
-    def append(self):
-        pass
 
 
 
@@ -491,6 +488,11 @@ class EK60RawData(object):
 
 
         '''
+        self.data_attributes = ['transducer_depth', 'frequency', 'transmit_power', \
+                'pulse_length', 'bandwidth', 'sample_interval', 'sound_velocity',  \
+                'absorption_coefficient', 'heave', 'pitch', 'roll', 'temperature', \
+                'heading', 'transmit_mode', 'sample_offset', 'sample_count', 'power', \
+                'angles_alongship_e', 'angles_athwartship_e']
 
         #  we can come up with a better name, but this specifies if we have a fixed data
         #  array size and roll it when it fills or if we expand the array when it fills
@@ -525,6 +527,7 @@ class EK60RawData(object):
         #  the index into raw_file_data to the specific RawDataFile object for each ping.
         self.data_file_id = []
 
+        #TODO replace lists with array.array, faster, less mem.  Need data types.
         self.transducer_depth = []
         self.frequency = []
         self.transmit_power = []
@@ -651,8 +654,6 @@ class EK60RawData(object):
         self.data_file_id.append(self.current_file)
 
         #  append the data in sample_datagram to our internal arrays
-        self.ping_number.append(self.n_pings + 1)
-
         self.append_data(sample_datagram)
 
 
@@ -661,7 +662,9 @@ class EK60RawData(object):
 
 
         #  increment the ping counter
-        self.n_pings = self.n_pings + 1
+        self.end_ping = self.n_pings #FIXME What should this be?
+        self.end_time = sample_datagram['ping_time'] 
+
 
         #  check if our 2d arrays need to be resized
         if self.n_pings >= len(self.power):
@@ -676,6 +679,25 @@ class EK60RawData(object):
         return success
 
 
+    def append_data_new(self, datagram):
+        appended_data = defaultdict()
+        try:
+            for attribute, data in self.get_data():
+                if attribute in datagram:
+                    if isinstance(data, list):
+                        appended_data[attribute] = getattr(self, attribute).append(datagram[attribute])
+                    elif isinstance(data, np.ndarray):
+                        appended_data[attribute] = np.concatenate((getattr(self, attribute), datagram[attribute]))
+        except Exception as err:
+            #TODO Add filename and ping num in file.
+            log.warning("Error appending ping data.", err)
+        else:
+            self.ping_number.append(self.n_pings + 1)
+            self.n_pings += 1
+            for attribute, data in appended_data:
+                setattr(self, attribute, data) 
+
+
     def append_data(self, datagram):
         # FIXME define these attributes in one place to be used here and in parsers.py
         # FIXME or loop through checking key each time
@@ -684,54 +706,42 @@ class EK60RawData(object):
         try:
             ping_time = self.ping_time.copy()
             ping_time.append(datagram['ping_time'])
-
             transducer_depth = self.transducer_depth.copy()
             transducer_depth.append(datagram['transducer_depth'])
-
             frequency = self.frequency.copy()
             frequency.append(datagram['frequency'])
-
             transmit_power = self.transmit_power.copy()
             transmit_power.append(datagram['transmit_power'])
-
             pulse_length = self.pulse_length.copy()
             pulse_length.append(datagram['pulse_length'])
-
             bandwidth = self.bandwidth.copy()
             bandwidth.append(datagram['bandwidth'])
-
             sample_interval = self.sample_interval
             sample_interval.append(datagram['sample_interval'])
-
             sound_velocity = self.sound_velocity
             sound_velocity.append(datagram['sound_velocity'])
-
             absorption_coefficient = self.absorption_coefficient
             absorption_coefficient.append(datagram['absorption_coefficient'])
-
             heave = self.heave
             heave.append(datagram['heave'])
-
             pitch = self.pitch
             pitch.append(datagram['pitch'])
-
             roll = self.roll
             roll.append(datagram['roll'])
-
             temperature = self.temperature
             temperature.append(datagram['temperature'])
-
             heading = self.heading
             heading.append(datagram['heading'])
-
             transmit_mode = self.transmit_mode
             transmit_mode.append(datagram['transmit_mode'])
-            #self.sample_offset.append(datagram['sample_offset']) 
+            #self.sample_offset.append(datagram['sample_offset'])
             #self.sample_count.append(datagram['sample_count'])
         except KeyError as err:
             #TODO Add filename and ping num in file.
             log.warning("The key, %s, wasn't found in the sample datagram.  This datagram will not be included.", err)
         else:
+            self.ping_number.append(self.n_pings + 1)
+            self.n_pings += 1
             self.ping_time = ping_time.copy()
             self.transducer_depth = transducer_depth.copy()
             self.frequency = frequency.copy()
@@ -770,6 +780,8 @@ class EK60RawData(object):
         append_raw_data would append another RawData object to this one. This would call
         insert_raw_data specifying the end ping number
         '''
+        #FIXME how is this different?
+        self.append_ping(datagram)
         pass
 
 
@@ -784,8 +796,13 @@ class EK60RawData(object):
         #  get the horizontal start and end indicies
         h_index = self.get_indices(**kwargs)
 
+    def get_data(self):
+        for attribute, data in self:
+            if attribute in self.data_attributes:
+                yield (attribute, data)
 
-    def insert_raw_data(self, ping_number=None, ping_time=None, **kwargs):
+
+    def insert_raw_data(self, raw_data_obj, ping_number=None, ping_time=None):
         '''
         insert_raw_data would insert the contents of another RawData object at the specified location
         into this one
@@ -793,7 +810,29 @@ class EK60RawData(object):
         the location should be specified by either ping_number or ping_time
 
         '''
-        pass
+        if ping_number is None and ping_time is None:
+            raise ValueError('Either ping_number or ping_time needs to be defined.')
+
+        idx = self.get_index(time=ping_time, ping=ping_number)
+        if idx <= self.n_pings - 1:
+            for attribute, data in self.get_data():
+                #TODO Do we want to make sure all data arrays are the same length?
+                #TODO Do we want to wait to add the data until we've made sure all the data is good to avoid misalignment?
+                try:
+                    data_to_insert = getattr(raw_data_obj, attribute)
+                except Exception as err:
+                    log.error('Error reading data from raw_data_obj, ', raw_data_obj, attribute, ': ',  type(err), err)
+                    return
+                data_before_insert = data[0:idx] #Data up to index before idx.
+                data_after_insert = data[idx:]
+
+
+                if isinstance(data, list):
+                    new_data = data_before_insert + data_to_insert + data_after_insert
+                    setattr(self, attribute, new_data)
+                elif isinstance(data, np.ndarray):
+                    new_data = np.concatenate((data_before_insert, data_to_insert, data_after_insert))
+                    setattr(self, attribute, new_data)
 
 
     def trim(self):
@@ -828,7 +867,7 @@ class EK60RawData(object):
             #  ping must have been provided
             #  make sure we've been passed an integer defining the start ping
             ping = int(ping)
-            if (not type(end_ping) is int):
+            if (not type(ping) is int):
                 raise TypeError('ping must be an Integer.')
 
             #  and find the index of the closest ping_number
@@ -995,6 +1034,10 @@ class EK60RawData(object):
     def get_electrical_angles(self, **kwargs):
         '''
         '''
+
+    def __iter__(self):
+        for attribute in vars(self).keys():
+            yield (attribute, getattr(self, attribute))
 
 
 class NMEAData(object):
