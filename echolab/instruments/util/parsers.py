@@ -1,41 +1,20 @@
 # coding=utf-8
 
-# Copyright (c) 2012, Zac Berkowitz
 #     National Oceanic and Atmospheric Administration (NOAA)
 #     Alaskan Fisheries Science Center (AFSC)
 #     Resource Assessment and Conservation Engineering (RACE)
 #     Midwater Assessment and Conservation Engineering (MACE)
 
-# All rights reserved.
-
-# Redistribution and use in source and binary forms, with or without modification,
-# are permitted provided that the following conditions are met:
-
-# 1.  Redistributions of source code must retain the above copyright notice, this
-#     list of conditions and the following disclaimer.
-
-# 2.  Redistributions in binary form must reproduce the above copyright notice,
-#     this list of conditions and the following disclaimer in the documentation 
-#     and/or other materials provided with the distribution.
-
-# 3.  Neither the names of NOAA, AFSC, RACE, or MACE nor the names of its 
-#     contributors may be used to endorse or promote products derived from this
-#     software without specific prior written permission.
-
-
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
-# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
-# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE 
-# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
-# ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES 
-# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; 
-# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON 
-# ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT 
-# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS 
-# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#  THIS SOFTWARE AND ITS DOCUMENTATION ARE CONSIDERED TO BE IN THE PUBLIC DOMAIN
+#  AND THUS ARE AVAILABLE FOR UNRESTRICTED PUBLIC USE. THEY ARE FURNISHED "AS IS."
+#  THE AUTHORS, THE UNITED STATES GOVERNMENT, ITS INSTRUMENTALITIES, OFFICERS,
+#  EMPLOYEES, AND AGENTS MAKE NO WARRANTY, EXPRESS OR IMPLIED, AS TO THE USEFULNESS
+#  OF THE SOFTWARE AND DOCUMENTATION FOR ANY PURPOSE. THEY ASSUME NO RESPONSIBILITY
+#  (1) FOR THE USE OF THE SOFTWARE AND DOCUMENTATION; OR (2) TO PROVIDE TECHNICAL
+#  SUPPORT TO USERS.
 
 '''
-.. module:: echolab.parsers
+.. module:: echolab.instruments.util.parsers
 
     :synopsis: Parsers for Simrad datagrams
 
@@ -45,16 +24,18 @@
 | Alaska Fisheries Science Center (AFSC)
 | Midwater Assesment and Conservation Engineering Group (MACE)
 |
-| Maintained by:
+| Author:
 |       Zac Berkowitz <zac.berkowitz@gmail.com>
+| Maintained by:
 |       Rick Towler   <rick.towler@noaa.gov>
+
 '''
+
 import numpy as np
 import logging
 import struct
 import re
-
-from util.date_conversion import nt_to_unix, unix_to_nt
+from date_conversion import nt_to_unix
 
 
 __all__ = ['SimradNMEAParser', 'SimradDepthParser', 'SimradBottomParser',
@@ -93,7 +74,7 @@ class _SimradDatagramParser(object):
         elif isinstance(data, str):
             type_ = data[:3]
             version   = int(data[3])
-        
+
         else:
             raise TypeError('Expected a dict or str')
 
@@ -106,7 +87,7 @@ class _SimradDatagramParser(object):
         return type_, version
 
     def from_string(self, raw_string):
-        
+
         id_, version = self.validate_data_header(raw_string[:4].decode())
         return self._unpack_contents(raw_string, version=version)
 
@@ -126,7 +107,7 @@ class _SimradDatagramParser(object):
     def finalize_datagram(cls, datagram_content_str):
         datagram_size = len(datagram_content_str)
         final_fmt = '=l%dsl' % (datagram_size)
-        return struct.pack(final_fmt, datagram_size, datagram_content_str, datagram_size)         
+        return struct.pack(final_fmt, datagram_size, datagram_content_str, datagram_size)
 
 class SimradDepthParser(_SimradDatagramParser):
     '''
@@ -135,20 +116,20 @@ class SimradDepthParser(_SimradDatagramParser):
         type:         string == 'DEP0'
         low_date:     long uint representing LSBytes of 64bit NT date
         high_date:    long uint representing MSBytes of 64bit NT date
-        timestamp:    datetime.datetime object of NT date, assumed to be UTC        
+        timestamp:    datetime.datetime object of NT date, assumed to be UTC
         transceiver_count:  [long uint] with number of tranceivers
-        
+
         depth:        [float], one value for each active channel
         reflectivity: [float], one value for each active channel
         unused:       [float], unused value for each active channel
-        
+
     The following methods are defined:
 
-        from_string(str):    parse a raw ER60 Depth datagram 
+        from_string(str):    parse a raw ER60 Depth datagram
                             (with leading/trailing datagram size stripped)
 
         to_string():         Returns the datagram as a raw string (including leading/trailing size fields)
-                            ready for writing to disk        
+                            ready for writing to disk
 
     '''
     def __init__(self):
@@ -174,7 +155,7 @@ class SimradDepthParser(_SimradDatagramParser):
                 data[field] = data[field].decode()
 
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
-        
+
         if version == 0:
             data_fmt    = '=3f'
             data_size   = struct.calcsize(data_fmt)
@@ -190,27 +171,26 @@ class SimradDepthParser(_SimradDatagramParser):
                 data['reflectivity'][indx]  = r
                 data['unused'][indx]        = u
 
-                buf_indx += data_size 
-        
+                buf_indx += data_size
+
         return data
-    
+
     def _pack_contents(self, data, version):
 
         datagram_fmt      = self.header_fmt(version)
         datagram_contents = []
-        
+
         if version == 0:
-            # data['low_date'],  data['high_date'] = unix_to_nt(data['timestamp'])
-            
+
             lengths = [len(data['depth']), len(data['reflectivity']), len(data['unused']), data['transceiver_count']]
 
             if len(set(lengths)) != 1:
                 min_indx = min(lengths)
-                log.warning('Data lengths mismatched:  d:%d, r:%d, u:%d, t:%d', 
+                log.warning('Data lengths mismatched:  d:%d, r:%d, u:%d, t:%d',
                     *lengths)
                 log.warning('  Using minimum value:  %d', min_indx)
                 data['transceiver_count'] = min_indx
-            
+
             else:
                 min_indx = data['transceiver_count']
 
@@ -223,7 +203,7 @@ class SimradDepthParser(_SimradDatagramParser):
                 datagram_contents.extend([data['depth'][indx], data['reflectivity'][indx], data['unused'][indx]])
 
         return struct.pack(datagram_fmt, *datagram_contents)
-   
+
 
 class SimradBottomParser(_SimradDatagramParser):
     '''
@@ -238,13 +218,13 @@ class SimradBottomParser(_SimradDatagramParser):
 
     The following methods are defined:
 
-        from_string(str):    parse a raw ER60 Bottom datagram 
+        from_string(str):    parse a raw ER60 Bottom datagram
                             (with leading/trailing datagram size stripped)
 
         to_string():         Returns the datagram as a raw string (including leading/trailing size fields)
                             ready for writing to disk
     '''
-      
+
     def __init__(self):
         headers = {0: [('type', '4s'),
                      ('low_date', 'L'),
@@ -268,7 +248,7 @@ class SimradBottomParser(_SimradDatagramParser):
                 data[field] = data[field].decode()
 
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
-        
+
         if version == 0:
             depth_fmt    = '=%dd' %(data['transceiver_count'],)
             depth_size   = struct.calcsize(depth_fmt)
@@ -277,19 +257,18 @@ class SimradBottomParser(_SimradDatagramParser):
 
 
         return data
-    
+
     def _pack_contents(self, data, version):
 
         datagram_fmt      = self.header_fmt(version)
         datagram_contents = []
-        
+
         if version == 0:
-            # data['low_date'],  data['high_date'] = unix_to_nt(data['timestamp'])
-            
+
             if len(data['depth']) != data['transceiver_count']:
                 log.warning('# of depth values %d does not match transceiver count %d',
                     len(data['depth']), data['transceiver_count'])
-            
+
                 data['transceiver_count'] = len(data['depth'])
 
             for field in self.header_fields(version):
@@ -315,7 +294,7 @@ class SimradAnnotationParser(_SimradDatagramParser):
 
     The following methods are defined:
 
-        from_string(str):    parse a raw ER60 Annotation datagram 
+        from_string(str):    parse a raw ER60 Annotation datagram
                             (with leading/trailing datagram size stripped)
 
         to_string():         Returns the datagram as a raw string (including leading/trailing size fields)
@@ -328,7 +307,7 @@ class SimradAnnotationParser(_SimradDatagramParser):
                      ('high_date', 'L')
                      ]
                 }
-        
+
         _SimradDatagramParser.__init__(self, "TAG", headers)
 
 
@@ -346,22 +325,21 @@ class SimradAnnotationParser(_SimradDatagramParser):
                 data[field] = data[field].decode()
 
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
-        
+
         if version == 0:
             data['text'] = raw_string[self.header_size(version):].strip('\x00')
             if isinstance(data['text'], bytes):
                 data['text'] = data['text'].decode()
 
         return data
-    
+
     def _pack_contents(self, data, version):
 
         datagram_fmt      = self.header_fmt(version)
         datagram_contents = []
-        
+
         if version == 0:
-            # data['low_date'],  data['high_date'] = unix_to_nt(data['timestamp'])
-            
+
             for field in self.header_fields(version):
                 datagram_contents.append(data[field])
 
@@ -381,7 +359,7 @@ class SimradAnnotationParser(_SimradDatagramParser):
 
         return struct.pack(datagram_fmt, *datagram_contents)
 
-    
+
 
 class SimradNMEAParser(_SimradDatagramParser):
     '''
@@ -397,13 +375,13 @@ class SimradNMEAParser(_SimradDatagramParser):
 
     The following methods are defined:
 
-        from_string(str):    parse a raw ER60 NMEA datagram 
+        from_string(str):    parse a raw ER60 NMEA datagram
                             (with leading/trailing datagram size stripped)
 
         to_string():         Returns the datagram as a raw string (including leading/trailing size fields)
                             ready for writing to disk
     '''
-    
+
     nmea_head_re = re.compile('\$[A-Za-z]{5},')
 
     def __init__(self):
@@ -412,7 +390,7 @@ class SimradNMEAParser(_SimradDatagramParser):
                      ('high_date', 'L')
                      ]
                 }
-        
+
         _SimradDatagramParser.__init__(self, "NME", headers)
 
 
@@ -435,7 +413,7 @@ class SimradNMEAParser(_SimradDatagramParser):
                 data[field] = data[field].decode()
 
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
-        
+
         if version == 0:
             data['nmea_string'] = str(raw_string[self.header_size(version):].strip(b'\x00'), 'ascii', errors='replace')
 
@@ -452,10 +430,9 @@ class SimradNMEAParser(_SimradDatagramParser):
 
         datagram_fmt      = self.header_fmt(version)
         datagram_contents = []
-        
+
         if version == 0:
-            # data['low_date'],  data['high_date'] = unix_to_nt(data['timestamp'])
-            
+
             for field in self.header_fields(version):
                 datagram_contents.append(data[field])
 
@@ -465,23 +442,23 @@ class SimradNMEAParser(_SimradDatagramParser):
             else:
                 tmp_string = data['nmea_string']
 
-            
+
             #Pad with more nulls to 4-byte word boundry if necessary
             if len(tmp_string) % 4:
                 tmp_string += '\x00' * (4 - (len(tmp_string) % 4))
 
             datagram_fmt += '%ds' % (len(tmp_string))
-            
+
             #Convert to python string if needed
             if isinstance(tmp_string, str):
                 tmp_string = tmp_string.encode('ascii', errors='replace')
-                
+
             datagram_contents.append(tmp_string)
 
 
         return struct.pack(datagram_fmt, *datagram_contents)
 
- 
+
 class SimradConfigParser(_SimradDatagramParser):
     '''
     Simrad Configuration Datagram parser operates on dictonaries with the following keys:
@@ -491,7 +468,7 @@ class SimradConfigParser(_SimradDatagramParser):
         high_date:    long uint representing MSBytes of 64bit NT date
         timestamp:    datetime.datetime object of NT date, assumed to be UTC
 
-        survey_name                     [str]   
+        survey_name                     [str]
         transect_name                   [str]
         sounder_name                    [str]
         version                         [str]
@@ -702,7 +679,7 @@ class SimradConfigParser(_SimradDatagramParser):
                 data['sound_velocity_avg'] = _me70_extra_values[2]
                 data['sound_velocity_transducer'] = _me70_extra_values[3]
                 data['spare0'] = data['spare0'][:14] + data['spare0'][14:].strip('\x00')
-            
+
             else:
                 data['spare0'] = data['spare0'].strip('\x00')
 
@@ -722,7 +699,7 @@ class SimradConfigParser(_SimradDatagramParser):
             txcvr_header_fields = [x[0] for x in transducer_header]
             txcvr_header_fmt    = '=' + ''.join([x[1] for x in transducer_header])
             txcvr_header_size   = struct.calcsize(txcvr_header_fmt)
-            
+
             for txcvr_indx in range(1, data['transceiver_count'] + 1):
                 txcvr_header_values_encoded = struct.unpack(txcvr_header_fmt, raw_string[buf_indx:buf_indx + txcvr_header_size])
                 txcvr_header_values = list(txcvr_header_values_encoded)
@@ -736,7 +713,7 @@ class SimradConfigParser(_SimradDatagramParser):
                 if _sounder_name_used in ['ER60', 'ES60']:
                     for txcvr_field_indx, field in enumerate(txcvr_header_fields[:17]):
                         txcvr[field] = txcvr_header_values[txcvr_field_indx]
-                    
+
                     txcvr['pulse_length_table']   = np.fromiter(list(map(round6, txcvr_header_values[17:22])), 'float')
                     txcvr['spare1']               = txcvr_header_values[22]
                     txcvr['gain_table']           = np.fromiter(list(map(round6, txcvr_header_values[23:28])), 'float')
@@ -757,9 +734,9 @@ class SimradConfigParser(_SimradDatagramParser):
                 txcvr['spare1']               = txcvr['spare1'].strip('\x00')
                 txcvr['spare2']               = txcvr['spare2'].strip('\x00')
                 txcvr['spare3']               = txcvr['spare3'].strip('\x00')
-                txcvr['spare4']               = txcvr['spare4'].strip('\x00')                                        
+                txcvr['spare4']               = txcvr['spare4'].strip('\x00')
                 txcvr['gpt_software_version'] = txcvr['gpt_software_version'].strip('\x00')
-                
+
                 buf_indx += txcvr_header_size
 
         elif version == 1:
@@ -806,7 +783,7 @@ class SimradConfigParser(_SimradDatagramParser):
 
             for txcvr_indx, txcvr in list(data['transceivers'].items()):
                 txcvr_contents = []
-                
+
                 if _sounder_name_used in ['ER60', 'ES60']:
                     for field in txcvr_header_fields[:17]:
                         txcvr_contents.append(txcvr[field])
@@ -820,7 +797,7 @@ class SimradConfigParser(_SimradDatagramParser):
                     txcvr_contents.extend(txcvr['sa_correction_table'])
                     txcvr_contents.append(txcvr['spare3'])
 
-                    txcvr_contents.extend([txcvr['gpt_software_version'], txcvr['spare4']])                
+                    txcvr_contents.extend([txcvr['gpt_software_version'], txcvr['spare4']])
 
                     txcvr_contents_str = struct.pack(txcvr_header_fmt, *txcvr_contents)
 
@@ -829,26 +806,27 @@ class SimradConfigParser(_SimradDatagramParser):
                         txcvr_contents.append(txcvr[field])
 
                     txcvr_contents_str = struct.pack(txcvr_header_fmt, *txcvr_contents)
-                
+
                 else:
                     raise RuntimeError('Unknown _sounder_name_used (Should not happen, this is a bug!)')
 
                 datagram_fmt += '%ds' % (len(txcvr_contents_str))
-                datagram_contents.append(txcvr_contents_str)                
-        
+                datagram_contents.append(txcvr_contents_str)
+
         elif version == 1:
             for field in self.header_fields(version):
                 datagram_contents.append(data[field])
 
             datagram_fmt += '%ds' %(len(data['beam_config']))
             datagram_contents.append(data['beam_config'])
-            
+
         return struct.pack(datagram_fmt, *datagram_contents)
-    
+
+
 # class SimradConfig1Parser(_SimradDatagramParser):
 #     '''
 #     Beam configuration parser (CON1 datagrams), found in ME70 raw data
-        
+
 #         type:         string == 'CON1'
 #         low_date:     long uint representing LSBytes of 64bit NT date
 #         high_date:    long uint representing MSBytes of 64bit NT date
@@ -928,7 +906,7 @@ class SimradRawParser(_SimradDatagramParser):
     def _unpack_contents(self, raw_string, version):
 
         header_values = struct.unpack(self.header_fmt(version), raw_string[:self.header_size(version)])
-    
+
 
         data = {}
 
@@ -954,7 +932,7 @@ class SimradRawParser(_SimradDatagramParser):
                     data['angle'] = np.fromstring(raw_string[indx:indx + block_size], dtype='uint16')
                 else:
                     data['angle'] = None
-            
+
             else:
                 data['power'] = np.empty((0,), dtype='int16')
                 data['angle'] = np.empty((0,), dtype='uint16')
@@ -967,9 +945,8 @@ class SimradRawParser(_SimradDatagramParser):
         datagram_fmt = self.header_fmt(version)
 
         datagram_contents = []
-        
+
         if version == 0:
-            # data['low_date'],  data['high_date'] = unix_to_nt(data['timestamp'])
 
             if data['count'] > 0:
                 if (int(data['mode']) & 0x1) and (len(data.get('power', [])) != data['count']):
@@ -995,7 +972,7 @@ class SimradRawParser(_SimradDatagramParser):
                     datagram_fmt += '%dh' % (data['count'])
                     datagram_contents.extend(data['power'])
 
-                if int(data['mode']) & 0x2:        
+                if int(data['mode']) & 0x2:
                     datagram_fmt += '%dH' % (data['count'])
                     datagram_contents.extend(data['angle'])
 

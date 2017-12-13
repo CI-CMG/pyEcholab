@@ -1,44 +1,22 @@
 # coding=utf-8
 
-# Copyright (c) 2012, Zac Berkowitz
 #     National Oceanic and Atmospheric Administration (NOAA)
 #     Alaskan Fisheries Science Center (AFSC)
 #     Resource Assessment and Conservation Engineering (RACE)
 #     Midwater Assessment and Conservation Engineering (MACE)
 
-# All rights reserved.
-
-# Redistribution and use in source and binary forms, with or without modification,
-# are permitted provided that the following conditions are met:
-
-# 1.  Redistributions of source code must retain the above copyright notice, this
-#     list of conditions and the following disclaimer.
-
-# 2.  Redistributions in binary form must reproduce the above copyright notice,
-#     this list of conditions and the following disclaimer in the documentation
-#     and/or other materials provided with the distribution.
-
-# 3.  Neither the names of NOAA, AFSC, RACE, or MACE nor the names of its
-#     contributors may be used to endorse or promote products derived from this
-#     software without specific prior written permission.
-
-
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
-# ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
-# ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#  THIS SOFTWARE AND ITS DOCUMENTATION ARE CONSIDERED TO BE IN THE PUBLIC DOMAIN
+#  AND THUS ARE AVAILABLE FOR UNRESTRICTED PUBLIC USE. THEY ARE FURNISHED "AS IS."
+#  THE AUTHORS, THE UNITED STATES GOVERNMENT, ITS INSTRUMENTALITIES, OFFICERS,
+#  EMPLOYEES, AND AGENTS MAKE NO WARRANTY, EXPRESS OR IMPLIED, AS TO THE USEFULNESS
+#  OF THE SOFTWARE AND DOCUMENTATION FOR ANY PURPOSE. THEY ASSUME NO RESPONSIBILITY
+#  (1) FOR THE USE OF THE SOFTWARE AND DOCUMENTATION; OR (2) TO PROVIDE TECHNICAL
+#  SUPPORT TO USERS.
 
 '''
-.. module:: echolab._io.raw_file
+.. module:: echolab.instruments.util.raw_file
 
     :synopsis:  A low-level interface for SIMRAD EK60/ER60 raw files
-
 
     Provides the RawSimradFile class, a low-level object for
         interacting with SIMRAD RAW formated datafiles.
@@ -48,17 +26,17 @@
 | Alaska Fisheries Science Center (AFSC)
 | Midwater Assesment and Conservation Engineering Group (MACE)
 |
-| Maintained by:
+| Author:
 |       Zac Berkowitz <zac.berkowitz@gmail.com>
+| Maintained by:
 |       Rick Towler   <rick.towler@noaa.gov>
 
 $Id$
 '''
+
 from io import FileIO, SEEK_SET, SEEK_CUR, SEEK_END
 import struct
 import logging
-
-#Local package imports
 import parsers
 
 __all__ = ['RawSimradFile']
@@ -70,16 +48,20 @@ class SimradEOF(Exception):
     def __init__(self, message='EOF Reached!'):
         self.message = message
 
+
     def __str__(self):
         return self.message
 
+
 class DatagramSizeError(Exception):
+
     def __init__(self, message, expected_size_tuple, file_pos=(None, None)):
         self.message = message
         self.expected_size = expected_size_tuple[0]
         self.retrieved_size = expected_size_tuple[1]
         self.file_pos_bytes = file_pos[0]
         self.file_pos_dgrams = file_pos[1]
+
 
     def __str__(self):
         errstr = self.message + '%s != %s @ (%s, %s)' % (self.expected_size, self.retrieved_size,
@@ -96,6 +78,7 @@ class DatagramReadError(Exception):
         self.file_pos_bytes = file_pos[0]
         self.file_pos_dgrams = file_pos[1]
 
+
     def __str__(self):
         errstr = [self.message]
         if self.expected_size is not None:
@@ -104,6 +87,7 @@ class DatagramReadError(Exception):
             errstr.append('@ (%sL, %s)' % (self.file_pos_bytes, self.file_pos_dgrams))
 
         return ' '.join(errstr)
+
 
 class RawSimradFile(FileIO):
     '''
@@ -120,11 +104,13 @@ class RawSimradFile(FileIO):
                       'BOT': parsers.SimradBottomParser(),
                       'DEP': parsers.SimradDepthParser()}
 
+
     def __init__(self, name, mode='rb', closefd=True, return_raw=False):
         FileIO.__init__(self, name, mode=mode, closefd=closefd)
         self._current_dgram_offset = 0
         self._total_dgram_count = None
         self._return_raw = return_raw
+
 
     def _seek_bytes(self, bytes_, whence=0):
         '''
@@ -138,12 +124,14 @@ class RawSimradFile(FileIO):
 
         FileIO.seek(self, bytes_, whence)
 
+
     def _tell_bytes(self):
         '''
         Returns the file pointer position in bytes.
         '''
 
         return FileIO.tell(self)
+
 
     def _read_dgram_size(self):
         '''
@@ -158,6 +146,7 @@ class RawSimradFile(FileIO):
         else:
             return struct.unpack('=l', buf)[0] #This return value is an int object.
 
+
     def _bytes_remaining(self):
         old_pos = self._tell_bytes()
         self._seek_bytes(0, SEEK_END)
@@ -166,6 +155,7 @@ class RawSimradFile(FileIO):
         self._seek_bytes(old_pos, SEEK_SET)
 
         return offset
+
 
     def _read_timestamp(self):
         '''
@@ -181,6 +171,7 @@ class RawSimradFile(FileIO):
         else:
             lowDateField, highDateField = struct.unpack('=2L', buf)
             return lowDateField, highDateField #integers
+
 
     def _read_dgram_header(self):
         '''
@@ -218,12 +209,14 @@ class RawSimradFile(FileIO):
 
         return dict(size=dgram_size, type=dgram_type, low_date=lowDateField, high_date=highDateField)
 
+
     def _read_bytes(self, k):
         '''
         Reads raw bytes from the file
         '''
 
         return FileIO.read(self, k)
+
 
     def _read_next_dgram(self):
         '''
@@ -234,10 +227,8 @@ class RawSimradFile(FileIO):
 
         old_file_pos = self._tell_bytes()
 
-
-        #We've come across one instance where the timestamp is (0L, 0L)
-        #So... now we check every single datagram for this and skip if
-        #needed
+        #  We've come across one instance where the timestamp is (0L, 0L)
+        #  So... now we check every single datagram for this and skip if needed
 
         try:
             # _, dgram_type, (low_date, high_date) = self.peek()[:3]
@@ -283,7 +274,6 @@ class RawSimradFile(FileIO):
             e.message = 'Short read while getting trailing dgram size check'
             raise e
 
-
         if header['size'] != dgram_size_check:
             # self._seek_bytes(old_file_pos, SEEK_SET)
             log.warning('Datagram failed size check:  %d != %d @ (%d, %d)',
@@ -300,6 +290,7 @@ class RawSimradFile(FileIO):
             nice_dgram = self._convert_raw_datagram(raw_dgram)
             self._current_dgram_offset += 1
             return nice_dgram
+
 
     def _convert_raw_datagram(self, raw_datagram_string):
         '''
@@ -320,6 +311,7 @@ class RawSimradFile(FileIO):
 
         nice_dgram = parser.from_string(raw_datagram_string)
         return nice_dgram
+
 
     def _set_total_dgram_count(self):
         '''
@@ -348,6 +340,7 @@ class RawSimradFile(FileIO):
         #Return to where we started
         self._seek_bytes(old_file_pos, SEEK_SET)
         self._current_dgram_offset = old_dgram_offset
+
 
     # def _read_prev_dgram(self):
     #   '''
@@ -385,6 +378,7 @@ class RawSimradFile(FileIO):
     #   self._current_dgram_offset -= 1
     #   return dgram
 
+
     def at_eof(self):
         old_pos = self._tell_bytes()
         self._seek_bytes(0, SEEK_END)
@@ -400,6 +394,7 @@ class RawSimradFile(FileIO):
             offset = old_pos - eof_pos
             self._seek_bytes(offset, SEEK_END)
             return False
+
 
     def read(self, k):
         '''
@@ -437,6 +432,7 @@ class RawSimradFile(FileIO):
         elif k < 0:
             return self.readall()
 
+
     def readall(self):
         '''
         Reads the entire file from the beginning and returns a list of datagrams.
@@ -448,15 +444,8 @@ class RawSimradFile(FileIO):
         for raw_dgram in self.iter_dgrams():
             dgram_list.append(raw_dgram)
 
-#        while True:
-#            try:
-#                next_dgram = self._read_next_dgram()
-#                dgram_list.append(next_dgram)
-#            except Exception:
-#                log.error('BLAH3')
-#                break
-#
         return dgram_list
+
 
     def _find_next_datagram(self):
         old_file_pos = self._tell_bytes()
@@ -475,6 +464,7 @@ class RawSimradFile(FileIO):
         '''
         return self._current_dgram_offset
 
+
     def peek(self):
         '''
         Returns the header of the next datagram in the file.  The file position is
@@ -492,12 +482,14 @@ class RawSimradFile(FileIO):
 
         return dgram_header
 
+
     def __next__(self):
         '''
         Returns the next datagram (synonomous with self.read(1))
         '''
 
         return self.read(1)
+
 
     def prev(self):
         '''
@@ -508,6 +500,7 @@ class RawSimradFile(FileIO):
         raw_dgram = self.read(1)
         self.skip_back()
         return raw_dgram
+
 
     def skip(self):
         '''
@@ -536,6 +529,7 @@ class RawSimradFile(FileIO):
                 self._find_next_datagram()
 
         self._current_dgram_offset += 1
+
 
     def skip_back(self):
         '''
@@ -573,6 +567,7 @@ class RawSimradFile(FileIO):
 
         self._current_dgram_offset -= 1
 
+
     def iter_dgrams(self):
         '''
         Iterates through the file, repeatedly calling self.next() until
@@ -591,6 +586,7 @@ class RawSimradFile(FileIO):
 
             yield new_dgram
 
+
     #Unsupported members
     def readline(self):
         '''
@@ -598,11 +594,13 @@ class RawSimradFile(FileIO):
         '''
         return next(self)
 
+
     def readlines(self):
         '''
         aliased to self.read(-1)
         '''
         return self.read(-1)
+
 
     def seek(self, offset, whence):
         '''
@@ -642,11 +640,8 @@ class RawSimradFile(FileIO):
             for k in range(-offset):
                 self.skip_back()
 
+
     def reset(self):
         self._current_dgram_offset = 0
         self._total_dgram_count = None
         self._seek_bytes(0, SEEK_SET)
-
-
-
-
