@@ -1,201 +1,130 @@
 # coding=utf-8
-'''
 
-Last updated 9/25/17 - RHT
+#     National Oceanic and Atmospheric Administration
+#     Alaskan Fisheries Science Center
+#     Resource Assessment and Conservation Engineering
+#     Midwater Assessment and Conservation Engineering
 
-This file contains sketches of classes which will define much of the "public" API
-of pyEcholab2. This is not a final specification. Names and methods may/will change
-based on input from you all.
-
-I have just started to add specifications for the reader class. Still a work in progress.
-
-In general I see these pieces fitting together something like:
-
-Reader handles file IO. It opens a file and determines the number of channels in
-the file by reading the CON0 header. It then creates a RawData object for each channel,
-sticking them in a dictionary keyed by channel ID. It then calls the append_file
-method of each RawData object, passing the full file path and the data from the CON0
-datagram. Then the reader reads the datagrams and calls RawData.append_ping for
-each channel passing the ping data. append_ping will determine if any array resizing
-needs to be done (for example if the range has increased or we have filled all of the
-array columns and need to allocate more columns) and then it will populate the various
-RawData properties with that ping's data. If a new file is opened, it would again
-call the RawData.append_file method, and then append the pings from that file. When
-all files have been read, the RawData.trim method would be called to clip unused
-portions of the data arrays (since we allocate in chunks).
-
-
-
-
-Terminology:
-
-These aren't meant to be 100% technically correct, just enough to help Pamme navigate
-the jargon. Some are probably obvious
-
-recording PC:
-    the computer that runs the Simrad software used to operate the sonar
-    and write data files. The recording PC will have hardware connected to it
-    that comprise one or more "channels".
-
-PC time:
-    the recording PC's clock time converted to GMT using the PC's local time and
-    time zone. This is what is stored in the datagram headers. This time may or may not
-    be correct in that it can drift from a valid reference time. This time can also be
-    incorrect if the time zone is set incorrectly. This clock can be changed by the user
-    while data is being recorded.
-
-channel:
-    a sonar data source. Regardless of the hardware details, a channel is the data from
-    some hunks of ceramic that are vibrated in a certain way to project sound into the
-    water column and then they "listen" for that sound to be reflected back.
-
-channel_id:
-    channel_id is just a unique identifier for a channel. We may use the terms channel
-    and channel_id interchangibly.
-
-    These are from what Simrad calls their "General Purpose Transceiver" or GPT which
-    inlcludes the EK60, ES60, and ES70 systems. They include the name, frequency,
-    MAC address of the sonar hardware, beam information, and transducer information.
-
-    GPT  38 kHz 009072033fa2 1-1 ES38B
-    GPT  38 kHz 009072034283 1 ES38B
-    GPT 120 kHz 00907205794e 5-1 ES120-7C
-
-    These are examples from the ME70 multibeam system. They include the beam number,
-    frequency, and alongship and athwartship beam :angles
-
-    MBES-00 73 kHz x=0 y=-66
-    MBES-19 106 kHz x=0 y=12
-    MBES-30 75 kHz x=0 y=66
-
-    channel_id will be a fixed string of 128 bytes. It should be trimmed to remove the trailing
-    whitespace.
-
-frequency:
-    we will always specify frequency in Hz. While frequency is often used to differentiate
-    channels, and often all channels in a file will have unique frequencies, there is no
-    guarantee that it will be unique in a file.
-
-split-beam vs single beam:
-
-    single-beam sonars listen to the whole transducer at once and only can provide
-    power data since they lack the circuitry to "triangulate" the location of the target in the
-    beam thus they will not have angle data.
-
-    split-beam systems listen independently in 3 or 4 quadrants of the transducer and using this
-    phase information can "triangulate" the direction (angle alongship and angle athwartship) to the
-    target in each sample. split-beam systems will have angle data available.
-
-    For volume backscatter (Sv or sv), the "split-beam" capability is not utilized and all 3 or 4
-    quadrants are summed analoguous to the single-beam systems. This is the "power" output by the
-    Simrad echosounders.
-
-    I believe that this is specified by the "beamtype"
-
-pulse_length:
-
-    the length in time (seconds) of the transmit pulse. This basically defines the sonars vertical
-    resolution. The EK/ES 60 and ES70 take 4 samples per pulse_length interval.
-
-sample_interval:
-
-    the time in seconds that 1 sample spans. Since the EK/ES60 and ES70 take 4 samples per
-    pulse length interval, the sample interval is equal to the pulse_length / 4.0. When creating
-    processed data arrays, we must ensure that the sample interval is the same for all pings.
-
-
-
-Random thoughts:
-
-The reader's read and append methods should accept a callback function handle
-that will be called with the estimated progress %. This will allow applicaitons
-to provide feedback to the user as to the progress of the reading.
-
+#  THIS SOFTWARE AND ITS DOCUMENTATION ARE CONSIDERED TO BE IN THE PUBLIC DOMAIN
+#  AND THUS ARE AVAILABLE FOR UNRESTRICTED PUBLIC USE. THEY ARE FURNISHED "AS IS."
+#  THE AUTHORS, THE UNITED STATES GOVERNMENT, ITS INSTRUMENTALITIES, OFFICERS,
+#  EMPLOYEES, AND AGENTS MAKE NO WARRANTY, EXPRESS OR IMPLIED, AS TO THE USEFULNESS
+#  OF THE SOFTWARE AND DOCUMENTATION FOR ANY PURPOSE. THEY ASSUME NO RESPONSIBILITY
+#  (1) FOR THE USE OF THE SOFTWARE AND DOCUMENTATION; OR (2) TO PROVIDE TECHNICAL
+#  SUPPORT TO USERS.
 
 '''
 
-from raw_file import RawSimradFile, SimradEOF
-from util.date_conversion import nt_to_unix, unix_to_nt
-from collections import defaultdict
+                      CLASS DESCRIPTION GOES HERE
+
+'''
 
 import os
 import datetime
 from pytz import timezone
 import logging
 import numpy as np
+from util.raw_file import RawSimradFile, SimradEOF
+from util.date_conversion import nt_to_unix, unix_to_nt
+from collections import defaultdict
 
 log = logging.getLogger(__name__)
 
-class EK60Reader(object):
 
-    def __init__(self, power=True,  angles=True,  max_sample_range=None,  start_time=None,
-            end_time=None,  start_ping=None,  end_ping=None,  frequencies=None,  channels=None):
+class EK60(object):
 
-        #  define a subset of data to read using time - if no times are provided read all data
-        #  Format: yyyy-mm-dd HH:MM:SS
-        #  Example: 2007-08-27 14:21:58.931255+00:00
-        self.start_time = start_time
-        self.end_time = end_time
+    def __init__(self):
 
-        #  define a subset of data to read using ping number - if no values are provided read all data
-        self.start_ping = start_ping
-        self.end_ping = end_ping
+        #  define the reader's default state
+        self.start_time = None
+        self.end_time = None
+        self.start_ping = None
+        self.end_ping = None
+        self.read_power = True
+        self.read_angles = True
+        self.max_sample_range = None
+        self.frequencies = None
 
-        #  specify if we should read/store power data
-        self.read_power = power
-
-        #  specify if we should read/store angles data
-        self.read_angles = angles
-
-        #  specify a max sample range to read - samples beyond this are dropped
-        #  if max_sample_range == None all samples are read
-        self.max_sample_range = max_sample_range
-
-        #  specify the frequencies to read. This could
-        self.frequencies = frequencies
-
-        #  a dictionary to store the EK60RawData objects
+        #  create a dictionary to store the EK60RawData objects
         self.raw_data = {}
 
 
-    def read_files(self, files):
-
-        if isinstance(files, str):
-            files = [files]
-        for filename in files:
-            self.read_file(filename)
-
-
-    def read_file(self, filename):
+    def read_raw(self, raw_files, power=True,  angles=True,  max_sample_range=None,  start_time=None,
+            end_time=None,  start_ping=None,  end_ping=None,  frequencies=None,  channels=None,
+            time_format_string='%Y-%m-%d %H:%M:%S'):
         '''
-        Read data from file and add to self.raw_data.
+        read_raw reads one or many Simrad EK60 ES60/70 .raw files
         '''
 
-        with RawSimradFile(filename, 'r') as fid:
+        #  update the reader state variables
+        if (start_time):
+            self.start_time = self._convert_time_bound(start_time, format_string=time_format_string)
+        if (end_time):
+            self.end_time = self._convert_time_bound(end_time, format_string=time_format_string)
+        if (start_ping):
+            self.start_ping = start_ping
+        if (end_ping):
+            self.end_ping = end_ping
+        if (power):
+            self.read_power = power
+        if (angles):
+            self.read_angles = angles
+        if (max_sample_range):
+            self.max_sample_range = max_sample_range
+        if (frequencies):
+            self.frequencies = frequencies
 
-            config_datagram = self.get_config_datagram(fid)
+        #  ensure that the raw_files argument is a list
+        if isinstance(raw_files, str):
+            raw_files = [raw_files]
 
-            channel_ids = self.raw_data_setup(config_datagram, filename)
- 
-            self.add_datagrams_to_raw_data(fid, channel_ids)
+        #  iterate thru our list of .raw files to read
+        for filename in raw_files:
+
+            #  Read data from file and add to self.raw_data.
+            with RawSimradFile(filename, 'r') as fid:
+
+                #  read the "CON" configuration datagrams
+                config_datagrams= {}
+                datagram = fid.read(1)
+                while datagram['type'].startswith('CON'):
+                    config_datagrams[datagram['type']] = datagram
+                    datagram = fid.read(1)
+
+                #  create an EK60RawData object for eqach channel in the file
+                for channel in config_datagrams['CON0']['transceivers']:
+                    channel_id = config_datagram['CON0']['transceivers'][channel]['channel_id']
+                    if channel_id not in self.raw_data:
+
+                channel_ids[channel] = channel_id #Create channel map.
+
+                self.raw_data[channel_id] = EK60RawData(channel_id)
+            self.raw_data[channel_id].append_file(filename)
+
+                config_datagram = self._read_config_datagram(fid)
+
+                channel_ids = self._read_data_header(config_datagram, filename)
+
+                self._read_datagrams(fid, channel_ids)
 
 
-    def get_config_datagram(self, fid):
+    def _read_config_datagram(self, fid):
         '''
-        Get config datagram from file.
+        _read_config_datagram reads the CON0 datagram from the raw file and extracts
         '''
         config_datagrams = {}
         while fid.peek()['type'].startswith('CON'):
             config_datagram = fid.read(1)
             if config_datagram['type'] in config_datagrams:
-                raise ValueError('Multiple config datagrams of type %s found', config_datagram['type'])
+                raise ValueError('Malformed raw file. Multiple config datagrams of type %s found', config_datagram['type'])
             config_datagrams[config_datagram['type']] = config_datagram
 
-        return config_datagram
+        return config_datagrams
 
-    def raw_data_setup(self, config_datagram, filename):
+
+    def _read_data_header(self, config_datagram, filename):
         '''
-        Add EK60RawData object to raw_data for each channel if not defined.
+        _read_raw_data_setup
         '''
         channel_ids = {}
         for channel in config_datagram['transceivers']:
@@ -211,9 +140,9 @@ class EK60Reader(object):
         return channel_ids
 
 
-    def add_datagrams_to_raw_data(self, fid, channel_ids):
+    def _read_datagrams(self, fid, channel_ids):
         '''
-        Add datagrams from file to raw_data.
+        _read_datagrams reads the datagrams contai
         '''
 
         num_sample_datagrams = 0
@@ -222,7 +151,6 @@ class EK60Reader(object):
         num_datagrams_parsed = 0
         sample_datagrams = {}
         sample_datagrams.setdefault('sample', [])
-
 
         while True:
             try:
@@ -235,59 +163,71 @@ class EK60Reader(object):
             except SimradEOF:
                 break
 
+            #  convert from NT time to python datetime
             datagram_timestamp = nt_to_unix((next_header['low_date'], next_header['high_date']))
-    
-            utc = timezone('utc')
+
+            #  check if we should continue to read this data based on time bounds
             if self.start_time is not None:
-                start_time_utc = utc.localize(datetime.datetime.strptime(self.start_time, '%Y-%m-%d %H:%M:%S'))
-                if datagram_timestamp < start_time_utc:
+                if datagram_timestamp < self.start_time:
                     continue
             if self.end_time is not None:
-                end_time_utc = utc.localize(datetime.datetime.strptime(self.end_time, '%Y-%m-%d %H:%M:%S'))
-                if datagram_timestamp > end_time_utc:
+                if datagram_timestamp > self.end_time:
                     continue
-    
+
             num_datagrams_parsed += 1
-    
+
             if new_datagram['type'].startswith('RAW'):
-    
+
                 if new_datagram['channel'] in channel_ids:
                     channel_id = channel_ids[new_datagram['channel']]
                     new_datagram['ping_time'] = datagram_timestamp
                     self.raw_data[channel_id].append_ping(new_datagram)
                     num_sample_datagrams += 1
-    
+
                 else:
                     num_sample_datagrams_skipped += 1
-    
+
+            elif new_datagram['type'].startswith('NME'):
+                #TODO:  Implement NMEA reading
+                pass
+            elif new_datagram['type'].startswith('TAG'):
+                #TODO: Implement annotation reading
+                pass
             else:
-                #FIXME uncomment
-                #log.warning('Skipping unkown datagram type: %s @ %s', new_datagram['type'], datagram_timestamp)
+                #  unknown datagram type - issue a warning
+                log.warning('Skipping unkown datagram type: %s @ %s', new_datagram['type'], datagram_timestamp)
                 num_unknown_datagrams_skipped += 1
-    
+
             if not (num_datagrams_parsed % 10000):
                 log.debug('    Parsed %d datagrams (%d sample).', num_datagrams_parsed, num_sample_datagrams)
-
 
 
         num_datagrams_skipped = num_unknown_datagrams_skipped + num_sample_datagrams_skipped
         log.info('  Read %d datagrams (%d skipped).', num_sample_datagrams, num_datagrams_skipped)
 
 
+    def _convert_time_bound(self, time, format_string):
+        '''
+        internally all times are datetime objects converted to UTC timezone. This method
+        converts arguments to comply.
+        '''
+        utc = timezone('utc')
+        if (isinstance(time, str)):
+            #  we have been passed a string, convert to datetime object
+            time = datetime.datetime.strptime(time, format_string)
+
+        #  convert to UTC and return
+        return utc.localize(time)
 
 
-class RawFileData(object):
+class rawfile_metadata(object):
     '''
-    RawFileData (final name TBD) is a class which stores the channel configuration
-    data (the ConfigurationTransducer struct) as well as some metadata about the file.
-    One of these is created for all unique channels for every file read.
+    The rawfile_metadata class stores the channel configuration data as well as
+    some metadata about the file. One of these is created for each channel for
+    every .raw file read.
 
-    These objects are stored in a list in the raw_data class.
+    These objects are stored in a list in the raw_data class and
 
-    Note that I have not fleshed out a way to populate these data fields beyond the
-    filename. Additional arguments could be added to the init method or they
-    could be updated after instantiation by directly accessing the properties or
-    other methods could be added.
     '''
 
     def __init__(self, file):
@@ -312,9 +252,7 @@ class RawFileData(object):
         self.sounder_name = ''
         self.version = ''
 
-        #  each property below should have a comment explaining what it is
-        #  this should be in the docs?
-
+        #  the beam typre for this channel - split or single
         self.beam_type = 0
 
         #  the channel frequency in Hz
@@ -323,6 +261,7 @@ class RawFileData(object):
         #  the system gain when the file was recorded
         self.gain = 0
 
+        #  beam calibration properties
         self.equivalent_beam_angle = 0
         self.beamwidth_alongship = 0
         self.beamwidth_athwartship = 0
@@ -330,12 +269,15 @@ class RawFileData(object):
         self.angle_sensitivity_athwartship = 0
         self.angle_offset_alongship = 0
         self.angle_offset_athwartship = 0
+
+        #  transducer installation/orientation parameters
         self.posx = 0
         self.posy = 0
         self.posz = 0
         self.dirx = 0
         self.diry = 0
         self.dirz = 0
+
         #  the possile pulse lengths for the recording system
         self.pulse_length_table = [0.0, 0.0, 0.0, 0.0, 0.0]
         self.spare2 = ''
@@ -347,34 +289,9 @@ class RawFileData(object):
         self.spare4 = ''
 
 
-class CON1Data(object):
+class ek60_cal_parameters(object):
     '''
-    CON1Data (final name TBD) is a class which represents the Simrad raw file CON1
-    datagram used by the ME70 and ???.
-
-    This would be implemented when making the minor additions required to support
-    the ME70.
-    '''
-
-    pass
-
-
-
-class ProcessedData(object):
-    '''
-    The ProcessedData class contains
-    '''
-
-    def __init__(self, file):
-
-        self.channel_id = ''
-        self.frequency = 0
-        self.sample_interval = 0
-        self.range
-
-class CalibrationParameters(object):
-    '''
-    The CalibrationParameters class contains parameters required for transforming
+    The EK60CalParameters class contains parameters required for transforming
     power and electrical angle data to Sv/sv TS/SigmaBS and physical angles.
     '''
 
@@ -413,11 +330,10 @@ class CalibrationParameters(object):
         pass
 
 
-    def read_echoview_ecs_file(self, ecs_file, channel):
+    def read_ecs_file(self, ecs_file, channel):
         '''
-        read_echoview_ecs_file would read an echoview ecs file and parse out the
-        parameters for a given channel. This is low priority and this is really
-        a place holder for an idea.
+        read_ecs_file reads an echoview ecs file and parses out the
+        parameters for a given channel.
         '''
         pass
 
@@ -465,7 +381,8 @@ class EK60RawData(object):
     def __init__(self, channel_id, n_pings=0, n_samples=1000, rolling=False,
             chunk_width=500):
         '''
-        Creates a new, empty RawData object.
+        Creates a new, empty EK60RawData object. The EK60RawData class stores raw
+        echosounder data from a single channel of an EK60 or ES60/70 system.
 
         if rolling is True, arrays of size (n_pings, n_samples) are created for power
         and angle data upon instantiation and are filled with NaNs. These arrays are
@@ -511,9 +428,7 @@ class EK60RawData(object):
         #  a counter incremented when a ping is added
         self.n_pings = 0
 
-
-
-        #  specify the horizontal size (cols) of the array allocation size
+        #  specify the horizontal size (columns) of the array allocation size.
         self.chunk_width = chunk_width
 
         #  the following are all 1D arrays that are n_pings long
@@ -549,7 +464,6 @@ class EK60RawData(object):
         self.sample_count = []
 
 
-
         #  check if we need to initialize our fixed arrays
         if (self.rolling_array):
             #  create acoustic data arrays and fill with NaNs
@@ -570,17 +484,15 @@ class EK60RawData(object):
         self.logger = logging.getLogger('EK60RawData')
 
 
-    def append_file(self, filename):
+    def add_data_file(self, filename):
         '''
-        append_file is called before adding pings from a new data file. It would create
-        a RawFileData object, populate it, append it to the raw_file_data list, and update
+        add_data_file is called before adding pings from a new raw data file. It creates
+        a RawDataFile object, populates it, appends it to the raw_file_data list, and updates
         the current_file pointer.
 
-        As pings are then appended, the current_file pointer is appended to the data_file_id
+        As pings are appended, the current_file pointer is appended to the data_file_id
         vector so we can track which pings came from which file and access the config
         parameters (if needed).
-
-        THIS PROBABLY SHOULD HAVE A DIFFERENT/BETTER NAME
 
         '''
 
@@ -663,7 +575,7 @@ class EK60RawData(object):
 
         #  increment the ping counter
         self.end_ping = self.n_pings #FIXME What should this be?
-        self.end_time = sample_datagram['ping_time'] 
+        self.end_time = sample_datagram['ping_time']
 
 
         #  check if our 2d arrays need to be resized
@@ -695,7 +607,7 @@ class EK60RawData(object):
             self.ping_number.append(self.n_pings + 1)
             self.n_pings += 1
             for attribute, data in appended_data:
-                setattr(self, attribute, data) 
+                setattr(self, attribute, data)
 
 
     def append_data(self, datagram):
@@ -760,8 +672,8 @@ class EK60RawData(object):
 
 
     def resize_array(self, datagram):
-        new_array_length = len(self.power) + self.chunk_width 
-        new_array_width = max([self.power[0].size, len(datagram['power'])]) 
+        new_array_length = len(self.power) + self.chunk_width
+        new_array_width = max([self.power[0].size, len(datagram['power'])])
         new_data_dims = [new_array_length, new_array_width]
 
         try:
@@ -1031,6 +943,10 @@ class EK60RawData(object):
 
         '''
 
+
+
+
+
     def get_electrical_angles(self, **kwargs):
         '''
         '''
@@ -1040,246 +956,112 @@ class EK60RawData(object):
             yield (attribute, getattr(self, attribute))
 
 
-class NMEAData(object):
-    '''
-    The NMEAData class provides storage for and parsing of NMEA data commonly
-    collected along with sonar data.
 
-    Potential library to use for NMEA parsing.
-        https://github.com/Knio/pynmea2
-
-        We can just pull something like that into this project. It doesn't have
-        to be this one, and we could roll our own if needed. Just throwing it
-        out there.
-    '''
-
-    #import pynmea2 FIXME Uncomment once this is available.
-
-    def __init__(self, file):
-
-        #  store the raw NMEA datagrams by time to facilitate easier writing
-        #  raw_datagrams is a list of dicts in the form {'time':0, 'text':''}
-        #  where time is the datagram time and text is the unparsed NMEA text.
-        self.raw_datagrams = []
-        self.n_raw = 0
-
-        #  type_data is a dict keyed by datagram talker+message. Each element of
-        #  the dict is a list of integers that are an index into the raw_datagrams
-        #  list for that talker+message. This allows easy access to the datagrams
-        #  by type.
-        self.type_index = {}
-
-        #  self types is a list of the unique talker+message NMEA types received.
-        self.types = []
-
-        #  create a logger instance
-        self.logger = logging.getLogger('NMEAData')
-
-
-    def add_datagram(self, time, text):
+    def __resample_data(self, data, pulse_length, target_pulse_length, is_power=False):
         '''
-        add_datagram adds a NMEA datagram to the class. It adds it to the raw_datagram
-        list as well as parsing the header and adding the talker+mesage ID to the
-        type_index dict.
+        __resample_data returns a resamples the power or angle data based on it's pulse length
+        and the provided target pulse length. If is_power is True, we log transform the
+        data to average in linear units (if needed).
 
-        time is a datetime object
-        text is a string containing the NMEA text
+        The funtion returns the resized array.
         '''
 
-        #  add the raw NMEA datagram
-        self.raw_datagrams.append({'time':time, 'text':text})
-
-        #  extract the header
-        header = text[1:6].upper()
-
-        #  make sure we have a plausible header
-        if (header.isalpha() and len(header) == 5):
-            #  check if we already have this header
-            if (header not in self.types):
-                #  nope - add it
-                self.types.append(header)
-                self.type_index[header] = []
-            #  update the type_index
-            self.type_index[header].append(self.n_raw)
-        else:
-            #  inform the user of a bad NMEA datagram
-            self.logger.info('Malformed or missing NMEA header: ' + text)
-
-        #  increment the index counter
-        self.n_raw = self.n_raw + 1
-
-
-    def get_datagrams(self, type, raw=False):
-        '''
-        get_datagrams returns a list of the requested datagram type. By default the
-        datagram will be parsed. If raw == True the raw datagram text will be returned.
-        '''
-
-        #  make sure the type is upper case
-        type = type.upper()
-
-        #  create the return dict depending on if were returning raw or parsed
-        if (raw):
-            datagrams = {'type':type, 'times':[], 'text':[]}
-        else:
-            datagrams = {'type':type, 'times':[], 'datagram':[]}
-
-        if (type in self.types):
-            #  append the time
-            datagrams['times'].append(self.raw_datagrams[type]['time'])
-            if (raw):
-                for dg in self.type_index[type]:
-                    #  just append the raw text
-                    datagrams['text'].append(self.raw_datagrams[type]['text'])
-            else:
-                for dg in self.type_index[type]:
-                    #  parse the NMEA string using pynmea2
-                    nmea_obj = pynmea2.parse(self.raw_datagrams[type]['text'])
-                    datagrams['datagram'].append(nmea_obj)
-
-        #  return the dictionary
-        return datagrams
-
-
-
-class TAGData(object):
-    '''
-    The TAGData class provides storage for the TAG0, aka annotations datagrams
-    in Simrad .raw files.
-    '''
-
-    def __init__(self, file):
-
-        #  store the annotation text as  a list of dicts in the form {'time':0, 'text':''}
-        self.annotations = []
-
-
-
-    def add_datagram(self, time, text):
-        '''
-        add_datagram adds a TAG0 datagram to the
-
-        time is a datetime object
-        text is a string containing the annotation text
-        '''
-
-        #  add the raw NMEA datagram
-        self.annotations.append({'time':time, 'text':text})
-
-
-
-
-
-
-
-
-
-
-        def resample_data(self, data, pulse_length, target_pulse_length, is_power=False):
-            '''
-            resample_data resamples the power or angle data based on it's pulse length
-            and the provided target pulse length. If is_power is True, we log transform the
-            data to average in linear units (if needed).
-
-            The funtion returns the resized array.
-            '''
-
-            #  first make sure we need to do something
-            if (pulse_length == target_pulse_length):
-                #  nothing to do, just return the data unchanged
-                return data
-
-            if (target_pulse_length > pulse_length):
-                #  we're reducing resolution - determine the number of samples to average
-                sample_reduction = int(target_pulse_length / pulse_length)
-
-                if (is_power):
-                    #  convert *power* to linear units
-                    data = np.power(data/20.0, 10.0)
-
-                # reduce
-                data = np.mean(data.reshape(-1, sample_reduction), axis=1)
-
-                if (is_power):
-                    #  convert *power* back to log units
-                    data = 20.0 * np.log10(data)
-
-            else:
-                #  we're increasing resolution - determine the number of samples to expand
-                sample_expansion = int(pulse_length / target_pulse_length)
-
-                #  replicate the values to fill out the higher resolution array
-                data = np.repeat(data, sample_expansion)
-
-
-            #  update the pulse length and sample interval values
-            data['pulse_length'] = target_pulse_length
-            data['sample_interval'] = target_pulse_length / self.SAMPLES_PER_PULSE
-
+        #  first make sure we need to do something
+        if (pulse_length == target_pulse_length):
+            #  nothing to do, just return the data unchanged
             return data
 
+        if (target_pulse_length > pulse_length):
+            #  we're reducing resolution - determine the number of samples to average
+            sample_reduction = int(target_pulse_length / pulse_length)
 
-        #  handle intialization on our first ping
-        if (self.n_pings == 0):
-            #  assume the initial array size doesn't involve resizing
-            data_dims = [ len(sample_datagram['power']), self.chunk_width]
+            if (is_power):
+                #  convert *power* to linear units
+                data = np.power(data/20.0, 10.0)
 
-            #  determine the target pulse length and if we need to resize our data right off the bat
-            #  note that we use self.target_pulse_length to store the pulse length of all data in the
-            #  array
-            if (self.target_pulse_length == None):
-                #  set the target_pulse_length to the pulse length of this initial ping
-                self.target_pulse_length = sample_datagram['pulse_length']
-            else:
-                #  the vertical resolution has been explicitly specified - check if we need to resize right off the bat
-                if (self.target_pulse_length != sample_datagram['pulse_length']):
-                    #  we have to resize - determine the new initial array size
-                    if (self.target_pulse_length > sample_datagram['pulse_length']):
-                        #  we're reducing resolution
-                        data_dims[0] = data_dims[0]  / int(self.target_pulse_length /
-                                sample_datagram['pulse_length'])
-                    else:
-                        #  we're increasing resolution
-                        data_dims[0] = data_dims[0]  * int(sample_datagram['pulse_length'] /
-                                self.target_pulse_length)
+            # reduce
+            data = np.mean(data.reshape(-1, sample_reduction), axis=1)
 
-            #  allocate the initial arrays if we're *not* using a rolling buffer
-            if (self.rolling == False):
-                #  create acoustic data arrays - no need to fill with NaNs at this point
-                self.power = np.empty(data_dims)
-                self.angles_alongship_e = np.empty(data_dims)
-                self.angles_alongship_e = np.empty(data_dims)
+            if (is_power):
+                #  convert *power* back to log units
+                data = 20.0 * np.log10(data)
 
-        #  if we're not allowing pulse_length to change, make sure it hasn't
-        if (not self.allow_pulse_length_change) and (sample_datagram['pulse_length'] != self.target_pulse_length):
-            self.logger.warning('append_ping failed: pulse_length does not match existing data and ' +
-                    'allow_pulse_length_change == False')
-            return False
+        else:
+            #  we're increasing resolution - determine the number of samples to expand
+            sample_expansion = int(pulse_length / target_pulse_length)
+
+            #  replicate the values to fill out the higher resolution array
+            data = np.repeat(data, sample_expansion)
 
 
-        #  check if any resizing needs to be done. The data arrays can be full (all columns filled) and would then
-        #  need to be expanded horizontally. The new sample_data vector could be longer with the same pulse_length
-        #  meaning the recording range has changed so we need to expand vertically and set the new data for exitsing
-        #  pings to NaN.
+        #  update the pulse length and sample interval values
+        data['pulse_length'] = target_pulse_length
+        data['sample_interval'] = target_pulse_length / self.SAMPLES_PER_PULSE
 
-        #  it is also possible that the incoming power or angle array needs to be padded with NaNs if earlier pings
-        #  were recorded to a longer range.
-
-        #  lastly, it is possible that the incoming power/angle arrays need to be trimmed if we're using a rolling
-        #  buffer where the user has set a hard limit on the vertical extent of the array.
+        return data
 
 
-        #  check if our pulse length has changed
-        if (self.n_pings > 0) and (sample_datagram['pulse_length'] != self.pulse_length[self.n_pings-1]):
-            if (self.allow_pulse_length_change):
-                #  here we need to change the vertical resolution of either the incoming data or the data
-                if (sample_datagram['power']):
-                    sample_datagram['power'] = resample_data(sample_datagram['power'],
-                            sample_datagram['pulse_length'], self.target_pulse_length, is_power=True)
-                if (sample_datagram['angle_alongship_e']):
-                    sample_datagram['angle_alongship_e'] = resample_data(sample_datagram['angle_alongship_e'],
-                            sample_datagram['pulse_length'], self.target_pulse_length)
-                if (sample_datagram['angle_athwartship_e']):
-                    sample_datagram['angle_athwartship_e'] = resample_data(sample_datagram['angle_athwartship_e'],
-                            sample_datagram['pulse_length'], self.target_pulse_length)
+#        #  handle intialization on our first ping
+#        if (self.n_pings == 0):
+#            #  assume the initial array size doesn't involve resizing
+#            data_dims = [ len(sample_datagram['power']), self.chunk_width]
+#
+#            #  determine the target pulse length and if we need to resize our data right off the bat
+#            #  note that we use self.target_pulse_length to store the pulse length of all data in the
+#            #  array
+#            if (self.target_pulse_length == None):
+#                #  set the target_pulse_length to the pulse length of this initial ping
+#                self.target_pulse_length = sample_datagram['pulse_length']
+#            else:
+#                #  the vertical resolution has been explicitly specified - check if we need to resize right off the bat
+#                if (self.target_pulse_length != sample_datagram['pulse_length']):
+#                    #  we have to resize - determine the new initial array size
+#                    if (self.target_pulse_length > sample_datagram['pulse_length']):
+#                        #  we're reducing resolution
+#                        data_dims[0] = data_dims[0]  / int(self.target_pulse_length /
+#                                sample_datagram['pulse_length'])
+#                    else:
+#                        #  we're increasing resolution
+#                        data_dims[0] = data_dims[0]  * int(sample_datagram['pulse_length'] /
+#                                self.target_pulse_length)
+#
+#            #  allocate the initial arrays if we're *not* using a rolling buffer
+#            if (self.rolling == False):
+#                #  create acoustic data arrays - no need to fill with NaNs at this point
+#                self.power = np.empty(data_dims)
+#                self.angles_alongship_e = np.empty(data_dims)
+#                self.angles_alongship_e = np.empty(data_dims)
+#
+#        #  if we're not allowing pulse_length to change, make sure it hasn't
+#        if (not self.allow_pulse_length_change) and (sample_datagram['pulse_length'] != self.target_pulse_length):
+#            self.logger.warning('append_ping failed: pulse_length does not match existing data and ' +
+#                    'allow_pulse_length_change == False')
+#            return False
+#
+#
+#        #  check if any resizing needs to be done. The data arrays can be full (all columns filled) and would then
+#        #  need to be expanded horizontally. The new sample_data vector could be longer with the same pulse_length
+#        #  meaning the recording range has changed so we need to expand vertically and set the new data for exitsing
+#        #  pings to NaN.
+#
+#        #  it is also possible that the incoming power or angle array needs to be padded with NaNs if earlier pings
+#        #  were recorded to a longer range.
+#
+#        #  lastly, it is possible that the incoming power/angle arrays need to be trimmed if we're using a rolling
+#        #  buffer where the user has set a hard limit on the vertical extent of the array.
+#
+#
+#        #  check if our pulse length has changed
+#        if (self.n_pings > 0) and (sample_datagram['pulse_length'] != self.pulse_length[self.n_pings-1]):
+#            if (self.allow_pulse_length_change):
+#                #  here we need to change the vertical resolution of either the incoming data or the data
+#                if (sample_datagram['power']):
+#                    sample_datagram['power'] = resample_data(sample_datagram['power'],
+#                            sample_datagram['pulse_length'], self.target_pulse_length, is_power=True)
+#                if (sample_datagram['angle_alongship_e']):
+#                    sample_datagram['angle_alongship_e'] = resample_data(sample_datagram['angle_alongship_e'],
+#                            sample_datagram['pulse_length'], self.target_pulse_length)
+#                if (sample_datagram['angle_athwartship_e']):
+#                    sample_datagram['angle_athwartship_e'] = resample_data(sample_datagram['angle_athwartship_e'],
+#                            sample_datagram['pulse_length'], self.target_pulse_length)
 

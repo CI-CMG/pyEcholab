@@ -235,7 +235,7 @@ class RawSimradFile(FileIO):
             header = self.peek()
 
         except DatagramReadError as e:
-            e.message = 'Short read while getting dgram header'
+            e.message = 'Short read while getting raw file datagram header'
             raise e
 
         if (header['low_date'], header['high_date']) == (0, 0):
@@ -271,7 +271,7 @@ class RawSimradFile(FileIO):
 
         except DatagramReadError as e:
             self._seek_bytes(old_file_pos, SEEK_SET)
-            e.message = 'Short read while getting trailing dgram size check'
+            e.message = 'Short read while getting trailing raw file datagram size for check'
             raise e
 
         if header['size'] != dgram_size_check:
