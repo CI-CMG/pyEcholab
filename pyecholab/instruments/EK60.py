@@ -25,7 +25,7 @@ from pytz import timezone
 import logging
 import numpy as np
 from util.raw_file import RawSimradFile, SimradEOF
-from util.date_conversion import nt_to_unix, unix_to_nt
+from util import unit_conversion
 from collections import defaultdict
 
 log = logging.getLogger(__name__)
@@ -35,35 +35,62 @@ class EK60(object):
 
     def __init__(self):
 
-        #  define the reader's default state - these properties can be directly set after
-        #  instantiation or provided as keyword arguments when calling methods
+        #  define the EK60's properties - these are "read-only" properties and should not
+        #  be changed directly by the user
+
+        #  start_time and end_time will define the time span of the data within the EK60 class
         self.start_time = None
         self.end_time = None
+
+        #  start_ping and end_ping will define the ping span of the data within the EK60 class
         self.start_ping = None
         self.end_ping = None
-        self.max_sample_range = None
-        self.frequencies = None
-        self.read_power = True
+
+        #  a list of frequencies that have been read.
+        self.frequencies = []
+
+        #  a list of stings identifying the channel IDs that have been read
+        self.channel_ids = []
+
+
+        #  define the classes internal state properties. These are updated when calling
+        #  various methods. They should not be modified directly by the user
+
+        #  specify if we should read files incrementally or all at once
+        self.incremental = False
+
+        #  define an internal state variable that is set when we initiate incremental reading
+        self._is_reading = False
 
         #  set read_angles to true to store angle data
         self.read_angles = True
 
+        #  set read_angles to true to store power data
+        self.read_power = True
+
+        #  specify the max sample count to read. This property can be used to limit the
+        #  number of samples read (and memory used) when your data of interest is
+        self.max_sample_count = None
+
         #  data_array_dims contains the dimensions of the sample and angle data arrays
-        #  specified as [n_pings, n_samples]. Values of -1 insdicate that the arrays will
+        #  specified as [n_pings, n_samples]. Values of -1 specify that the arrays will
         #  be resized appropriately to contain all pings and all samples read from the
         #  data source. Settings values > 0 will create arrays that are fixed to that size.
         #  Any samples beyond the number specified as n_samples will be dropped. When a
-        #  ping is added are the data arrays are full, the sample data will be rolled such
+        #  ping is added and the data arrays are full, the sample data will be rolled such
         #  that the oldest data is dropped and the new ping is added.
-        self.data_array_dims = [-1, -1]
+        self._data_array_dims = [-1, -1]
+
+        #  channel_id_map maps the channel number to channel ID when reading raw data sources
+        self.channel_id_map = {}
 
         #  create a dictionary to store the EK60RawData objects
         self.raw_data = {}
 
 
-    def read_raw(self, raw_files, power=None, angles=None, max_sample_range=None, start_time=None,
-            end_time=None, start_ping=None, end_ping=None, frequencies=None, channels=None,
-            time_format_string='%Y-%m-%d %H:%M:%S'):
+    def read_raw(self, raw_files, power=None, angles=None, max_sample_count=None, start_time=None,
+            end_time=None, start_ping=None, end_ping=None, frequencies=None, channel_ids=None,
+            time_format_string='%Y-%m-%d %H:%M:%S', incremental=None):
         '''
         read_raw reads one or many Simrad EK60 ES60/70 .raw files
         '''
@@ -81,10 +108,19 @@ class EK60(object):
             self.read_power = power
         if (angles):
             self.read_angles = angles
-        if (max_sample_range):
-            self.max_sample_range = max_sample_range
+        if (max_sample_count):
+            self.max_sample_count = max_sample_count
         if (frequencies):
             self.frequencies = frequencies
+        if (channel_ids):
+            self.channel_ids = channel_ids
+        if (incremental):
+            self.incremental = incremental
+
+        #TODO:  Implement incremental reading.
+        #       This is going to take some re-org since we can't simply iterate thru the list of files.
+        #       We need to be able to read a subset of data from a file and if required open the next
+        #       file in the list and continue reading the subset.
 
         #  ensure that the raw_files argument is a list
         if isinstance(raw_files, str):
@@ -108,19 +144,34 @@ class EK60(object):
                     datagram = fid.read(1)
 
                 #  check if we need to create an EK60RawData object for this channel
-                channel_ids = {}
+                self.channel_id_map = {}
                 for channel in config_datagrams['CON0']['transceivers']:
                     #  get the channel ID
                     channel_id = config_datagrams['CON0']['transceivers'][channel]['channel_id']
+
+                    #  check if we are reading this channel
+                    if (self.channel_ids) and(channel_id not in self.channel_ids):
+                        #  there are specific channel IDs specified and this is *NOT* one of them
+                        #  so we just move along...
+                        continue
+
+                    #  check if we're reading this frequency
+                    frequency = config_datagrams['CON0']['transceivers'][channel]['frequency']
+                    if (self.frequencies) and(frequency not in self.frequencies):
+                        #  there are specific frequencies specified and this is *NOT* one of them
+                        #  so we just move along...
+                        continue
+
                     #  check if an EK60RawData object exists for this channel
                     if channel_id not in self.raw_data:
                         #  no - create it
-                        self.raw_data[channel_id] = RawData(channel_id)
+                        self.raw_data[channel_id] = RawData(channel_id, store_power=self.read_power,
+                                store_angles=self.read_angles)
 
                     #  update the mapping of channel number to channel ID used when reading the datagrams.
                     #  this mapping must be updated for each .raw file since it is possible that the
                     #  transceiver installation can change between files.
-                    channel_ids[channel] = channel_id
+                    self.channel_id_map[channel] = channel_id
 
                     #  create a ChannelMetadata object to store this channel's configuration and rawfile metadata.
                     channel_metadata = ChannelMetadata(filename,
@@ -128,25 +179,36 @@ class EK60(object):
                                                        config_datagrams['CON0']['survey_name'],
                                                        config_datagrams['CON0']['transect_name'],
                                                        config_datagrams['CON0']['sounder_name'],
-                                                       config_datagrams['CON0']['version'])
+                                                       config_datagrams['CON0']['version'],
+                                                       self.raw_data[channel_id].n_pings,
+                                                       config_datagrams['CON0']['timestamp'])
+
                     #  update the channel_metadata property of the RawData object
                     self.raw_data[channel_id].current_metadata = channel_metadata
 
-                #  finally, read the rest of the file
-                self._read_datagrams(fid, channel_ids)
+                #  and lastly read the rest of the datagrams.
+                self._read_datagrams(fid, self.incremental)
 
 
-    def _read_datagrams(self, fid, channel_ids):
+
+
+    def _read_datagrams(self, fid, incremental):
         '''
-        _read_datagrams reads the datagrams contai
+        _read_datagrams is an internal method to read all of the datagrams contained in
         '''
+
+        #TODO: implement incremental reading
+        #      The user should be able to specify incremental reading in their call to read_raw.
+        #      incremental reading should read in the specified number of "pings", save the reader
+        #      state, then return. Subsequent calls would pick up where the reading left off.
+        #      As stated above, the exact mechanics need to be worked out since it will not work
+        #      as currently implemented.
+
 
         num_sample_datagrams = 0
         num_sample_datagrams_skipped = 0
         num_unknown_datagrams_skipped = 0
         num_datagrams_parsed = 0
-        sample_datagrams = {}
-        sample_datagrams.setdefault('sample', [])
 
         #  while datagrams are available
         while True:
@@ -173,9 +235,9 @@ class EK60(object):
             #  RAW datagrams store raw acoustic data for a channel
             if new_datagram['type'].startswith('RAW'):
 
-                if new_datagram['channel'] in channel_ids:
-                    channel_id = channel_ids[new_datagram['channel']]
-                    new_datagram['ping_time'] = datagram_timestamp
+                #  check if we're supposed to store this channel
+                if new_datagram['channel'] in self.channel_id_map:
+                    channel_id = self.channel_id_map[new_datagram['channel']]
                     self.raw_data[channel_id].append_ping(new_datagram)
                     num_sample_datagrams += 1
                 else:
@@ -266,7 +328,7 @@ class RawData(object):
         self.transducer_depth = np.empty((n_pings), np.float32)
         self.frequency = np.empty((n_pings), np.float32)
         self.transmit_power = np.empty((n_pings), np.float32)
-        self.pulse_length = np.empty((n_pings), np.int32)
+        self.pulse_length = np.empty((n_pings), np.uint16)
         self.bandwidth = np.empty((n_pings), np.float32)
         self.sample_interval = np.empty((n_pings), np.float32)
         self.sound_velocity = np.empty((n_pings), np.float32)
@@ -276,17 +338,17 @@ class RawData(object):
         self.roll = np.empty((n_pings), np.float32)
         self.temperature = np.empty((n_pings), np.float32)
         self.heading = np.empty((n_pings), np.float32)
-        self.transmit_mode = np.empty((n_pings), np.int32)
-        self.sample_offset =  np.empty((n_pings), np.int32)
-        self.sample_count = np.empty((n_pings), np.int32)
+        self.transmit_mode = np.empty((n_pings), np.uint8)
+        self.sample_offset =  np.empty((n_pings), np.uint32)
+        self.sample_count = np.empty((n_pings), np.uint32)
         if (self.store_power):
-            self.power = np.empty(n_pings, n_samples, np.int32)
+            self.power = np.empty((n_pings, n_samples), np.int16)
         if (self.store_angles):
-            self.angles_alongship_e = np.empty(n_pings, n_samples, np.int32)
-            self.angles_athwartship_e = np.empty(n_pings, n_samples, np.int32)
+            self.angles_alongship_e = np.empty((n_pings, n_samples), np.int8)
+            self.angles_athwartship_e = np.empty((n_pings, n_samples), np.int8)
 
         #  check if we should initialize them (fill with NaNs)
-        #  note that int32 type will be filled with -2147483648
+        #  note that int types will be filled with the smallest possible value for the type
         if (initialize):
 
             self.ping_number.fill(np.nan)
@@ -340,11 +402,6 @@ class RawData(object):
 
 
         '''
-        self.data_attributes = ['transducer_depth', 'frequency', 'transmit_power', \
-                'pulse_length', 'bandwidth', 'sample_interval', 'sound_velocity',  \
-                'absorption_coefficient', 'heave', 'pitch', 'roll', 'temperature', \
-                'heading', 'transmit_mode', 'sample_offset', 'sample_count', 'power', \
-                'angles_alongship_e', 'angles_athwartship_e']
 
         #  we can come up with a better name, but this specifies if we have a fixed data
         #  array size and roll it when it fills or if we expand the array when it fills
@@ -359,8 +416,9 @@ class RawData(object):
         #  the channel ID is the unique identifier
         self.channel_id = channel_id
 
-        #  a counter incremented when a ping is added
-        self.n_pings = 0
+        #  a counter incremented when a ping is added - a value of -1 indicates that the
+        #  data arrays have not been allocated yet.
+        self.n_pings = -1
 
         #  specify the horizontal size (columns) of the array allocation size.
         self.chunk_width = chunk_width
@@ -374,6 +432,9 @@ class RawData(object):
             #  since we assume rolling arrays will be used in a visual or interactive
             #  application, we initialize the arrays so they can be displayed
             self._create_arrays(n_pings, n_samples, initialize=True)
+
+            #  initialize the ping counter to indicate that our data arrays have been allocated
+            self.n_pings = 0
 
         #  if we're not using fixed arrays, we will initialze them when append_ping is
         #  called for the first time. Until then, the RawData object will not contain
@@ -425,12 +486,28 @@ class RawData(object):
 
         '''
 
-        #  handle intialization of data arrays on our first ping
-        if (self.n_pings == 0 and self.rolling_array == False):
+        #  if using dynamic arrays, handle intialization of data arrays when the first ping is added
+        if (self.n_pings == -1 and self.rolling_array == False):
             #  create the initial data arrays
             self._create_arrays(self.chunk_width, len(sample_datagram['power']))
 
-        #  check if we need to adjust our array sizes
+            #  initialize the ping counter to indicate that our data arrays have been allocated
+            self.n_pings  = 0
+
+        #  check if we need to re-size or roll our data arrays
+        if (self.rolling_array == False):
+            #  check if we need to resize
+            ping_resize = False
+            sample_resize = False
+            if (self.n_pings == self.ping_number.size):
+                ping_resize = True
+            if (self.n_pings == self.ping_number.size):
+        else:
+            #  check if we need to roll
+            if (self.n_pings == self.ping_number.size):
+                #TODO: implement rolling private method
+                pass
+
 
 #        #  check if our 2d arrays need to be resized
 #        if self.n_pings >= len(self.power):
@@ -465,9 +542,15 @@ class RawData(object):
         self.temperature[self.n_pings-1] = sample_datagram['temperature']
         self.heading[self.n_pings-1] = sample_datagram['heading']
         self.transmit_mode[self.n_pings-1] = sample_datagram['transmit_mode']
-        self.power[self.n_pings-1,:] = sample_datagram['power']
-        self.angles_alongship_e[self.n_pings-1,:] = sample_datagram['angles_alongship_e']
-        self.angles_athwartship_e[self.n_pings-1,:] = sample_datagram['angles_athwartship_e']
+        #  store power and angle data based on operational mode
+        #  1 = Power only, 2 = Angle only 3 = Power & Angle
+        if (sample_datagram['mode'] != 2):
+            self.power[self.n_pings-1,:] = sample_datagram['power']
+        if (sample_datagram['mode'] != 1):
+            #  extract the alongship and athwartship angle data
+            #  the low 8 bits are the athwartship values and the upper 8 bits are alongship.
+            self.angles_alongship_e[self.n_pings-1,:] = (sample_datagram['angle'] >> 8).astype('int8')
+            self.angles_athwartship_e[self.n_pings-1,:] = (sample_datagram['angle'] & 0xFF).astype('int8')
 
 
     def append_data_new(self, datagram):

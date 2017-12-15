@@ -917,7 +917,6 @@ class SimradRawParser(_SimradDatagramParser):
 
         header_values = struct.unpack(self.header_fmt(version), raw_string[:self.header_size(version)])
 
-
         data = {}
 
         if version == 0:
@@ -971,7 +970,6 @@ class SimradRawParser(_SimradDatagramParser):
                 if data['mode'] == 0:
                     log.warning("Data 'count' = %d, but mode == 0.  Setting count to 0", data['count'])
                     data['count'] = 0
-
 
             for field in self.header_fields(version):
                 datagram_contents.append(data[field])
