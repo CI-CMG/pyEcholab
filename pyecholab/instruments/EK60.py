@@ -85,59 +85,39 @@ class EK60(object):
             with RawSimradFile(filename, 'r') as fid:
 
                 #  read the "CON" configuration datagrams
+                #
+                #    "CON0" is the channel configuration datagram for EK/ES60 and ES70 as well as ME70
+                #    "CON1" is the extended channel configuration XML string for ME70
+                #
                 config_datagrams= {}
                 datagram = fid.read(1)
                 while datagram['type'].startswith('CON'):
                     config_datagrams[datagram['type']] = datagram
                     datagram = fid.read(1)
 
-                #  create an EK60RawData object for eqach channel in the file
+                #  check if we need to create an EK60RawData object for this channel
+                channel_ids = {}
                 for channel in config_datagrams['CON0']['transceivers']:
-                    channel_id = config_datagram['CON0']['transceivers'][channel]['channel_id']
+                    #  get the channel ID
+                    channel_id = config_datagrams['CON0']['transceivers'][channel]['channel_id']
+                    #  check if an EK60RawData object exists for this channel
                     if channel_id not in self.raw_data:
+                        #  no - create it
+                        self.raw_data[channel_id] = EK60RawData(channel_id)
 
-                channel_ids[channel] = channel_id #Create channel map.
+                    #  update the mapping of channel number to channel ID used when reading the datagrams.
+                    #  this mapping must be updated for each .raw file since it is possible that the
+                    #  transceiver installation can change between files.
+                    channel_ids[channel] = channel_id
 
-                self.raw_data[channel_id] = EK60RawData(channel_id)
-            self.raw_data[channel_id].append_file(filename)
+                    self.raw_data[channel_id].append_file(filename, config_datagrams['CON0']['transceivers'][channel],
+                            config_datagrams['CON0']['survey_name'], config_datagrams['CON0']['transect_name'],
+                            config_datagrams['CON0']['sounder_name'], config_datagrams['CON0']['version'])
 
-                config_datagram = self._read_config_datagram(fid)
 
-                channel_ids = self._read_data_header(config_datagram, filename)
 
                 self._read_datagrams(fid, channel_ids)
 
-
-    def _read_config_datagram(self, fid):
-        '''
-        _read_config_datagram reads the CON0 datagram from the raw file and extracts
-        '''
-        config_datagrams = {}
-        while fid.peek()['type'].startswith('CON'):
-            config_datagram = fid.read(1)
-            if config_datagram['type'] in config_datagrams:
-                raise ValueError('Malformed raw file. Multiple config datagrams of type %s found', config_datagram['type'])
-            config_datagrams[config_datagram['type']] = config_datagram
-
-        return config_datagrams
-
-
-    def _read_data_header(self, config_datagram, filename):
-        '''
-        _read_raw_data_setup
-        '''
-        channel_ids = {}
-        for channel in config_datagram['transceivers']:
-            channel_id = config_datagram['transceivers'][channel]['channel_id']
-            if channel_id not in self.raw_data:
-                if channel in channel_ids:
-                    #FIXME If these mappings vary from one file to the next, how should I handle that?
-                    pass
-
-                channel_ids[channel] = channel_id #Create channel map.
-                self.raw_data[channel_id] = EK60RawData(channel_id)
-            self.raw_data[channel_id].append_file(filename)
-        return channel_ids
 
 
     def _read_datagrams(self, fid, channel_ids):
@@ -220,122 +200,6 @@ class EK60(object):
         return utc.localize(time)
 
 
-class rawfile_metadata(object):
-    '''
-    The rawfile_metadata class stores the channel configuration data as well as
-    some metadata about the file. One of these is created for each channel for
-    every .raw file read.
-
-    These objects are stored in a list in the raw_data class and
-
-    '''
-
-    def __init__(self, file):
-
-        #  split the filename
-        file = os.path.normpath(file).split(os.path.sep)
-
-        #  store the base filename and path separately
-        self.data_file = file[-1]
-        self.data_file_path = os.path.sep.join(file[0:-1])
-
-        #  define some basic metadata properties
-        self.start_ping = 0
-        self.end_ping = 0
-        self.start_time = None
-        self.end_time = None
-
-        #  we will replicate the ConfigurationHeader struct here since there
-        #  is no better place to store it
-        self.survey_name = ''
-        self.transect_name = ''
-        self.sounder_name = ''
-        self.version = ''
-
-        #  the beam typre for this channel - split or single
-        self.beam_type = 0
-
-        #  the channel frequency in Hz
-        self.frequency = 0
-
-        #  the system gain when the file was recorded
-        self.gain = 0
-
-        #  beam calibration properties
-        self.equivalent_beam_angle = 0
-        self.beamwidth_alongship = 0
-        self.beamwidth_athwartship = 0
-        self.angle_sensitivity_alongship = 0
-        self.angle_sensitivity_athwartship = 0
-        self.angle_offset_alongship = 0
-        self.angle_offset_athwartship = 0
-
-        #  transducer installation/orientation parameters
-        self.posx = 0
-        self.posy = 0
-        self.posz = 0
-        self.dirx = 0
-        self.diry = 0
-        self.dirz = 0
-
-        #  the possile pulse lengths for the recording system
-        self.pulse_length_table = [0.0, 0.0, 0.0, 0.0, 0.0]
-        self.spare2 = ''
-        #  the gains set for each of the system pulse lengths
-        self.gain_table = [0.0, 0.0, 0.0, 0.0, 0.0]
-        self.spare3 = ''
-        #  the sa correction values set for each pulse length
-        self.sa_correction_table = [0.0, 0.0, 0.0, 0.0, 0.0]
-        self.spare4 = ''
-
-
-class ek60_cal_parameters(object):
-    '''
-    The EK60CalParameters class contains parameters required for transforming
-    power and electrical angle data to Sv/sv TS/SigmaBS and physical angles.
-    '''
-
-    def __init__(self, file):
-
-        self.channel_id = ''
-        self.frequency = 0
-        self.sound_velocity = 0.0
-        self.sample_interval = 0
-        self.absorption_coefficient = 0.0
-        self.gain = 0.0
-        self.equivalent_beam_angle = 0.0
-        self.beamwidth_alongship = 0.0
-        self.beamwidth_athwartship = 0.0
-        self.pulse_length_table = [0.0, 0.0, 0.0, 0.0, 0.0]
-        self.gain_table  = [0.0, 0.0, 0.0, 0.0, 0.0]
-        self.sa_correction_table = [0.0, 0.0, 0.0, 0.0, 0.0]
-        self.transmit_power = 0.0
-        self.pulse_length = 0.0
-        self.angle_sensitivity_alongship = 0.0
-        self.angle_sensitivity_athwartship = 0.0
-        self.angle_offset_alongship = 0.0
-        self.angle_offset_athwartship = 0.0
-        self.transducer_depth = 0.0
-
-
-    def from_raw_data(self, raw_data, raw_file_idx=0):
-        '''
-        from_raw_data populated the CalibrationParameters object's properties given
-        a reference to a RawData object.
-
-        This would query the RawFileData object specified by raw_file_idx in the
-        provided RawData object (by default, using the first).
-        '''
-
-        pass
-
-
-    def read_ecs_file(self, ecs_file, channel):
-        '''
-        read_ecs_file reads an echoview ecs file and parses out the
-        parameters for a given channel.
-        '''
-        pass
 
 
 class EK60RawData(object):
@@ -415,11 +279,16 @@ class EK60RawData(object):
         #  array size and roll it when it fills or if we expand the array when it fills
         self.rolling_array = bool(rolling)
 
-        #  raw_file_data is a list of RawFileData objects, one for each file that
+        #  rawfile_metadata is a list of RawfileMetadata objects, one for each file that
         #  has been appended to the dataset stored in this object.
-        self.raw_file_data = []
+        self.rawfile_metadata = []
 
-        #  current_file is the index into raw_file_data
+        #  the index into rawfile_metadata to the specific RawfileMetadata object for each ping.
+        self.metadata_index = []
+
+        #  current_file is the index into rawfile_metadata list pointing to the curent
+        #  rawfile. The current_file value is stored in metadata_index to map each ping back
+        #  to the RawfileMetadata object that contains the metadata for that ping.
         self.current_file = -1
 
         #  the channel ID is the unique identifier
@@ -438,9 +307,6 @@ class EK60RawData(object):
 
         #  the logging PC time that is read from the datagram header of the sample datagram
         self.ping_time = []
-
-        #  the index into raw_file_data to the specific RawDataFile object for each ping.
-        self.data_file_id = []
 
         #TODO replace lists with array.array, faster, less mem.  Need data types.
         self.transducer_depth = []
@@ -484,19 +350,23 @@ class EK60RawData(object):
         self.logger = logging.getLogger('EK60RawData')
 
 
-    def add_data_file(self, filename):
+    def update_rawfile_metadata(self, filename, config_datagram, survey_name, transect_name,
+            sounder_name, gpt_version):
         '''
-        add_data_file is called before adding pings from a new raw data file. It creates
-        a RawDataFile object, populates it, appends it to the raw_file_data list, and updates
-        the current_file pointer.
+        update_rawfile_metadata is called before adding pings from a new raw data file. It
+        creates a RawfileMetadata object, populates it, appends it to the rawfile_metadata
+        list, and updates the current_file pointer.
 
-        As pings are appended, the current_file pointer is appended to the data_file_id
-        vector so we can track which pings came from which file and access the config
-        parameters (if needed).
+        As pings are appended, the current_file pointer is appended to the metadata_index
+        vector so we can track which pings came from which file and access the metadata
+        parameters as needed.
 
         '''
 
-        self.raw_file_data.append(RawFileData(filename))
+        #  create the RawfileMetadata and append it to our list of RawfileMetadata objects
+        self.rawfile_metadata.append(RawfileMetadata(filename, config_datagram, survey_name,
+                transect_name, sounder_name, gpt_version))
+        #  update the current_file pointer
         self.current_file += 1
 
 
@@ -999,6 +869,129 @@ class EK60RawData(object):
         data['sample_interval'] = target_pulse_length / self.SAMPLES_PER_PULSE
 
         return data
+
+
+
+class RawfileMetadata(object):
+    '''
+    The RawfileMetadata class stores the channel configuration data as well as
+    some metadata about the file. One of these is created for each channel for
+    every .raw file read.
+
+    These objects are stored in a list in the raw_data class and
+
+    '''
+
+    def __init__(self, file, config_datagram, survey_name, transect_name, sounder_name, version):
+
+        #  split the filename
+        file = os.path.normpath(file).split(os.path.sep)
+
+        #  store the base filename and path separately
+        self.data_file = file[-1]
+        self.data_file_path = os.path.sep.join(file[0:-1])
+
+        #  define some basic metadata properties
+        self.start_ping = 0
+        self.end_ping = 0
+        self.start_time = None
+        self.end_time = None
+
+        #  we will replicate the ConfigurationHeader struct here since there
+        #  is no better place to store it
+        self.survey_name = ''
+        self.transect_name = ''
+        self.sounder_name = ''
+        self.version = ''
+
+        #  the GPT firmware version used when recording this data
+        self.gpt_firmware_version = config_datagram['version']
+
+        #  the beam type for this channel - split or single
+        self.beam_type = config_datagram['beam_type']
+
+        #  the channel frequency in Hz
+        self.frequency_hz = config_datagram['frequency']
+
+        #  the system gain when the file was recorded
+        self.gain = config_datagram['gain']
+
+        #  beam calibration properties
+        self.equivalent_beam_angle = config_datagram['equivalent_beam_angle']
+        self.beamwidth_alongship = config_datagram['beamwidth_alongship']
+        self.beamwidth_athwartship = config_datagram['beamwidth_athwartship']
+        self.angle_sensitivity_alongship = config_datagram['angle_sensitivity_alongship']
+        self.angle_sensitivity_athwartship = config_datagram['angle_sensitivity_athwartship']
+        self.angle_offset_alongship = config_datagram['angle_offset_alongship']
+        self.angle_offset_athwartship = config_datagram['angle_offset_athwartship']
+
+        #  transducer installation/orientation parameters
+        self.pos_x = config_datagram['pos_x']
+        self.pos_y = config_datagram['pos_y']
+        self.pos_z = config_datagram['pos_z']
+        self.dir_x = config_datagram['dir_x']
+        self.dir_y = config_datagram['dir_y']
+        self.dir_z = config_datagram['dir_z']
+
+        #  the possile pulse lengths for the recording system
+        self.pulse_length_table = config_datagram['pulse_length_table']
+        self.spare2 = config_datagram['spare2']
+        #  the gains set for each of the system pulse lengths
+        self.gain_table = config_datagram['gain_table']
+        self.spare3 = config_datagram['spare3']
+        #  the sa correction values set for each pulse length
+        self.sa_correction_table = config_datagram['sa_correction_table']
+        self.spare4 = config_datagram['spare4']
+
+
+class EK60CalParameters(object):
+    '''
+    The EK60CalParameters class contains parameters required for transforming
+    power and electrical angle data to Sv/sv TS/SigmaBS and physical angles.
+    '''
+
+    def __init__(self, file):
+
+        self.channel_id = ''
+        self.frequency = 0
+        self.sound_velocity = 0.0
+        self.sample_interval = 0
+        self.absorption_coefficient = 0.0
+        self.gain = 0.0
+        self.equivalent_beam_angle = 0.0
+        self.beamwidth_alongship = 0.0
+        self.beamwidth_athwartship = 0.0
+        self.pulse_length_table = [0.0, 0.0, 0.0, 0.0, 0.0]
+        self.gain_table  = [0.0, 0.0, 0.0, 0.0, 0.0]
+        self.sa_correction_table = [0.0, 0.0, 0.0, 0.0, 0.0]
+        self.transmit_power = 0.0
+        self.pulse_length = 0.0
+        self.angle_sensitivity_alongship = 0.0
+        self.angle_sensitivity_athwartship = 0.0
+        self.angle_offset_alongship = 0.0
+        self.angle_offset_athwartship = 0.0
+        self.transducer_depth = 0.0
+
+
+    def from_raw_data(self, raw_data, raw_file_idx=0):
+        '''
+        from_raw_data populated the CalibrationParameters object's properties given
+        a reference to a RawData object.
+
+        This would query the RawFileData object specified by raw_file_idx in the
+        provided RawData object (by default, using the first).
+        '''
+
+        pass
+
+
+    def read_ecs_file(self, ecs_file, channel):
+        '''
+        read_ecs_file reads an echoview ecs file and parses out the
+        parameters for a given channel.
+        '''
+        pass
+
 
 
 #        #  handle intialization on our first ping
