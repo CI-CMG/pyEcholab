@@ -35,22 +35,34 @@ class EK60(object):
 
     def __init__(self):
 
-        #  define the reader's default state
+        #  define the reader's default state - these properties can be directly set after
+        #  instantiation or provided as keyword arguments when calling methods
         self.start_time = None
         self.end_time = None
         self.start_ping = None
         self.end_ping = None
-        self.read_power = True
-        self.read_angles = True
         self.max_sample_range = None
         self.frequencies = None
+        self.read_power = True
+
+        #  set read_angles to true to store angle data
+        self.read_angles = True
+
+        #  data_array_dims contains the dimensions of the sample and angle data arrays
+        #  specified as [n_pings, n_samples]. Values of -1 insdicate that the arrays will
+        #  be resized appropriately to contain all pings and all samples read from the
+        #  data source. Settings values > 0 will create arrays that are fixed to that size.
+        #  Any samples beyond the number specified as n_samples will be dropped. When a
+        #  ping is added are the data arrays are full, the sample data will be rolled such
+        #  that the oldest data is dropped and the new ping is added.
+        self.data_array_dims = [-1, -1]
 
         #  create a dictionary to store the EK60RawData objects
         self.raw_data = {}
 
 
-    def read_raw(self, raw_files, power=True,  angles=True,  max_sample_range=None,  start_time=None,
-            end_time=None,  start_ping=None,  end_ping=None,  frequencies=None,  channels=None,
+    def read_raw(self, raw_files, power=None, angles=None, max_sample_range=None, start_time=None,
+            end_time=None, start_ping=None, end_ping=None, frequencies=None, channels=None,
             time_format_string='%Y-%m-%d %H:%M:%S'):
         '''
         read_raw reads one or many Simrad EK60 ES60/70 .raw files
@@ -103,21 +115,25 @@ class EK60(object):
                     #  check if an EK60RawData object exists for this channel
                     if channel_id not in self.raw_data:
                         #  no - create it
-                        self.raw_data[channel_id] = EK60RawData(channel_id)
+                        self.raw_data[channel_id] = RawData(channel_id)
 
                     #  update the mapping of channel number to channel ID used when reading the datagrams.
                     #  this mapping must be updated for each .raw file since it is possible that the
                     #  transceiver installation can change between files.
                     channel_ids[channel] = channel_id
 
-                    self.raw_data[channel_id].append_file(filename, config_datagrams['CON0']['transceivers'][channel],
-                            config_datagrams['CON0']['survey_name'], config_datagrams['CON0']['transect_name'],
-                            config_datagrams['CON0']['sounder_name'], config_datagrams['CON0']['version'])
+                    #  create a ChannelMetadata object to store this channel's configuration and rawfile metadata.
+                    channel_metadata = ChannelMetadata(filename,
+                                                       config_datagrams['CON0']['transceivers'][channel],
+                                                       config_datagrams['CON0']['survey_name'],
+                                                       config_datagrams['CON0']['transect_name'],
+                                                       config_datagrams['CON0']['sounder_name'],
+                                                       config_datagrams['CON0']['version'])
+                    #  update the channel_metadata property of the RawData object
+                    self.raw_data[channel_id].current_metadata = channel_metadata
 
-
-
+                #  finally, read the rest of the file
                 self._read_datagrams(fid, channel_ids)
-
 
 
     def _read_datagrams(self, fid, channel_ids):
@@ -132,30 +148,29 @@ class EK60(object):
         sample_datagrams = {}
         sample_datagrams.setdefault('sample', [])
 
+        #  while datagrams are available
         while True:
-            try:
-                next_header = fid.peek()
-            except SimradEOF:
-                break
-
+            #  try to read in the next datagram
             try:
                 new_datagram = fid.read(1)
             except SimradEOF:
+                #  nothing more to read
                 break
-
-            #  convert from NT time to python datetime
-            datagram_timestamp = nt_to_unix((next_header['low_date'], next_header['high_date']))
 
             #  check if we should continue to read this data based on time bounds
             if self.start_time is not None:
-                if datagram_timestamp < self.start_time:
+                if new_datagram['timestamp'] < self.start_time:
                     continue
             if self.end_time is not None:
-                if datagram_timestamp > self.end_time:
+                if new_datagram['timestamp'] > self.end_time:
                     continue
 
+            #  increment the number parsed counter
             num_datagrams_parsed += 1
 
+            #  process the datagrams by type
+
+            #  RAW datagrams store raw acoustic data for a channel
             if new_datagram['type'].startswith('RAW'):
 
                 if new_datagram['channel'] in channel_ids:
@@ -163,23 +178,27 @@ class EK60(object):
                     new_datagram['ping_time'] = datagram_timestamp
                     self.raw_data[channel_id].append_ping(new_datagram)
                     num_sample_datagrams += 1
-
                 else:
                     num_sample_datagrams_skipped += 1
 
+            #  NME datagrams store ancillary data as NMEA-0817 style ASCII data
             elif new_datagram['type'].startswith('NME'):
                 #TODO:  Implement NMEA reading
                 pass
+
+            #  TAG datagrams contain time-stamped annotations inserted via the recording software
             elif new_datagram['type'].startswith('TAG'):
                 #TODO: Implement annotation reading
                 pass
             else:
                 #  unknown datagram type - issue a warning
-                log.warning('Skipping unkown datagram type: %s @ %s', new_datagram['type'], datagram_timestamp)
+                log.warning('Skipping unkown datagram type: %s @ %s', new_datagram['type'],
+                        new_datagram['timestamp'])
                 num_unknown_datagrams_skipped += 1
 
             if not (num_datagrams_parsed % 10000):
-                log.debug('    Parsed %d datagrams (%d sample).', num_datagrams_parsed, num_sample_datagrams)
+                log.debug('    Parsed %d datagrams (%d sample).', num_datagrams_parsed,
+                        num_sample_datagrams)
 
 
         num_datagrams_skipped = num_unknown_datagrams_skipped + num_sample_datagrams_skipped
@@ -202,25 +221,11 @@ class EK60(object):
 
 
 
-class EK60RawData(object):
+class RawData(object):
     '''
-    the EK60RawData class contains a single channel's data extracted from a Simrad raw
-    file. collected from an EK/ES60 or ES70. A EK60RawData object is created for each
+    the RawData class contains a single channel's data extracted from a Simrad raw
+    file. collected from an EK/ES60 or ES70. A RawData object is created for each
     unique channel in an EK/ES60 ES70 raw file.
-
-    EK60RawData has all of the properties we defined at the Boulder meeting but instead
-    of a dictionary, I think that Pamme's suggestion of a class is the better way to
-    go. The RawData class contains methods to manage the raw data at a low level
-    allowing the reader to mainly handle the lower level reading business.
-
-    To support streaming data sources (broadcast telegrams, server/client interface)
-    you can set the "rolling" keyword and specify the initial array dimensions when
-    you instantiate the class. Then when using the add_ping method, the data arrays
-    will act as FIFO, "rolling left" when the array is full.
-
-    We can use callbacks to support announcing when the add_ping method is finished
-    to, for example, notify an live display application to redraw the echogram.
-
 
     '''
 
@@ -242,8 +247,74 @@ class EK60RawData(object):
     to_shortest = 0
     to_longest = 1
 
-    def __init__(self, channel_id, n_pings=0, n_samples=1000, rolling=False,
-            chunk_width=500):
+    def _resize_arrays(self, n_pings, n_samples):
+        pass
+
+    def _create_arrays(self, n_pings, n_samples, initialize=False):
+        '''
+        _create_arrays is an internal method that initializes the RawData data arrays.
+        '''
+
+        #  ping_time and channel_metadata are lists
+        self.ping_time = []
+        self.channel_metadata = []
+
+        #  all other data properties are numpy arrays
+
+        #  first, create uninitialized arrays
+        self.ping_number = np.empty((n_pings), np.int32)
+        self.transducer_depth = np.empty((n_pings), np.float32)
+        self.frequency = np.empty((n_pings), np.float32)
+        self.transmit_power = np.empty((n_pings), np.float32)
+        self.pulse_length = np.empty((n_pings), np.int32)
+        self.bandwidth = np.empty((n_pings), np.float32)
+        self.sample_interval = np.empty((n_pings), np.float32)
+        self.sound_velocity = np.empty((n_pings), np.float32)
+        self.absorption_coefficient = np.empty((n_pings), np.float32)
+        self.heave = np.empty((n_pings), np.float32)
+        self.pitch = np.empty((n_pings), np.float32)
+        self.roll = np.empty((n_pings), np.float32)
+        self.temperature = np.empty((n_pings), np.float32)
+        self.heading = np.empty((n_pings), np.float32)
+        self.transmit_mode = np.empty((n_pings), np.int32)
+        self.sample_offset =  np.empty((n_pings), np.int32)
+        self.sample_count = np.empty((n_pings), np.int32)
+        if (self.store_power):
+            self.power = np.empty(n_pings, n_samples, np.int32)
+        if (self.store_angles):
+            self.angles_alongship_e = np.empty(n_pings, n_samples, np.int32)
+            self.angles_athwartship_e = np.empty(n_pings, n_samples, np.int32)
+
+        #  check if we should initialize them (fill with NaNs)
+        #  note that int32 type will be filled with -2147483648
+        if (initialize):
+
+            self.ping_number.fill(np.nan)
+            self.transducer_depth.fill(np.nan)
+            self.frequency.fill(np.nan)
+            self.transmit_power.fill(np.nan)
+            self.pulse_length.fill(np.nan)
+            self.bandwidth.fill(np.nan)
+            self.sample_interval.fill(np.nan)
+            self.sound_velocity.fill(np.nan)
+            self.absorption_coefficient.fill(np.nan)
+            self.heave.fill(np.nan)
+            self.pitch.fill(np.nan)
+            self.roll.fill(np.nan)
+            self.temperature.fill(np.nan)
+            self.heading.fill(np.nan)
+            self.transmit_mode.fill(np.nan)
+            self.sample_offset.fill(np.nan)
+            self.sample_count.fill(np.nan)
+            if (self.store_power):
+                self.power.fill(np.nan)
+            if (self.store_angles):
+                self.angles_alongship_e.fill(np.nan)
+                self.angles_athwartship_e.fill(np.nan)
+
+
+    def __init__(self, channel_id, n_pings=100, n_samples=1000, rolling=False,
+            chunk_width=500, store_power=True, store_angles=True):
         '''
         Creates a new, empty EK60RawData object. The EK60RawData class stores raw
         echosounder data from a single channel of an EK60 or ES60/70 system.
@@ -279,17 +350,11 @@ class EK60RawData(object):
         #  array size and roll it when it fills or if we expand the array when it fills
         self.rolling_array = bool(rolling)
 
-        #  rawfile_metadata is a list of RawfileMetadata objects, one for each file that
-        #  has been appended to the dataset stored in this object.
-        self.rawfile_metadata = []
-
-        #  the index into rawfile_metadata to the specific RawfileMetadata object for each ping.
-        self.metadata_index = []
-
-        #  current_file is the index into rawfile_metadata list pointing to the curent
-        #  rawfile. The current_file value is stored in metadata_index to map each ping back
-        #  to the RawfileMetadata object that contains the metadata for that ping.
-        self.current_file = -1
+        #  current_metadata stores a reference to the current ChannelMetadata object. The
+        #  ChannelMetadata class stores rawfile and channel configuration properties
+        #  contained in the .raw file header. When opening a new .raw file, this property
+        #  must be updated before appending pings from the new file.
+        self.current_metadata = None
 
         #  the channel ID is the unique identifier
         self.channel_id = channel_id
@@ -300,74 +365,23 @@ class EK60RawData(object):
         #  specify the horizontal size (columns) of the array allocation size.
         self.chunk_width = chunk_width
 
-        #  the following are all 1D arrays that are n_pings long
+        #  keep note if we should store the power and angle data
+        self.store_power = store_power
+        self.store_angles = store_angles
 
-        #  ping_number is the sequential number of pings for this channel starting at 0 (?)
-        self.ping_number = []
-
-        #  the logging PC time that is read from the datagram header of the sample datagram
-        self.ping_time = []
-
-        #TODO replace lists with array.array, faster, less mem.  Need data types.
-        self.transducer_depth = []
-        self.frequency = []
-        self.transmit_power = []
-        self.pulse_length = []
-        self.bandwidth = []
-        self.sample_interval = []
-        self.sound_velocity = []
-        self.absorption_coefficient = []
-        self.heave = []
-        self.pitch = []
-        self.roll = []
-        self.temperature = []
-        self.heading = []
-        # transmit mode: 0-Active, 1-Passive, 2-Test, -1-Unknown
-        self.transmit_mode = []
-        #  what is the sample offset? Anyone?
-        self.sample_offset =  []
-        #  the number of samples in a ping
-        self.sample_count = []
-
-
-        #  check if we need to initialize our fixed arrays
+        #  if we're using a fixed data array size, we can allocate the arrays now
         if (self.rolling_array):
-            #  create acoustic data arrays and fill with NaNs
-            self.power = np.empty(n_samples, n_pings)
-            self.power.fill(np.nan)
-            self.angles_alongship_e = np.empty(n_samples, n_pings)
-            self.angles_alongship_e.fill(np.nan)
-            self.angles_athwartship_e = np.empty(n_samples, n_pings)
-            self.angles_athwartship_e.fill(np.nan)
-        else:
-            #  delay array creation until first ping is added
-            self.power = None
-            self.angles_alongship_e = None
-            self.angles_athwartship_e = None
+            #  since we assume rolling arrays will be used in a visual or interactive
+            #  application, we initialize the arrays so they can be displayed
+            self._create_arrays(n_pings, n_samples, initialize=True)
 
+        #  if we're not using fixed arrays, we will initialze them when append_ping is
+        #  called for the first time. Until then, the RawData object will not contain
+        #  the data properties.
 
         #  create a logger instance
         self.logger = logging.getLogger('EK60RawData')
 
-
-    def update_rawfile_metadata(self, filename, config_datagram, survey_name, transect_name,
-            sounder_name, gpt_version):
-        '''
-        update_rawfile_metadata is called before adding pings from a new raw data file. It
-        creates a RawfileMetadata object, populates it, appends it to the rawfile_metadata
-        list, and updates the current_file pointer.
-
-        As pings are appended, the current_file pointer is appended to the metadata_index
-        vector so we can track which pings came from which file and access the metadata
-        parameters as needed.
-
-        '''
-
-        #  create the RawfileMetadata and append it to our list of RawfileMetadata objects
-        self.rawfile_metadata.append(RawfileMetadata(filename, config_datagram, survey_name,
-                transect_name, sounder_name, gpt_version))
-        #  update the current_file pointer
-        self.current_file += 1
 
 
     def append_ping(self, sample_datagram):
@@ -377,13 +391,6 @@ class EK60RawData(object):
         the array sizes, resizing as needed (or rolling in the case of a fixed size). Append ping also
         updates the RawFileData object's end_ping and end_time values for the current file.
 
-        append_ping will return True if the operation was successful and False if it failed. It
-        should also emit a warning if it fails.
-
-        9/28 - Contrary to my previous thought, we will not resample raw data when appending
-                 data. We will allow data with different pulse_lengths to be appended, resizing
-                 and padding as needed but we will not resample. Resampling will be done when
-                 calling the To* methods.
 
         Managing the data array sizes is the bulk of what this method does. It will either resize
         the array is rolling == false or roll the array if it is full and rolling == true.
@@ -418,47 +425,49 @@ class EK60RawData(object):
 
         '''
 
-
-        success = True
-
         #  handle intialization of data arrays on our first ping
         if (self.n_pings == 0 and self.rolling_array == False):
-            #  assume the initial array size doesn't involve resizing
-            data_dims = [ self.chunk_width, len(sample_datagram['power'])]
+            #  create the initial data arrays
+            self._create_arrays(self.chunk_width, len(sample_datagram['power']))
 
-            #  create acoustic data arrays - no need to fill with NaNs at this point
-            self.power = np.empty(data_dims)
-            self.angles_alongship_e = np.empty(data_dims)
-            self.angles_athwartship_e = np.empty(data_dims)
+        #  check if we need to adjust our array sizes
 
-
-        #  append the index into self.raw_file_data to the current RawFileData object
-        self.data_file_id.append(self.current_file)
-
-        #  append the data in sample_datagram to our internal arrays
-        self.append_data(sample_datagram)
+#        #  check if our 2d arrays need to be resized
+#        if self.n_pings >= len(self.power):
+#            self.resize_array(sample_datagram)
 
 
-        #  check if power or angle data needs to be padded or trimmed
-        #  FIXME how to determine this.
+        #  increment our ping counter
+        self.n_pings += 1
 
+        #  append the ChannelMetadata object reference for this ping
+        self.channel_metadata.append(self.current_metadata)
 
-        #  increment the ping counter
-        self.end_ping = self.n_pings #FIXME What should this be?
-        self.end_time = sample_datagram['ping_time']
+        #  update the ChannelMetadata object with this ping number and time
+        self.current_metadata.end_ping = self.n_pings
+        self.current_metadata.end_time = sample_datagram['timestamp']
 
+        #  append the datetime object representing the ping time to the ping_time property
+        self.ping_time.append(sample_datagram['timestamp'])
 
-        #  check if our 2d arrays need to be resized
-        if self.n_pings >= len(self.power):
-            self.resize_array(sample_datagram)
-
-        #  and finally copy the data into the arrays
+        #  now insert the data into our numpy arrays
+        self.transducer_depth[self.n_pings-1] = sample_datagram['transducer_depth']
+        self.frequency[self.n_pings-1] = sample_datagram['frequency']
+        self.transmit_power[self.n_pings-1] = sample_datagram['transmit_power']
+        self.pulse_length[self.n_pings-1] = sample_datagram['pulse_length']
+        self.bandwidth[self.n_pings-1] = sample_datagram['bandwidth']
+        self.sample_interval[self.n_pings-1] = sample_datagram['sample_interval']
+        self.sound_velocity[self.n_pings-1] = sample_datagram['sound_velocity']
+        self.absorption_coefficient[self.n_pings-1] = sample_datagram['absorption_coefficient']
+        self.heave[self.n_pings-1] = sample_datagram['heave']
+        self.pitch[self.n_pings-1] = sample_datagram['pitch']
+        self.roll[self.n_pings-1] = sample_datagram['roll']
+        self.temperature[self.n_pings-1] = sample_datagram['temperature']
+        self.heading[self.n_pings-1] = sample_datagram['heading']
+        self.transmit_mode[self.n_pings-1] = sample_datagram['transmit_mode']
         self.power[self.n_pings-1,:] = sample_datagram['power']
-        #FIXME Add these to the sample datagram.
-        #self.angles_alongship_e[self.n_pings-1,:] = sample_datagram['angles_alongship_e']
-        #self.angles_athwartship_e[self.n_pings-1,:] = sample_datagram['angles_athwartship_e']
-
-        return success
+        self.angles_alongship_e[self.n_pings-1,:] = sample_datagram['angles_alongship_e']
+        self.angles_athwartship_e[self.n_pings-1,:] = sample_datagram['angles_athwartship_e']
 
 
     def append_data_new(self, datagram):
@@ -872,17 +881,18 @@ class EK60RawData(object):
 
 
 
-class RawfileMetadata(object):
+class ChannelMetadata(object):
     '''
-    The RawfileMetadata class stores the channel configuration data as well as
+    The ChannelMetadata class stores the channel configuration data as well as
     some metadata about the file. One of these is created for each channel for
     every .raw file read.
 
-    These objects are stored in a list in the raw_data class and
+    References to instances of these objects are stored in RawfileData
 
     '''
 
-    def __init__(self, file, config_datagram, survey_name, transect_name, sounder_name, version):
+    def __init__(self, file, config_datagram, survey_name, transect_name, sounder_name, version,
+                start_ping, start_time):
 
         #  split the filename
         file = os.path.normpath(file).split(os.path.sep)
@@ -892,9 +902,9 @@ class RawfileMetadata(object):
         self.data_file_path = os.path.sep.join(file[0:-1])
 
         #  define some basic metadata properties
-        self.start_ping = 0
+        self.start_ping = start_ping
         self.end_ping = 0
-        self.start_time = None
+        self.start_time = start_time
         self.end_time = None
 
         #  we will replicate the ConfigurationHeader struct here since there
@@ -905,7 +915,7 @@ class RawfileMetadata(object):
         self.version = ''
 
         #  the GPT firmware version used when recording this data
-        self.gpt_firmware_version = config_datagram['version']
+        self.gpt_firmware_version = config_datagram['gpt_software_version']
 
         #  the beam type for this channel - split or single
         self.beam_type = config_datagram['beam_type']
@@ -944,9 +954,9 @@ class RawfileMetadata(object):
         self.spare4 = config_datagram['spare4']
 
 
-class EK60CalParameters(object):
+class CalibrationParameters(object):
     '''
-    The EK60CalParameters class contains parameters required for transforming
+    The CalibrationParameters class contains parameters required for transforming
     power and electrical angle data to Sv/sv TS/SigmaBS and physical angles.
     '''
 
