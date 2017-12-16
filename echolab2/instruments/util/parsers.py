@@ -35,6 +35,7 @@ import numpy as np
 import logging
 import struct
 import re
+import sys
 from date_conversion import nt_to_unix
 
 
@@ -88,7 +89,10 @@ class _SimradDatagramParser(object):
 
     def from_string(self, raw_string):
 
-        id_, version = self.validate_data_header(raw_string[:4].decode())
+        header = raw_string[:4]
+        if (sys.version_info.major > 2):
+            header = header.decode()
+        id_, version = self.validate_data_header(header)
         return self._unpack_contents(raw_string, version=version)
 
     def to_string(self, data={}):
@@ -415,7 +419,11 @@ class SimradNMEAParser(_SimradDatagramParser):
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
 
         if version == 0:
-            data['nmea_string'] = str(raw_string[self.header_size(version):].strip(b'\x00'), 'ascii', errors='replace')
+            if (sys.version_info.major > 2):
+                data['nmea_string'] = str(raw_string[self.header_size(version):].strip(b'\x00'), 'ascii', errors='replace')
+            else:
+                data['nmea_string'] = unicode(raw_string[self.header_size(version):].strip('\x00'), 'ascii', errors='replace')
+
 
             if self.nmea_head_re.match(data['nmea_string'][:7]) is not None:
                 data['nmea_talker'] = data['nmea_string'][1:3]
@@ -659,7 +667,9 @@ class SimradConfigParser(_SimradDatagramParser):
 
         for indx, field in enumerate(self.header_fields(version)):
             data[field] = header_values[indx]
-            if isinstance(data[field], bytes):
+
+            #  handle Python 3 strings
+            if (sys.version_info.major > 2) and isinstance(data[field], bytes):
                 data[field] = data[field].decode()
 
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
@@ -907,7 +917,6 @@ class SimradRawParser(_SimradDatagramParser):
 
         header_values = struct.unpack(self.header_fmt(version), raw_string[:self.header_size(version)])
 
-
         data = {}
 
         if version == 0:
@@ -961,7 +970,6 @@ class SimradRawParser(_SimradDatagramParser):
                 if data['mode'] == 0:
                     log.warning("Data 'count' = %d, but mode == 0.  Setting count to 0", data['count'])
                     data['count'] = 0
-
 
             for field in self.header_fields(version):
                 datagram_contents.append(data[field])
