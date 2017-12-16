@@ -186,8 +186,11 @@ class EK60(object):
                     #  update the channel_metadata property of the RawData object
                     self.raw_data[channel_id].current_metadata = channel_metadata
 
-                #  and lastly read the rest of the datagrams.
+                #  read the rest of the datagrams.
                 self._read_datagrams(fid, self.incremental)
+
+        #  trim excess data from arrays after reading
+
 
 
 
@@ -309,71 +312,6 @@ class RawData(object):
     to_shortest = 0
     to_longest = 1
 
-    def _resize_arrays(self, n_pings, n_samples):
-        pass
-
-    def _create_arrays(self, n_pings, n_samples, initialize=False):
-        '''
-        _create_arrays is an internal method that initializes the RawData data arrays.
-        '''
-
-        #  ping_time and channel_metadata are lists
-        self.ping_time = []
-        self.channel_metadata = []
-
-        #  all other data properties are numpy arrays
-
-        #  first, create uninitialized arrays
-        self.ping_number = np.empty((n_pings), np.int32)
-        self.transducer_depth = np.empty((n_pings), np.float32)
-        self.frequency = np.empty((n_pings), np.float32)
-        self.transmit_power = np.empty((n_pings), np.float32)
-        self.pulse_length = np.empty((n_pings), np.uint16)
-        self.bandwidth = np.empty((n_pings), np.float32)
-        self.sample_interval = np.empty((n_pings), np.float32)
-        self.sound_velocity = np.empty((n_pings), np.float32)
-        self.absorption_coefficient = np.empty((n_pings), np.float32)
-        self.heave = np.empty((n_pings), np.float32)
-        self.pitch = np.empty((n_pings), np.float32)
-        self.roll = np.empty((n_pings), np.float32)
-        self.temperature = np.empty((n_pings), np.float32)
-        self.heading = np.empty((n_pings), np.float32)
-        self.transmit_mode = np.empty((n_pings), np.uint8)
-        self.sample_offset =  np.empty((n_pings), np.uint32)
-        self.sample_count = np.empty((n_pings), np.uint32)
-        if (self.store_power):
-            self.power = np.empty((n_pings, n_samples), np.int16)
-        if (self.store_angles):
-            self.angles_alongship_e = np.empty((n_pings, n_samples), np.int8)
-            self.angles_athwartship_e = np.empty((n_pings, n_samples), np.int8)
-
-        #  check if we should initialize them (fill with NaNs)
-        #  note that int types will be filled with the smallest possible value for the type
-        if (initialize):
-
-            self.ping_number.fill(np.nan)
-            self.transducer_depth.fill(np.nan)
-            self.frequency.fill(np.nan)
-            self.transmit_power.fill(np.nan)
-            self.pulse_length.fill(np.nan)
-            self.bandwidth.fill(np.nan)
-            self.sample_interval.fill(np.nan)
-            self.sound_velocity.fill(np.nan)
-            self.absorption_coefficient.fill(np.nan)
-            self.heave.fill(np.nan)
-            self.pitch.fill(np.nan)
-            self.roll.fill(np.nan)
-            self.temperature.fill(np.nan)
-            self.heading.fill(np.nan)
-            self.transmit_mode.fill(np.nan)
-            self.sample_offset.fill(np.nan)
-            self.sample_count.fill(np.nan)
-            if (self.store_power):
-                self.power.fill(np.nan)
-            if (self.store_angles):
-                self.angles_alongship_e.fill(np.nan)
-                self.angles_athwartship_e.fill(np.nan)
-
 
     def __init__(self, channel_id, n_pings=100, n_samples=1000, rolling=False,
             chunk_width=500, store_power=True, store_angles=True):
@@ -494,28 +432,56 @@ class RawData(object):
             #  initialize the ping counter to indicate that our data arrays have been allocated
             self.n_pings  = 0
 
+        #  determine the greatest number of existing samples and the greatest number of
+        #  samples in this datagram. In theory the power and angle arrays should always be
+        #  the same size but we'll check all to make sure.
+        max_data_samples = max(self.power.shape[1],self.angles_alongship_e.shape[1],
+                self.angles_athwartship_e.shape[1])
+        max_new_samples = max(sample_datagram['angle'].shape, sample_datagram['power'].shape)
+
+        #  create 2 variables to store our current array size
+        ping_dims = self.ping_number.size
+        sample_dims = max_data_samples
+
         #  check if we need to re-size or roll our data arrays
         if (self.rolling_array == False):
-            #  check if we need to resize
+            #  check if we need to resize our data arrays
             ping_resize = False
             sample_resize = False
-            if (self.n_pings == self.ping_number.size):
+
+            #  check the ping dimension
+            if (self.n_pings == ping_dims):
+                #  need to resize the ping dimension
                 ping_resize = True
-            if (self.n_pings == self.ping_number.size):
+                #  calculate the new ping dimension
+                ping_dims = ping_dims + self.chunk_width
+
+            #  check the samples dimension
+            if (max_new_samples > max_data_samples):
+                #  need to resize the samples dimension
+                sample_resize = True
+                #  calculate the new samples dimension
+                sample_dims = max_new_samples
+
+            #  determine if we resize
+            if (ping_resize or sample_resize):
+                #  resize the data arrays
+                self._resize_arrays(ping_dims, sample_dims, self.ping_number.size,
+                        max_data_samples)
+
+            #  get an index into the data arrays for this ping and increment our ping counter
+            this_ping = self.n_pings
+            self.n_pings += 1
+
         else:
             #  check if we need to roll
-            if (self.n_pings == self.ping_number.size):
-                #TODO: implement rolling private method
-                pass
+            if (self.n_pings == ping_dims - 1):
+                #  when a rolling array is "filled" we stop incrementing the ping counter
+                #  and repeatedly append pings to the last ping index in the array
+                this_ping = self.n_pings
 
-
-#        #  check if our 2d arrays need to be resized
-#        if self.n_pings >= len(self.power):
-#            self.resize_array(sample_datagram)
-
-
-        #  increment our ping counter
-        self.n_pings += 1
+                #  roll our array 1 ping
+                self._roll_arrays(1)
 
         #  append the ChannelMetadata object reference for this ping
         self.channel_metadata.append(self.current_metadata)
@@ -528,49 +494,66 @@ class RawData(object):
         self.ping_time.append(sample_datagram['timestamp'])
 
         #  now insert the data into our numpy arrays
-        self.transducer_depth[self.n_pings-1] = sample_datagram['transducer_depth']
-        self.frequency[self.n_pings-1] = sample_datagram['frequency']
-        self.transmit_power[self.n_pings-1] = sample_datagram['transmit_power']
-        self.pulse_length[self.n_pings-1] = sample_datagram['pulse_length']
-        self.bandwidth[self.n_pings-1] = sample_datagram['bandwidth']
-        self.sample_interval[self.n_pings-1] = sample_datagram['sample_interval']
-        self.sound_velocity[self.n_pings-1] = sample_datagram['sound_velocity']
-        self.absorption_coefficient[self.n_pings-1] = sample_datagram['absorption_coefficient']
-        self.heave[self.n_pings-1] = sample_datagram['heave']
-        self.pitch[self.n_pings-1] = sample_datagram['pitch']
-        self.roll[self.n_pings-1] = sample_datagram['roll']
-        self.temperature[self.n_pings-1] = sample_datagram['temperature']
-        self.heading[self.n_pings-1] = sample_datagram['heading']
-        self.transmit_mode[self.n_pings-1] = sample_datagram['transmit_mode']
-        #  store power and angle data based on operational mode
-        #  1 = Power only, 2 = Angle only 3 = Power & Angle
+        self.transducer_depth[this_ping] = sample_datagram['transducer_depth']
+        self.frequency[this_ping] = sample_datagram['frequency']
+        self.transmit_power[this_ping] = sample_datagram['transmit_power']
+        self.pulse_length[this_ping] = sample_datagram['pulse_length']
+        self.bandwidth[this_ping] = sample_datagram['bandwidth']
+        self.sample_interval[this_ping] = sample_datagram['sample_interval']
+        self.sound_velocity[this_ping] = sample_datagram['sound_velocity']
+        self.absorption_coefficient[this_ping] = sample_datagram['absorption_coefficient']
+        self.heave[this_ping] = sample_datagram['heave']
+        self.pitch[this_ping] = sample_datagram['pitch']
+        self.roll[this_ping] = sample_datagram['roll']
+        self.temperature[this_ping] = sample_datagram['temperature']
+        self.heading[this_ping] = sample_datagram['heading']
+        self.transmit_mode[this_ping] = sample_datagram['transmit_mode']
+
+        #  now store the 2d "sample" data
+        #      determine what we need to store based on operational mode
+        #      1 = Power only, 2 = Angle only 3 = Power & Angle
+
+        #  check if we need to store power data
         if (sample_datagram['mode'] != 2):
-            self.power[self.n_pings-1,:] = sample_datagram['power']
+            #  check if we need to pad or trim our sample data
+            sample_pad = max_data_samples - sample_datagram['power'].shape[0]
+            if (sample_pad > 0):
+                #  the data array has more samples than this datagram - we need to pad the datagram
+                self.power[this_ping,:] = np.pad(sample_datagram['power'],(0,sample_pad),
+                        'constant', constant_values=np.nan)
+            elif (sample_pad < 0):
+                #  the data array has fewer samples than this datagram - we need to trim the datagram
+                self.power[this_ping,:] = sample_datagram['power'][0:sample_pad]
+
+        #  check if we need to store angle data
         if (sample_datagram['mode'] != 1):
-            #  extract the alongship and athwartship angle data
+            #  first extract the alongship and athwartship angle data
             #  the low 8 bits are the athwartship values and the upper 8 bits are alongship.
-            self.angles_alongship_e[self.n_pings-1,:] = (sample_datagram['angle'] >> 8).astype('int8')
-            self.angles_athwartship_e[self.n_pings-1,:] = (sample_datagram['angle'] & 0xFF).astype('int8')
+            alongship_e = (sample_datagram['angle'] >> 8).astype('int8')
+            athwartship_e = (sample_datagram['angle'] & 0xFF).astype('int8')
+
+            #  check if we need to pad or trim our sample data
+            sample_pad = max_data_samples - athwartship_e.shape[0]
+            if (sample_pad > 0):
+                #  the data array has more samples than this datagram - we need to pad the datagram
+                self.angles_alongship_e[this_ping,:] = np.pad(alongship_e,(0,sample_pad),
+                        'constant', constant_values=np.nan)
+                self.angles_athwartship_e[this_ping,:] = np.pad(athwartship_e,(0,sample_pad),
+                        'constant', constant_values=np.nan)
+            elif (sample_pad < 0):
+                #  the data array has fewer samples than this datagram - we need to trim the datagram
+                self.angles_alongship_e[this_ping,:] = alongship_e[0:sample_pad]
+                self.angles_athwartship_e[this_ping,:] = athwartship_e[0:sample_pad]
 
 
-    def append_data_new(self, datagram):
-        appended_data = defaultdict()
-        try:
-            for attribute, data in self.get_data():
-                if attribute in datagram:
-                    if isinstance(data, list):
-                        appended_data[attribute] = getattr(self, attribute).append(datagram[attribute])
-                    elif isinstance(data, np.ndarray):
-                        appended_data[attribute] = np.concatenate((getattr(self, attribute), datagram[attribute]))
-        except Exception as err:
-            #TODO Add filename and ping num in file.
-            log.warning("Error appending ping data.", err)
-        else:
-            self.ping_number.append(self.n_pings + 1)
-            self.n_pings += 1
-            for attribute, data in appended_data:
-                setattr(self, attribute, data)
 
+    '''
+    I admit that I didn't really get what append_data was doing and wasn't sure why it was
+    being called after append ping. After a RAW datagram is read from the disk, we only
+    need to call append_ping where we insert the datagram's data into our RawData data arrays
+    and deal with all of the book keeping related to that.
+
+    '''
 
     def append_data(self, datagram):
         # FIXME define these attributes in one place to be used here and in parsers.py
@@ -633,29 +616,14 @@ class RawData(object):
             self.transmit_mode = transmit_mode.copy()
 
 
-    def resize_array(self, datagram):
-        new_array_length = len(self.power) + self.chunk_width
-        new_array_width = max([self.power[0].size, len(datagram['power'])])
-        new_data_dims = [new_array_length, new_array_width]
 
-        try:
-            self.power.resize(new_data_dims)
-            #self.angle_alongship_e.resize(new_data_dims)
-            #self.angles_athwartship_e.resize(new_data_dims)
-        except ValueError as err:
-            log.error('Error resizing numpy array:', err)
-            success = False
-        except Exception as err:
-            log.error('Error resizing numpy array:', type(err), err)
-            success = False
 
-    def append_raw_data(self):
+    def append_rawdata(self, rawdata_object):
         '''
         append_raw_data would append another RawData object to this one. This would call
         insert_raw_data specifying the end ping number
         '''
-        #FIXME how is this different?
-        self.append_ping(datagram)
+
         pass
 
 
@@ -894,6 +862,7 @@ class RawData(object):
 
         '''
 
+
     def get_power(self, **kwargs):
         '''
         get_power returns a processed data object that contains the power data.
@@ -906,22 +875,190 @@ class RawData(object):
         '''
 
 
-
-
-
     def get_electrical_angles(self, **kwargs):
         '''
         '''
+
 
     def __iter__(self):
         for attribute in vars(self).keys():
             yield (attribute, getattr(self, attribute))
 
 
-
-    def __resample_data(self, data, pulse_length, target_pulse_length, is_power=False):
+    def _roll_arrays(self, roll_pings):
         '''
-        __resample_data returns a resamples the power or angle data based on it's pulse length
+        _roll_arrays is an internal method that rolls our data arrays when those arrays
+        are fixed in size and we add a ping. This typically would be used for buffering
+        data from streaming sources.
+        '''
+
+        #TODO: implement and test these inline rolling functions
+        #      Need to profile this code to see which methods are faster. Currently all rolling is
+        #      implemented using np.roll which makes a copy of the data.
+        #TODO: verify rolling direction
+        #      Verify the correct rolling direction for both the np.roll calls and the 2 inline
+        #      functions. I *think* the calls to np.roll are correct and the inline functions roll
+        #      the wrong way.
+
+        def roll_1d(data):
+            #  rolls a 1d *mostly* in place
+            #  based on code found here:
+            #    https://stackoverflow.com/questions/35916201/alternative-to-numpy-roll-without-copying-array
+            #  THESE HAVE NOT BEEN TESTED
+            temp_view = data[:-1]
+            temp_copy = data[-1]
+            data[1:] = temp_view
+            data[0] = temp_copy
+
+        def roll_2d(data):
+            #  rolls a 2d *mostly* in place
+            temp_view = data[:-1,:]
+            temp_copy = data[-1,:]
+            data[1:,:] = temp_view
+            data[0,:] = temp_copy
+
+        #  roll our two lists
+        self.ping_time.append(self.ping_time.pop(0))
+        self.channel_metadata.append(self.channel_metadata.pop(0))
+
+        #  roll the numpy arrays
+        self.ping_number = np.roll(self.ping_number, roll_pings)
+        self.transducer_depth = np.roll(self.transducer_depth, roll_pings)
+        self.frequency = np.roll(self.frequency, roll_pings)
+        self.transmit_power = np.roll(self.transmit_power, roll_pings)
+        self.pulse_length = np.roll(self.pulse_length, roll_pings)
+        self.bandwidth = np.roll(self.bandwidth, roll_pings)
+        self.sample_interval = np.roll(self.sample_interval, roll_pings)
+        self.sound_velocity = np.roll(self.sound_velocity, roll_pings)
+        self.absorption_coefficient = np.roll(self.absorption_coefficient, roll_pings)
+        self.heave = np.roll(self.heave, roll_pings)
+        self.pitch = np.roll(self.pitch, roll_pings)
+        self.roll = np.roll(self.roll, roll_pings)
+        self.temperature = np.roll(self.temperature, roll_pings)
+        self.heading = np.roll(self.heading, roll_pings)
+        self.transmit_mode = np.roll(self.transmit_mode, roll_pings)
+        self.sample_offset = np.roll(self.sample_offset, roll_pings)
+        self.sample_count = np.roll(self.sample_count, roll_pings)
+        if (self.store_power):
+            self.power = np.roll(self.power, roll_pings, axis=0)
+        if (self.store_angles):
+            self.angles_alongship_e = np.roll(self.angles_alongship_e, roll_pings, axis=0)
+            self.angles_athwartship_e = np.roll(self.angles_athwartship_e, roll_pings, axis=0)
+
+
+    def _resize_arrays(self, new_ping_dim, new_sample_dim, old_ping_dim, old_sample_dim):
+        '''
+        _resize_arrays is an internal method that handles resizing the data arrays
+        '''
+
+        #  resize the arrays
+        self.ping_number.resize((new_ping_dim))
+        self.transducer_depth.resize((new_ping_dim))
+        self.frequency.resize((new_ping_dim))
+        self.transmit_power.resize((new_ping_dim))
+        self.pulse_length.resize((new_ping_dim))
+        self.bandwidth.resize((new_ping_dim))
+        self.sample_interval.resize((new_ping_dim))
+        self.sound_velocity.resize((new_ping_dim))
+        self.absorption_coefficient.resize((new_ping_dim))
+        self.heave.resize((new_ping_dim))
+        self.pitch.resize((new_ping_dim))
+        self.roll.resize((new_ping_dim))
+        self.temperature.resize((new_ping_dim))
+        self.heading.resize((new_ping_dim))
+        self.transmit_mode.resize((new_ping_dim))
+        self.sample_offset.resize((new_ping_dim))
+        self.sample_count.resize((new_ping_dim))
+        if (self.store_power):
+            self.power.resize((new_ping_dim, new_sample_dim))
+        if (self.store_angles):
+            self.angles_alongship_e.resize((new_ping_dim, new_sample_dim))
+            self.angles_athwartship_e.resize((new_ping_dim, new_sample_dim))
+
+        #  check if we need to pad the existing data - if the new sample dimension is greater than
+        #  the old, we must pad the new array values for all of the old samples with NaNs
+        if (new_sample_dim > old_sample_dim):
+            #  pad the samples of the existing pings setting them to NaN
+            if (self.store_power):
+                self.power[0:old_ping_dim, old_sample_dim:new_sample_dim] = np.nan
+            if (self.store_angles):
+                self.angles_alongship_e[0:old_ping_dim, old_sample_dim:new_sample_dim] = np.nan
+                self.angles_athwartship_e[0:old_ping_dim, old_sample_dim:new_sample_dim] = np.nan
+
+
+    def _create_arrays(self, n_pings, n_samples, initialize=False):
+        '''
+        _create_arrays is an internal method that initializes the RawData data arrays.
+        '''
+
+        #  ping_time and channel_metadata are lists
+        self.ping_time = []
+        self.channel_metadata = []
+
+        #  all other data properties are numpy arrays
+
+        #  first, create uninitialized arrays
+        self.ping_number = np.empty((n_pings), np.int32)
+        self.transducer_depth = np.empty((n_pings), np.float32)
+        self.frequency = np.empty((n_pings), np.float32)
+        self.transmit_power = np.empty((n_pings), np.float32)
+        self.pulse_length = np.empty((n_pings), np.uint16)
+        self.bandwidth = np.empty((n_pings), np.float32)
+        self.sample_interval = np.empty((n_pings), np.float32)
+        self.sound_velocity = np.empty((n_pings), np.float32)
+        self.absorption_coefficient = np.empty((n_pings), np.float32)
+        self.heave = np.empty((n_pings), np.float32)
+        self.pitch = np.empty((n_pings), np.float32)
+        self.roll = np.empty((n_pings), np.float32)
+        self.temperature = np.empty((n_pings), np.float32)
+        self.heading = np.empty((n_pings), np.float32)
+        self.transmit_mode = np.empty((n_pings), np.uint8)
+        self.sample_offset =  np.empty((n_pings), np.uint32)
+        self.sample_count = np.empty((n_pings), np.uint32)
+        if (self.store_power):
+            self.power = np.empty((n_pings, n_samples), np.int16)
+        else:
+            #  create an empty array as a place holder
+            self.power = np.empty((0,0), np.int16)
+        if (self.store_angles):
+            self.angles_alongship_e = np.empty((n_pings, n_samples), np.int8)
+            self.angles_athwartship_e = np.empty((n_pings, n_samples), np.int8)
+        else:
+            #  create an empty arrays as place holders
+            self.angles_alongship_e = np.empty((0, 0), np.int8)
+            self.angles_athwartship_e = np.empty((0, 0), np.int8)
+
+        #  check if we should initialize them (fill with NaNs)
+        #  note that int types will be filled with the smallest possible value for the type
+        if (initialize):
+
+            self.ping_number.fill(np.nan)
+            self.transducer_depth.fill(np.nan)
+            self.frequency.fill(np.nan)
+            self.transmit_power.fill(np.nan)
+            self.pulse_length.fill(np.nan)
+            self.bandwidth.fill(np.nan)
+            self.sample_interval.fill(np.nan)
+            self.sound_velocity.fill(np.nan)
+            self.absorption_coefficient.fill(np.nan)
+            self.heave.fill(np.nan)
+            self.pitch.fill(np.nan)
+            self.roll.fill(np.nan)
+            self.temperature.fill(np.nan)
+            self.heading.fill(np.nan)
+            self.transmit_mode.fill(np.nan)
+            self.sample_offset.fill(np.nan)
+            self.sample_count.fill(np.nan)
+            if (self.store_power):
+                self.power.fill(np.nan)
+            if (self.store_angles):
+                self.angles_alongship_e.fill(np.nan)
+                self.angles_athwartship_e.fill(np.nan)
+
+
+    def _resample_data(self, data, pulse_length, target_pulse_length, is_power=False):
+        '''
+        _resample_data returns a resamples the power or angle data based on it's pulse length
         and the provided target pulse length. If is_power is True, we log transform the
         data to average in linear units (if needed).
 
