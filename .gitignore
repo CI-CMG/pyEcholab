@@ -108,6 +108,7 @@ venv.bak/
 *.raw
 *.idx
 *.out
+*.evi
 
 #  MATLAB data files
 *.mat

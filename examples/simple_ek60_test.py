@@ -3,26 +3,41 @@
 
 """
 
+import os
 from echolab2.instruments import EK60
 
+#  create the list of input files - for this test I am purposly picking
+#  two files with the same channels but the channels have different pulse
+#  lengths and a different installation order
+rawfiles = ['./data/EK60/DY1201_EK60-D20120214-T231011.raw','./data/EK60/DY1706_EK60-D20170609-T005736.raw']
 
-# Data file
-#filename = "../data/DY1706_EK60-D20170609-T005736.raw"
-filename = "C:/Users/rick.towler/Documents/PyEcholab2/examples/data/DY1706_EK60-D20170609-T005736.raw"
-#filename = "//AKC0SS-N086/RACE_Users/rick.towler/My Documents/AFSCGit/pyEcholab2_CI-CMG/examples/data/DY1706_EK60-D20170609-T005736.raw"
-#filename = "/home/vagrant/dev/data/W070827-T140039.raw"
-start_time = '2007-08-27 14:00:00'
-end_time='2007-08-27 14:21:57'
-n_data_points = 3
 
 #  create an instance of the EK60 instrument. This is the top level object used
 #  to interact with EK60 and  data sources
 ek60 = EK60.EK60()
 
 #  use the read_raw method to read in a data file
-ek60.read_raw(filename)
+ek60.read_raw(rawfiles)
 
-#  print some basic info about our object
+#  print some basic info about our objectw
+
+#  as you can see, 10 channels are reported. Each file has 5 channels and they in fact
+#  physically are the same hardware. The reason there are 10 channels reported is that
+#  their transceiver number in the ER60 software changed. This isn't ideal, I considered
+#  allowing for a looser ID matching scheme but that makes things a lot more complicated.
 print(ek60)
+
+#  now print out some infor about our first 38 channel
+raw_data_38_1 = ek60.get_rawdata(channel_number=2)
+print(raw_data_38_1)
+
+#  and the second 38 channel
+raw_data_38_2 = ek60.get_rawdata(channel_number=7)
+print(raw_data_38_2)
+
+#  append tghe 2nd to the first and print out the results
+raw_data_38_1.append(raw_data_38_2)
+print(raw_data_38_1)
+
 
 
