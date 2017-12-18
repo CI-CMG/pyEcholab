@@ -41,5 +41,4 @@ These values can be read in Python using PyTables or h5py.
 
 
 This directory also contains Echoview .ev files used to create the
-integration test data along with the integration export files. Once this
-code settles down I will document these files in detail here.
+integration test data along with the integration export files.

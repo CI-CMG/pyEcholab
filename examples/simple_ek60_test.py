@@ -3,8 +3,27 @@
 
 """
 
-import os
+import cProfile, pstats
+try:
+    from StringIO import StringIO
+except ImportError:
+    from io import StringIO
 from echolab2.instruments import EK60
+
+
+def print_profile_stats(profiler):
+    '''
+    print_profile_stats prints out the results from a profiler run
+    '''
+    s = StringIO.StringIO()
+    sortby = 'cumulative'
+    ps = pstats.Stats(profiler, stream=s).sort_stats(sortby)
+    ps.print_stats()
+    print(s.getvalue())
+
+#  create a profiler object
+profiler = cProfile.Profile()
+
 
 #  create the list of input files - for this test I am purposly picking
 #  two files with the same channels but the channels have different pulse
@@ -17,9 +36,12 @@ rawfiles = ['./data/EK60/DY1201_EK60-D20120214-T231011.raw','./data/EK60/DY1706_
 ek60 = EK60.EK60()
 
 #  use the read_raw method to read in a data file
+#profiler.enable()
 ek60.read_raw(rawfiles)
+#profiler.disable()
+#print_profile_stats(profiler)
 
-#  print some basic info about our objectw
+#  print some basic info about our object
 
 #  as you can see, 10 channels are reported. Each file has 5 channels and they in fact
 #  physically are the same hardware. The reason there are 10 channels reported is that
@@ -39,5 +61,5 @@ print(raw_data_38_2)
 raw_data_38_1.append(raw_data_38_2)
 print(raw_data_38_1)
 
-
+pass
 
