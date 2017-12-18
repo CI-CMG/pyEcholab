@@ -102,3 +102,14 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+#  Acoustic Data Files
+*.bot
+*.raw
+*.idx
+*.out
+*.evi
+
+#  MATLAB data files
+*.mat
+
