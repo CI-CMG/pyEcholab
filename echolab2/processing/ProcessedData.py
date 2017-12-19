@@ -27,7 +27,7 @@ class ProcessedData(object):
 
     def __init__(self, file):
 
-        self.channel_id = ''
+        self.channel_id = []
         self.frequency = 0
         self.sample_interval = 0
-        self.range
+        self.range = None
