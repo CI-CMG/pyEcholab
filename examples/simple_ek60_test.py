@@ -61,5 +61,7 @@ print(raw_data_38_2)
 raw_data_38_1.append(raw_data_38_2)
 print(raw_data_38_1)
 
+power = raw_data_38_1.get_power()
+
 pass
 
