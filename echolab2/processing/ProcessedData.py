@@ -29,7 +29,16 @@ class ProcessedData(object):
 
         self.channel_id = channel_id
         self.frequency = frequency
-        self.sample_interval = 0
+
+        #  sample thickness is the vertical extent of the samples in meters
+        #  it is calculated as thickness = sample interval(s) * sound speed(m/s) / 2
+        #  you should not append processed data arrays with different sample thicknesses
+        self.sample_thickness = 0
+
+        #  sample offset is the number of samples the first row of data are offset away from
+        #  the transducer face.
+        self.sample_offset = 0
+
         self.range = []
         self.ping_time = []
         self.transducer_depth = []
