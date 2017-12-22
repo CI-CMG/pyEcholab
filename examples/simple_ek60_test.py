@@ -3,11 +3,13 @@
 
 """
 
+import sys
 import cProfile, pstats
-try:
-    from StringIO import StringIO
-except ImportError:
+
+if (sys.version_info[0] == 3):
     from io import StringIO
+else:
+    from StringIO import StringIO
 import numpy as np
 import matplotlib.pyplot as plt
 from echolab2.instruments import EK60
@@ -32,17 +34,15 @@ profiler = cProfile.Profile()
 #  two files with the same channels but the channels have different pulse
 #  lengths and a different installation order
 
-#  APPEND ISSUE
+# THESE WORK
 rawfiles = ['./data/EK60/DY1201_EK60-D20120214-T231011.raw','./data/EK60/DY1706_EK60-D20170609-T005736.raw']
-
 #rawfiles = ['./data/EK60/DY1706_EK60-D20170609-T005736.raw']
 #rawfiles = ['./data/EK60/DY1201_EK60-D20120214-T231011.raw']
+#rawfiles = ['./data/EK60/DY1706_EK60-D20170625-T061707.raw','./data/EK60/DY1706_EK60-D20170625-T062521.raw']
 
 #  APPEND ERROR
 #rawfiles = ['./data/EK60/DY1706_EK60-D20170609-T005736.raw','./data/EK60/DY1706_EK60-D20170625-T061707.raw']
 
-#  WORKS
-#rawfiles = ['./data/EK60/DY1706_EK60-D20170625-T061707.raw','./data/EK60/DY1706_EK60-D20170625-T062521.raw']
 
 #  create an instance of the EK60 instrument. This is the top level object used
 #  to interact with EK60 and  data sources
@@ -58,8 +58,7 @@ ek60.read_raw(rawfiles)
 
 #  as you can see, 10 channels are reported. Each file has 5 channels and they in fact
 #  physically are the same hardware. The reason there are 10 channels reported is that
-#  their transceiver number in the ER60 software changed. This isn't ideal, I considered
-#  allowing for a looser ID matching scheme but that makes things a lot more complicated.
+#  their transceiver number in the ER60 software changed.
 print(ek60)
 
 #  now print out some infor about our first 38 channel
@@ -77,9 +76,7 @@ print(raw_data_38_1)
 
 power = raw_data_38_1.get_power()
 threshold = [np.nanmin(power.power),np.nanmax(power.power)]
-eg = echogram.echogram(threshold=threshold)
-eg.update_echogram(power.power)
-plt.imshow(eg.echogram_data, cmap=eg.cmap)
+eg = echogram.echogram(data=power.power, threshold=threshold)
 plt.show()
 
 

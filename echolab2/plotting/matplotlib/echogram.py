@@ -1,50 +1,69 @@
 
-
-from matplotlib.colors import LinearSegmentedColormap
+import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap, Colormap
 import numpy as np
 
+
 class echogram(object):
+    '''
+    This is a bit of a mess. I wanted to inherit from plt but that isn't straightforward.
+    I realize now that this should probably inherit from matplotlib.image.AxesImage
 
-    def __init__(self, threshold=[-70,-34]):
+    I'm leaving it as is for now since we can get echograms on the screen
+    '''
 
+    def __init__(self, data=None, threshold=[-70,-34], cmap=None):
+
+
+        self.plotobj = None
         self.threshold = threshold
 
         #  set the default SIMRAD EK500 color table plus grey for NoData
-        self.colorTable = [(1,1,1),
-                           (0.6235,0.6235,0.6235),
-                           (0.3725,0.3725,0.3725),
-                           (0,0,1),
-                           (0,0,0.5),
-                           (0,0.7490,0),
-                           (0,0.5,0),
-                           (1,1,0),
-                           (1,0.5,0),
-                           (1,0,0.7490),
-                           (1,0,0),
-                           (0.6509,0.3255,0.2353),
-                           (0.4705,0.2353,0.1568),
-                           (0.7843,0.7843,0.7843)]
+        self._simrad_color_table = [(1,1,1),
+                                             (0.6235,0.6235,0.6235),
+                                             (0.3725,0.3725,0.3725),
+                                             (0,0,1),
+                                             (0,0,0.5),
+                                             (0,0.7490,0),
+                                             (0,0.5,0),
+                                             (1,1,0),
+                                             (1,0.5,0),
+                                             (1,0,0.7490),
+                                             (1,0,0),
+                                             (0.6509,0.3255,0.2353),
+                                             (0.4705,0.2353,0.1568)]
+        self._simrad_cmap = LinearSegmentedColormap.from_list('Simrad',  self._simrad_color_table)
+        self._simrad_cmap.set_bad(color='grey')
+        self.cmap = self._simrad_cmap
 
-        #  set the color table length but subtract 1 since we don't
-        #  want to include the grey value
-        self._ctLength = len(self.colorTable) -1
+        self.set_data(data)
 
-        self.echogram_data = None
 
-        self.cmap = LinearSegmentedColormap.from_list('Simrad', self.colorTable)
 
-    def update_echogram(self, data, threshold=None):
+    def set_data(self, data):
+        if (isinstance(data, np.ndarray)):
+            #  update our data property - make sure it's a float
+            self.data = data.astype('float32')
+            self.update_echogram()
 
-        if threshold:
+
+    def set_colormap(self, colormap, bad_data=None):
+        if (isinstance(colormap, str)):
+            colormap = Colormap(colormap)
+        self.cmap = colormap
+        if (bad_data):
+            self.cmap.set_bad = bad_data
+        self.update_echogram()
+
+
+    def set_threshold(self, threshold=[-70,-34]):
+        if (threshold):
             self.threshold = threshold
+            self.update_echogram()
 
-        #echodata = data.astype('float32')
-        echodata = data
+    def update_echogram(self):
 
-        echodata = np.round((echodata - self.threshold[0]) / (self.threshold[1] -
-                                self.threshold[0]) * self._ctLength)
-        echodata[echodata < 0] = 0
-        echodata[echodata > self._ctLength-1] = self._ctLength-1
-        echoData = echodata.astype(np.uint8)
+        echodata = np.flipud(np.rot90(self.data,1))
+        self.plotobj  = plt.imshow(echodata, cmap=self.cmap, vmin=self.threshold[0],
+                vmax=self.threshold[1], aspect='auto')
 
-        self.echogram_data = echoData#np.rot90(echoData,3)
