@@ -8,7 +8,10 @@ try:
     from StringIO import StringIO
 except ImportError:
     from io import StringIO
+import numpy as np
+import matplotlib.pyplot as plt
 from echolab2.instruments import EK60
+from echolab2.plotting.matplotlib import echogram
 
 
 def print_profile_stats(profiler):
@@ -61,7 +64,17 @@ print(raw_data_38_2)
 raw_data_38_1.append(raw_data_38_2)
 print(raw_data_38_1)
 
+
 power = raw_data_38_1.get_power()
+
+threshold = [np.amin(power.power),np.amax(power.power)]
+eg = echogram.echogram(threshold=threshold)
+
+eg.update_echogram(power.power)
+
+
+plt.imshow(eg.echogram_data, cmap=eg.cmap)
+plt.show()
 
 pass
 
