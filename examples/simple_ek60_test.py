@@ -31,8 +31,18 @@ profiler = cProfile.Profile()
 #  create the list of input files - for this test I am purposly picking
 #  two files with the same channels but the channels have different pulse
 #  lengths and a different installation order
+
+#  APPEND ISSUE
 rawfiles = ['./data/EK60/DY1201_EK60-D20120214-T231011.raw','./data/EK60/DY1706_EK60-D20170609-T005736.raw']
 
+#rawfiles = ['./data/EK60/DY1706_EK60-D20170609-T005736.raw']
+#rawfiles = ['./data/EK60/DY1201_EK60-D20120214-T231011.raw']
+
+#  APPEND ERROR
+#rawfiles = ['./data/EK60/DY1706_EK60-D20170609-T005736.raw','./data/EK60/DY1706_EK60-D20170625-T061707.raw']
+
+#  WORKS
+#rawfiles = ['./data/EK60/DY1706_EK60-D20170625-T061707.raw','./data/EK60/DY1706_EK60-D20170625-T062521.raw']
 
 #  create an instance of the EK60 instrument. This is the top level object used
 #  to interact with EK60 and  data sources
@@ -57,7 +67,7 @@ raw_data_38_1 = ek60.get_rawdata(channel_number=2)
 print(raw_data_38_1)
 
 #  and the second 38 channel
-raw_data_38_2 = ek60.get_rawdata(channel_number=7)
+raw_data_38_2 = ek60.get_rawdata(channel_number=7) #7
 print(raw_data_38_2)
 
 #  append tghe 2nd to the first and print out the results
@@ -66,15 +76,12 @@ print(raw_data_38_1)
 
 
 power = raw_data_38_1.get_power()
-
-threshold = [np.amin(power.power),np.amax(power.power)]
+threshold = [np.nanmin(power.power),np.nanmax(power.power)]
 eg = echogram.echogram(threshold=threshold)
-
 eg.update_echogram(power.power)
-
-
 plt.imshow(eg.echogram_data, cmap=eg.cmap)
 plt.show()
+
 
 pass
 

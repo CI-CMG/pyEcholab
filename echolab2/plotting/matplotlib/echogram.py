@@ -38,8 +38,8 @@ class echogram(object):
         if threshold:
             self.threshold = threshold
 
-        echodata = data.astype('float32')
-
+        #echodata = data.astype('float32')
+        echodata = data
 
         echodata = np.round((echodata - self.threshold[0]) / (self.threshold[1] -
                                 self.threshold[0]) * self._ctLength)
@@ -47,4 +47,4 @@ class echogram(object):
         echodata[echodata > self._ctLength-1] = self._ctLength-1
         echoData = echodata.astype(np.uint8)
 
-        self.echogram_data = np.rot90(echoData,3)
+        self.echogram_data = echoData#np.rot90(echoData,3)
