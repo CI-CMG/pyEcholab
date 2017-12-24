@@ -25,9 +25,53 @@ class ProcessedData(object):
     The ProcessedData class contains
     '''
 
-    def __init__(self, file):
+    def __init__(self, channel_id, frequency):
 
-        self.channel_id = ''
-        self.frequency = 0
-        self.sample_interval = 0
-        self.range
+        self.channel_id = channel_id
+        self.frequency = frequency
+
+        #  sample thickness is the vertical extent of the samples in meters
+        #  it is calculated as thickness = sample interval(s) * sound speed(m/s) / 2
+        #  you should not append processed data arrays with different sample thicknesses
+        self.sample_thickness = 0
+
+        #  sample offset is the number of samples the first row of data are offset away from
+        #  the transducer face.
+        self.sample_offset = 0
+
+        self.range = []
+        self.ping_time = []
+        self.transducer_depth = []
+
+
+    def __str__(self):
+        '''
+        reimplemented string method that provides some basic info about the RawData object
+        '''
+
+        #  print the class and address
+        msg = str(self.__class__) + " at " + str(hex(id(self))) + "\n"
+
+        #  print some more info about the ProcessedData instance
+        n_pings = len(self.ping_time)
+        if (n_pings > 0):
+            msg = msg + "                channel(s): ["
+            for channel in self.channel_id:
+                msg = msg + channel + ", "
+            msg = msg[0:-2] + "]\n"
+            msg = msg + "                 frequency: " + str(self.frequency)+ "\n"
+            msg = msg + "           data start time: " + str(self.ping_time[0])+ "\n"
+            msg = msg + "             data end time: " + str(self.ping_time[n_pings-1])+ "\n"
+            msg = msg + "           number of pings: " + str(n_pings)+ "\n"
+            if (hasattr(self, 'power')):
+                n_pings,n_samples = self.power.shape
+                msg = msg + ("    power array dimensions: (" + str(n_pings)+ "," +
+                        str(n_samples) +")\n")
+            if (hasattr(self, 'angles_alongship')):
+                n_pings,n_samples = self.angles_alongship.shape
+                msg = msg + ("    angle array dimensions: (" + str(n_pings)+ "," +
+                        str(n_samples) +")\n")
+        else:
+            msg = msg + ("  ProcessedData object contains no data\n")
+
+        return msg

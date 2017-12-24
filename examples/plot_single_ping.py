@@ -21,7 +21,7 @@ from echolab2.instruments import EK60
 ping_number = 100
 
 #  define the path to the data file
-raw_filename = "C:/Users/rick.towler/Documents/PyEcholab2/examples/data/DY1706_EK60-D20170609-T005736.raw"
+raw_filename = "./data/EK60/DY1706_EK60-D20170609-T005736.raw"
 
 #create an instance of our EK60 object
 ek60 = EK60.EK60()
