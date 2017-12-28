@@ -40,6 +40,7 @@ class ProcessedData(object):
         self.sample_offset = 0
 
         self.range = []
+        self.ping_number = []
         self.ping_time = []
         self.transducer_depth = []
 
