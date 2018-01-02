@@ -44,6 +44,11 @@ class ProcessedData(object):
         self.ping_time = []
         self.transducer_depth = []
 
+        self.sv = {}
+        self.Sv = {}
+        self.sv = {}
+        self.Sv = {}
+
 
     def __str__(self):
         '''
