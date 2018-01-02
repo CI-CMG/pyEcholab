@@ -9,6 +9,7 @@ import pprint
 
 run_nmea_check = 1
 run_calibration_check = 1
+run_sv_check = 1
 
 
 def nmea_check():
@@ -48,6 +49,20 @@ def calibration_check():
   pp.pprint(vars(c))
 
 
+def sv_check():
+  filenames = ["/home/vagrant/bak/data/EK60/PC1106-D20110830-T052815.raw"]
+  r = EK60()
+  r.read_raw(filenames)
+  c = r.calibration_data['GPT 120 kHz 009072058cb4 3-1 ES120']
+  svcalc = r.raw_data['GPT  38 kHz 0090720346b4 1-1 ES38'].get_sv(calibration=c)
+
+
+  print("\n")
+  print("sv Data")
+  pp = pprint.PrettyPrinter(indent=4)
+  pp.pprint(svcalc)
+
+
 
 #MAIN
 
@@ -57,3 +72,5 @@ if run_nmea_check:
 if run_calibration_check:
   calibration_check()
 
+if run_sv_check:
+  sv_check()
