@@ -10,7 +10,7 @@ if (sys.version_info[0] == 3):
 else:
     from StringIO import StringIO
 import numpy as np
-#import matplotlib.pyplot as plt, figure
+import time
 from matplotlib.pyplot import figure, show, subplots_adjust
 from echolab2.instruments import EK60
 from echolab2.plotting.matplotlib import echogram
@@ -20,7 +20,10 @@ def print_profile_stats(profiler):
     '''
     print_profile_stats prints out the results from a profiler run
     '''
-    s = StringIO.StringIO()
+    if (sys.version_info.major == 2):
+        s = StringIO()
+    else:
+        s = StringIO.StringIO()
     sortby = 'cumulative'
     ps = pstats.Stats(profiler, stream=s).sort_stats(sortby)
     ps.print_stats()
@@ -55,7 +58,9 @@ ek60 = EK60.EK60()
 
 #  use the read_raw method to read in a data file
 #profiler.enable()
+#time.clock()
 ek60.read_raw(rawfiles)
+#print("read time: " + str(time.clock()))
 #profiler.disable()
 #print_profile_stats(profiler)
 
@@ -71,7 +76,7 @@ raw_data_38_1 = ek60.get_rawdata(channel_number=2)
 '''
 the sample data from channel 2 is contained in a 136x994 array. The data was recorded
 with a 1024us transmit pulse length which on the EK60 and related hardware results
-in a sample interval of 256us (sample interval = pulse length / 3). The data were
+in a sample interval of 256us (sample interval = pulse length / 4). The data were
 recorded in 2012.
 '''
 print(raw_data_38_1)
@@ -85,7 +90,9 @@ resulting in a sample interval of 128us. These data were recorded in 2017.
 print(raw_data_38_2)
 
 #  append the 2nd object's data to the first and print out the results
+t = time.clock()
 raw_data_38_1.append(raw_data_38_2)
+print("append 1 time: " + str(time.clock() - t))
 '''
 The result of this append is that raw_data_38_1 now contains data from 899 pings.
 The first 136 pings are the 2012 data and the next 763 the 2017 data. The sample
@@ -94,7 +101,9 @@ data arrays are 899x1059 and the object contains 2 unique sample intervals.
 print(raw_data_38_1)
 
 #  insert the 2nd object's data into the first at ping 50
+t = time.clock()
 raw_data_38_1.insert(raw_data_38_2, ping_number=50)
+print("insert time: " + str(time.clock() - t))
 '''
 Now raw_data_38_1 contains 1662 pings. Pings 1-50 are from the 2012 data. Pings
 51-813 are the 763 pings from the 2012 data. Pings 814-899 are the rest of the 2012
@@ -135,7 +144,9 @@ outside of the get_* methods and passed into them using the return_indices keywo
 
 #  call get_power to get a processed data object that contains power data. We provide
 #  no arguments so we get all pings ordered by time.
+t = time.clock()
 processed_power_1 = raw_data_38_1.get_power()
+print("get_power - time ordered: " + str(time.clock() - t))
 #  that should be 1662 pings by 1988 samples.
 print(processed_power_1)
 
@@ -147,7 +158,9 @@ ax_2.set_title("Power data in time order")
 
 
 #  now request power data in ping order
+t = time.clock()
 processed_power_2 = raw_data_38_1.get_power(time_order=False)
+print("get_power - ping ordered: " + str(time.clock() - t))
 #  this will also be 1662 pings by 1988 samples but the order will be identical
 #  to the top figure
 print(processed_power_2)
@@ -161,3 +174,4 @@ ax_3.set_title("Power data in ping order")
 #  show our figure
 show()
 
+pass
