@@ -28,15 +28,24 @@
 
 '''
 
-
 import numpy as np
-
 
 class data_container(object):
     '''
     echolab2.data_container is the base class for all classes that store "ping"
-    based data from fisheries sonar systems. This class defines the common
-    data attributes and methods that the user facing classes share.
+    based data from fisheries sonar systems.  This class is not intended to be
+    instantiated by the user. It is a base class that defines the common data
+    attributes and methods that the user facing classes share.
+
+    Derived classes will add various attributes to this class that store
+    either scalar values on a per-ping basis like sound velocity, transmit power
+    transducer depth, etc. or attributes that store vector data such as
+    sample power and sample angle data.
+
+    One major assumption is that all data stored within an instance of our
+    derived classes must exist on the same "time grid". It is assumed that the
+    index of a specific ping time should map to other attributes collected at
+    that time. As a result, all attributes should share the same primary dimension.
     '''
 
 
@@ -62,7 +71,6 @@ class data_container(object):
         self.ping_time = None
         self.ping_number = None
 
-
         #  _data_attributes is an internal list that contains the names of all of the class's
         #  "data attributes". The echolab2 package uses this attribute to generalize various
         #  functions that manipulate these data.
@@ -70,14 +78,16 @@ class data_container(object):
         #  "data attributes" are attributes that store data by ping. They can be 1d such as
         #  ping_time, sample_interval, and transducer_depth. Or they can be 2d such as power,
         #  Sv, angle data, etc. echolab2 supports attributes that are lists and 1 and 2d
-        #  numpy arrays.
-        #
-        #  When subclassing, you must extend this list in your __init__ method to contain
-        #  all of your
+        #  numpy arrays. When subclassing, you must extend this list in your __init__ method
+        #  to contain all of the possible data attributes of that class.
 
+        #  for the base class, we only define ping_time and ping_number which are attributes
+        #  that all data objects must have.
         self._data_attributes = ['ping_time',
-                                 'ping_number']
+                                         'ping_number']
 
+        #  when writing methods that operate on these data, we will *not* assume that they
+        #  exist. An attribute should only exist if it contains data.
 
 
     def add_attribute(self, name, data):
@@ -89,7 +99,7 @@ class data_container(object):
         It performs some basic checks on the data, enforcing dimensions.
         '''
 
-        #  check if the dimensions match our
+        #  TODO - check if the dimensions match our
 
         self._data_attributes.append(name)
         setattr(self, name, object)
