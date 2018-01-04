@@ -19,14 +19,19 @@
 
 '''
 
+from ..data_conatiner import data_container
 
-class ProcessedData(object):
+
+class ProcessedData(data_container.data_container):
     '''
     The ProcessedData class contains
     '''
 
     def __init__(self, channel_id, frequency):
 
+        super(ProcessedData, self).__init__()
+
+        #  set the frequency and channel_id
         self.channel_id = channel_id
         self.frequency = frequency
 
@@ -39,15 +44,7 @@ class ProcessedData(object):
         #  the transducer face.
         self.sample_offset = 0
 
-        self.range = []
-        self.ping_number = []
-        self.ping_time = []
-        self.transducer_depth = []
 
-        self.sv = {}
-        self.Sv = {}
-        self.sv = {}
-        self.Sv = {}
 
 
     def __str__(self):
