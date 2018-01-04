@@ -180,7 +180,7 @@ class data_container(object):
                     #  and vertically trim the array we're inserting
                     obj_to_insert._resize_arrays(new_pings, new_samples)
             #  vertically resize the object we're inserting into
-            self.resize_arrays(my_pings, new_samples)
+            self._resize_arrays(my_pings, new_samples)
         elif (my_samples > new_samples):
             #  resize the object we're inserting
             obj_to_insert._resize_arrays(new_pings, new_samples)
@@ -233,7 +233,7 @@ class data_container(object):
         self.n_pings = self.ping_number.shape[0]
 
 
-    def trim(self, length, n_samples=None):
+    def trim(self, n_samples=None):
         '''
         trim deletes pings from an echolab2 data object to a given length
         '''
@@ -253,7 +253,7 @@ class data_container(object):
                     break
 
         #  resize keeping the sample number the same
-        self.resize_arrays(self, length, n_samples)
+        self._resize_arrays(self.n_pings, n_samples)
 
 
     def _get_data_dimensions(self):

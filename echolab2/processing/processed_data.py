@@ -19,17 +19,17 @@
 
 '''
 
-from ..data_conatiner import data_container
+from ..data_container import data_container
 
 
-class ProcessedData(data_container.data_container):
+class processed_data(data_container):
     '''
-    The ProcessedData class contains
+    The processed_data class contains
     '''
 
     def __init__(self, channel_id, frequency):
 
-        super(ProcessedData, self).__init__()
+        super(processed_data, self).__init__()
 
         #  set the frequency and channel_id
         self.channel_id = channel_id
