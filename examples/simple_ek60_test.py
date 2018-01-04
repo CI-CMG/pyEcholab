@@ -114,7 +114,7 @@ print(raw_data_38_1)
 #  create an axes
 ax_1 = fig.add_subplot(3,1,1)
 #  create an echogram to plot up the raw sample data
-echogram_2 = echogram.echogram(ax_1, data=raw_data_38_1.power)
+echogram_2 = echogram.echogram(ax_1, raw_data_38_1, 'power')
 ax_1.set_title("Raw power as stored in RawData object")
 
 
@@ -153,7 +153,7 @@ print(processed_power_1)
 #  create an axes
 ax_2 = fig.add_subplot(3,1,2)
 #  create an echogram which will display on our newly created axes
-echogram_2 = echogram.echogram(ax_2, data=processed_power_1.power)
+echogram_2 = echogram.echogram(ax_2, processed_power_1, 'power')
 ax_2.set_title("Power data in time order")
 
 #  now request Sv data in time order
@@ -166,7 +166,7 @@ print(Sv)
 #  create another axes
 ax_3 = fig.add_subplot(3,1,3)
 #  create an echogram which will display on our newly created axes
-echogram_3 = echogram.echogram(ax_3, threshold=[-70,-34], data=Sv.Sv)
+echogram_3 = echogram.echogram(ax_3, Sv, 'Sv', threshold=[-70,-34],)
 ax_3.set_title("Sv data in time order")
 
 

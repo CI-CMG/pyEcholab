@@ -1,6 +1,7 @@
 
 
 #import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 from matplotlib.colors import LinearSegmentedColormap, Colormap
 import numpy as np
 
@@ -14,7 +15,7 @@ class echogram(object):
     '''
 
 
-    def __init__(self, axes, data=None, threshold=None, cmap=None):
+    def __init__(self, axes, data_object=None, attribute='Sv', threshold=None, cmap=None):
 
         self.axes = axes
         self.threshold = threshold
@@ -37,13 +38,14 @@ class echogram(object):
         self._simrad_cmap.set_bad(color='grey')
         self.cmap = self._simrad_cmap
 
-        self.set_data(data)
+        self.set_data(data_object, attribute=attribute)
 
 
-    def set_data(self, data, update=True):
-        if (isinstance(data, np.ndarray)):
-            #  update our data property - make sure it's a float
-            self.data = data.astype('float32')
+    def set_data(self, data_object, attribute='Sv', update=True):
+        if (hasattr(data_object, attribute)):
+            self.data_object = data_object
+            self.attribute = attribute
+
             if update:
                 self.update()
 
@@ -68,20 +70,55 @@ class echogram(object):
             self.update()
 
 
-    def update(self, data=None, threshold=None):
+    def update(self, data_object=None, attribute=None, threshold=None,
+            x_label_attribute='ping_time', y_label_attribute='range'):
 
+        #  update attributes if required
         if (threshold):
             self.threshold = threshold
+        if (data_object):
+            self. set_data(data_object, attribute=attribute, update=False)
 
-        if (not data):
-            data = self.data
+        #  check if we have the data we're being asked to plot
+        if (not hasattr(self.data_object, self.attribute)):
+            #  we don't have any data to plot
+            return
 
+        #  get a reference to that data
+        data = getattr(self.data_object, self.attribute)
+
+        #  set the threshold
         if (self.threshold):
             threshold = self.threshold
         else:
             threshold = [np.nanmin(data),np.nanmax(data)]
 
-        echodata = np.flipud(np.rot90(data,1))
-        self.axes.imshow(echodata, cmap=self.cmap, vmin=threshold[0],
+        #  transform the data so it looks
+        echodata = np.flipud(np.rot90(data,1))#.astype('float32')
+
+        #  plot the sample data
+        self.axes_image = self.axes.imshow(echodata, cmap=self.cmap, vmin=threshold[0],
                 vmax=threshold[1], aspect='auto')
+
+
+        #  THE AXES LABELING BELOW DOESN'T WORK
+        if (0):
+
+            #  update the axes
+            if (hasattr(self.data_object, x_label_attribute)):
+                tick_labels = getattr(self.data_object, x_label_attribute)
+                tic_locs = self.axes.get_xticks()
+                tic_locs = tic_locs[ np.logical_and(tic_locs >= 0, tic_locs <= tick_labels.shape[0])].astype('uint32')
+                tick_labels = tick_labels[tic_locs]
+                self.axes.set_xticklabels(tick_labels)
+
+            if (hasattr(self.data_object, y_label_attribute)):
+
+                tick_labels = getattr(self.data_object, y_label_attribute)
+
+                tic_locs = np.arange(0, tick_labels.shape[0], 25)
+                tick_labels = tick_labels[tic_locs]
+
+                self.axes.set_yticklabels(tick_labels)
+                self.axes.yaxis.set_major_formatter(ticker.FormatStrFormatter('%0.1f'))
 
