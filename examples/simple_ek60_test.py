@@ -156,28 +156,11 @@ ax_2 = fig.add_subplot(3,1,2)
 echogram_2 = echogram.echogram(ax_2, data=processed_power_1.power)
 ax_2.set_title("Power data in time order")
 
-if (0):
-    #  now request power data in ping order
-    t = time.clock()
-    processed_power_2 = raw_data_38_1.get_power(time_order=False)
-    print("get_power - ping ordered: " + str(time.clock() - t))
-    #  this will also be 1662 pings by 1988 samples but the order will be identical
-    #  to the top figure
-    print(processed_power_2)
-
-    #  create another axes
-    ax_3 = fig.add_subplot(3,1,3)
-    #  create an echogram which will display on our newly created axes
-    echogram_3 = echogram.echogram(ax_3, data=processed_power_2.power)
-    ax_3.set_title("Power data in ping order")
-
-
-#  now request power data in ping order
+#  now request Sv data in time order
 t = time.clock()
 Sv = raw_data_38_1.get_sv()
 print("get_Sv - time ordered: " + str(time.clock() - t))
-#  this will also be 1662 pings by 1988 samples but the order will be identical
-#  to the top figure
+#  this will also be 1662 pings by 1988 samples but is Sv ordered by time
 print(Sv)
 
 #  create another axes
