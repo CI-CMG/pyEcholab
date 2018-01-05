@@ -166,7 +166,7 @@ print(Sv)
 #  create another axes
 ax_3 = fig.add_subplot(3,1,3)
 #  create an echogram which will display on our newly created axes
-echogram_3 = echogram.echogram(ax_3, Sv, 'Sv', threshold=[-70,-34],)
+echogram_3 = echogram.echogram(ax_3, Sv, 'Sv', threshold=[-70,-34])
 ax_3.set_title("Sv data in time order")
 
 
