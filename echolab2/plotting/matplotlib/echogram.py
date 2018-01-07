@@ -36,7 +36,11 @@ class echogram(object):
                                               (0.4705,0.2353,0.1568)]
         self._simrad_cmap = LinearSegmentedColormap.from_list('Simrad',  self._simrad_color_table)
         self._simrad_cmap.set_bad(color='grey')
-        self.cmap = self._simrad_cmap
+
+        if (cmap is None):
+            self.cmap = self._simrad_cmap
+        else:
+            self.cmap = cmap
 
         self.set_data(data_object, attribute=attribute)
 

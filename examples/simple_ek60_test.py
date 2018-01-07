@@ -11,7 +11,7 @@ else:
     from StringIO import StringIO
 import numpy as np
 import time
-from matplotlib.pyplot import figure, show, subplots_adjust
+from matplotlib.pyplot import figure, show, subplots_adjust, get_cmap
 from echolab2.instruments import EK60
 from echolab2.plotting.matplotlib import echogram
 
@@ -173,5 +173,36 @@ ax_3.set_title("Sv data in time order")
 
 #  show our figure
 show()
+
+
+fig = figure()
+#  set some properties for the sub plot layout
+subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.93, wspace=None, hspace=0.5)
+
+angle_cmap = get_cmap('plasma')
+
+#  now request Sv data in time order
+t = time.clock()
+Sv = raw_data_38_1.get_physical_angles(insert_into=Sv)
+print("get_physical_angles - time ordered: " + str(time.clock() - t))
+#  this processed data instance now has 3 data attributes:Sv,
+#  angles_alongship, and angles_athwartship
+print(Sv)
+
+#  create another axes
+ax_1 = fig.add_subplot(2,1,1)
+#  create an echogram which will display on our newly created axes
+echogram_3 = echogram.echogram(ax_1, Sv, 'angles_alongship', cmap=angle_cmap)
+ax_1.set_title("angles_alongship data in time order")
+
+#  create another axes
+ax_2 = fig.add_subplot(2,1,2)
+#  create an echogram which will display on our newly created axes
+echogram_3 = echogram.echogram(ax_2, Sv, 'angles_athwartship', cmap=angle_cmap)
+ax_2.set_title("angles_athwartship data in time order")
+
+#  show our figure
+show()
+
 
 pass

@@ -18,7 +18,7 @@ should be) virtually identical.
 
 """
 
-import echolab
+from echolab2.instruments import EK60
 import numpy as np
 from matplotlib import pyplot as plt
 import h5py
@@ -60,20 +60,20 @@ def print_difference(difference, test):
     print('    Maximum difference: %4.5f' % (difference.max()))
 
 
-def plot_data(ref_data, el_data, diff_data, x, y, d_title, cb_label, d_label,
+def plot_data(ref_data, el_data, diff_data, y, x, d_title, cb_label, d_label,
               title, ev_data=np.array([])):
 
     extents = [x[0], x[1], y[0], y[1]]
 
-    fig = plt.figure(figsize=(14,10))
+    fig = plt.figure(figsize=(11,7))
     fig.suptitle(title, fontsize=36)
 
     ax = plt.subplot(2,2,1)
     img = ax.imshow(ref_data,
               interpolation='nearest',
               extent=extents)
-    ax.set_ylabel('range (m)')
-    ax.set_xlabel('ping')
+    ax.set_xlabel('range (m)')
+    ax.set_ylabel('ping')
     cb = plt.colorbar(img, ax=ax)
     cb.set_label(d_label)
     plt.title('MATLAB Reference Data')
@@ -82,20 +82,20 @@ def plot_data(ref_data, el_data, diff_data, x, y, d_title, cb_label, d_label,
     img = ax.imshow(el_data,
               interpolation='nearest',
               extent=extents)
-    ax.set_ylabel('range (m)')
-    ax.set_xlabel('ping')
+    ax.set_xlabel('range (m)')
+    ax.set_ylabel('ping')
     cb = plt.colorbar(img, ax=ax)
     cb.set_label(d_label)
-    plt.title('pyEcholab Data')
+    plt.title('pyEcholab2 Data')
 
     ax = plt.subplot(2,2,3)
     img = ax.imshow(diff_data,
               interpolation='nearest',
-              vmin=-0.001,
-              vmax=0.001,
+              vmin=diff_data.min(),
+              vmax=diff_data.max(),
               extent=extents)
-    ax.set_ylabel('range (m)')
-    ax.set_xlabel('ping')
+    ax.set_xlabel('range (m)')
+    ax.set_ylabel('ping')
     cb = plt.colorbar(img, ax=ax)
     cb.set_label(cb_label)
     plt.title(d_title)
@@ -104,11 +104,11 @@ def plot_data(ref_data, el_data, diff_data, x, y, d_title, cb_label, d_label,
         ax = plt.subplot(2,2,4)
         img = ax.imshow(ev_data,
                   interpolation='nearest',
-                  vmin=-0.02,
-                  vmax=0.02,
+                  vmin=diff_data.min(),
+                  vmax=diff_data.max(),
                   extent=extents)
-        ax.set_ylabel('range (m)')
-        ax.set_xlabel('ping')
+        ax.set_xlabel('range (m)')
+        ax.set_ylabel('ping')
         cb = plt.colorbar(img, ax=ax)
         cb.set_label('Sv difference')
         plt.title('Echoview/pyEcholab Sv difference')
@@ -162,8 +162,8 @@ if __name__ == "__main__":
 
     #  read in the .raw data file
     print('Reading the raw file %s' % (raw_filename[0]))
-    raw_data = echolab._io.raw_reader.RawReader(raw_filename[0])
-
+    ek60 = EK60.EK60()
+    ek60.read_raw(raw_filename[0])
 
     #  load up the reference data
     ref_data = {}
@@ -174,47 +174,26 @@ if __name__ == "__main__":
         print('Reading %s' % (i[1]))
 
         #  stick it in a dict - orient the data to match pyEcholab
-        ref_data[i[0]] = {'power':np.flipud(np.rot90(f.get('power').value)),
-                          'sv':np.flipud(np.rot90(f.get('sv').value)),
-                          'sv_linear':np.flipud(np.rot90(f.get('sv_linear').value)),
-                          'sp':np.flipud(np.rot90(f.get('sp').value)),
-                          'sp_linear':np.flipud(np.rot90(f.get('sp_linear').value)),
-                          'alongship':np.flipud(np.rot90(f.get('alongship').value)),
-                          'alongship_e':np.flipud(np.rot90(f.get('alongship_e').value)),
-                          'athwartship':np.flipud(np.rot90(f.get('athwartship').value)),
-                          'athwartship_e':np.flipud(np.rot90(f.get('athwartship_e').value)),
+        ref_data[i[0]] = {'power':((f.get('power').value)),
+                          'sv':((f.get('sv').value)),
+                          'sv_linear':((f.get('sv_linear').value)),
+                          'sp':((f.get('sp').value)),
+                          'sp_linear':((f.get('sp_linear').value)),
+                          'alongship':((f.get('alongship').value)),
+                          'alongship_e':((f.get('alongship_e').value)),
+                          'athwartship':((f.get('athwartship').value)),
+                          'athwartship_e':((f.get('athwartship_e').value)),
                           'ping_number':f.get('ping_number').value,
                           'range':f.get('range').value,
                           'frequency':f.get('frequency').value}
         f.close()
 
-
-    #  calculate all of the derived values
-    print('Calculating Sv, sv, Sp, sp, physical, and electrical angles')
-
-    #  Calculating these values adds them to the "data" dataframe. Once these
-    #  values are calculated, you will typically access them using the to_array()
-    #  method. You *can* access them directly in the data dataframe but depending
-    #  on how you do this you may end up with a "view" of the data which is
-    #  read-only (you will not receive an error, but your writes will not stick.)
-
-    #  Calculate physical angles
-    raw_data.physical_angles()
-
-    #  Calculate Sv
-    raw_data.Sv(linear=False)
-
-    #  Calculate sv
-    raw_data.Sv(linear=True)
-
-    #  Calculate Sp
-    raw_data.Sp(linear=False)
-
-    #  Calculate sp
-    raw_data.Sp(linear=True)
-
     #  compare data for the two channels
-    for i in range(2):
+    for i in range(1):
+
+        #  get a reference to this channel's raw_data
+        raw_data = ek60.get_rawdata(i+1)
+
 
         # set up the figure extents
         x = [ref_data[reference_input[i][0]]['ping_number'].min(),
@@ -223,98 +202,95 @@ if __name__ == "__main__":
              ref_data[reference_input[i][0]]['range'].min()]
 
 
-        #  extract the power data - make sure we keep the first sample
-        power = raw_data.to_array('power', channel=i+1, drop_zero_range=False)
-        #  convert power from raw indexed values (power = power * 10 * log10(2) / 256)
-        power = power * 0.011758984205624
+        #  extract the power data into a processed_data object
+        data = raw_data.get_power()
         title = '%3.0f kHz Power results' % (ref_data[reference_input[i][0]]['frequency'] / 1000)
-        difference = ref_data[reference_input[i][0]]['power'] - power.data
+        difference = ref_data[reference_input[i][0]]['power'] - data.power
         print_difference(difference, title)
         if (plot_figs):
-            fig = plot_data(ref_data[reference_input[i][0]]['power'], power.data,
+            fig = plot_data(ref_data[reference_input[i][0]]['power'], data.power,
                             difference, x, y, 'power difference', 'Difference in dB',
                             'Power', title)
             plt.show(block=True)
 
 
         #  get the Sv array for this channel
-        Sv = raw_data.to_array('Sv', channel=i+1, drop_zero_range=False)
+        #  extract the power data into a processed_data object
+        data = raw_data.get_sv(insert_into=data, keep_power=True)
         title = '%3.0f kHz Sv results' % (ref_data[reference_input[i][0]]['frequency'] / 1000)
-        difference = ref_data[reference_input[i][0]]['sv'] - Sv.data
+        difference = ref_data[reference_input[i][0]]['sv'] - data.Sv
         print_difference(difference, title)
 
         #  read in the Echoview exported Sv (EV exports this in an older matlab
         #  format so we use scipy.io.loadmat to read it)
         ev_data = scipy.io.loadmat(ev_filenames[i][0])
 
-        #  orient the data so it lines up with pyEcholab's data
-        evd = np.flipud(np.rot90(ev_data['Data_values']))
         #  calculate the difference between Echoview's Sv output and pyEcholab. Note
         #  that since we selected to not drop the zero range sample we must remove
         #  the first sample from our pyEcholab data since Echoview always drops
         #  the first sample.
-        ev_difference = evd - Sv.data[1:,:]
+        ev_difference = ev_data['Data_values'] - data.Sv[:,1:]
         if (plot_figs):
-            fig = plot_data(ref_data[reference_input[i][0]]['sv'], Sv.data,
+            fig = plot_data(ref_data[reference_input[i][0]]['sv'], data.Sv,
                             difference, x, y, 'Sv difference', 'Difference in dB',
                             'Sv', title, ev_data=ev_difference)
             plt.show(block=True)
 
 
         #  get the sv array for this channelS
-        sv_linear = raw_data.to_array('sv', channel=i+1, drop_zero_range=False)
+        data = raw_data.get_sv(insert_into=data, linear=True)
         title = '%3.0f kHz sv results' % (ref_data[reference_input[i][0]]['frequency'] / 1000)
-        difference = ref_data[reference_input[i][0]]['sv_linear'] - sv_linear.data
+        difference = ref_data[reference_input[i][0]]['sv_linear'] - data.sv
         print_difference(difference, title)
         if (plot_figs):
-            fig = plot_data(ref_data[reference_input[i][0]]['sv_linear'], sv_linear.data,
+            fig = plot_data(ref_data[reference_input[i][0]]['sv_linear'], data.sv,
                             difference, x, y, 'sv difference', 'Difference',
                             'sv', title)
             plt.show(block=True)
 
 
         #  get the Sp array for this channel
-        Sp = raw_data.to_array('Sp', channel=i+1, drop_zero_range=False)
+        data = raw_data.get_sp(insert_into=data)
         title = '%3.0f kHz Sp results' % (ref_data[reference_input[i][0]]['frequency'] / 1000)
-        difference = ref_data[reference_input[i][0]]['sp'] - Sp.data
+        difference = ref_data[reference_input[i][0]]['sp'] - data.Sp
         print_difference(difference, title)
         if (plot_figs):
-            fig = plot_data(ref_data[reference_input[i][0]]['sp'], Sp.data,
+            fig = plot_data(ref_data[reference_input[i][0]]['sp'], data.Sp,
                             difference, x, y, 'Sp difference', 'Difference in dB',
                             'Sp', title)
             plt.show(block=True)
 
         #  get the sp array for this channel
-        sp_linear = raw_data.to_array('sp', channel=i+1, drop_zero_range=False)
+        data = raw_data.get_sp(insert_into=data, linear=True)
         title = '%3.0f kHz sp results' % (ref_data[reference_input[i][0]]['frequency'] / 1000)
-        difference = ref_data[reference_input[i][0]]['sp_linear'] - sp_linear.data
+        difference = ref_data[reference_input[i][0]]['sp_linear'] - data.sp
         print_difference(difference, title)
         if (plot_figs):
-            fig = plot_data(ref_data[reference_input[i][0]]['sp_linear'], sp_linear.data,
+            fig = plot_data(ref_data[reference_input[i][0]]['sp_linear'], data.sp,
                             difference, x, y, 'sp difference', 'Difference',
                             'sp', title)
             plt.show(block=True)
 
         #  get the physical angles array
-        phys_angles = raw_data.to_array('p_angles', channel=i+1, drop_zero_range=False)
+        data = raw_data.get_physical_angles(insert_into=data)
         #  plot alongship angles
         title = '%3.0f kHz alongship angle results' % (ref_data[reference_input[i][0]]['frequency'] / 1000)
-        difference = ref_data[reference_input[i][0]]['alongship'] - phys_angles['alongship'].data
+        difference = ref_data[reference_input[i][0]]['alongship'] - data.angles_alongship
         print_difference(difference, title)
         if (plot_figs):
             fig = plot_data(ref_data[reference_input[i][0]]['alongship'],
-                            phys_angles['alongship'].data, difference, x, y,
+                            data.angles_alongship, difference, x, y,
                             'alongship difference', 'Difference in degrees',
                             'angle', title)
             plt.show(block=True)
 
         #  plot athwartship angles
         title = '%3.0f kHz athwartship angle results' % (ref_data[reference_input[i][0]]['frequency'] / 1000)
-        difference = ref_data[reference_input[i][0]]['athwartship'] - phys_angles['athwartship'].data
+        difference = ref_data[reference_input[i][0]]['athwartship'] - data.angles_athwartship
         print_difference(difference, title)
         if (plot_figs):
             fig = plot_data(ref_data[reference_input[i][0]]['athwartship'],
-                            phys_angles['athwartship'].data, difference, x, y,
+                            data.angles_athwartship, difference, x, y,
                             'athwartship difference', 'Difference in degrees',
                             'angle', title)
             plt.show(block=True)
