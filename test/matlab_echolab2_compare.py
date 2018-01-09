@@ -236,8 +236,15 @@ if __name__ == "__main__":
                             'Sv', title, ev_data=ev_difference)
             plt.show(block=True)
 
+            ev_ping = ev_data['Data_values'][10,:]
+            fig = plt.plot(np.arange(ev_ping.shape[0]), ev_ping, label='Echoview', color='blue', linewidth=2)
+            fig = plt.plot(np.arange(data.Sv[10,1:].shape[0]), data.Sv[10,1:], label='pyEcholab2', color='red')
+            plt.legend()
+            plt.show(block=True)
 
-        #  get the sv array for this channelS
+
+
+        #  get the sv array for this channel
         data = raw_data.get_sv(insert_into=data, linear=True)
         title = '%3.0f kHz sv results' % (ref_data[reference_input[i][0]]['frequency'] / 1000)
         difference = ref_data[reference_input[i][0]]['sv_linear'] - data.sv
