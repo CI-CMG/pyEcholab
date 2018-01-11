@@ -15,7 +15,7 @@
 
 
 
-    #import pynmea2 FIXME Uncomment once this is available.
+    #import pynmea2 TODO Uncomment once this is available.
 
 
 from collections import defaultdict
@@ -36,6 +36,11 @@ class NMEAData(object):
         to be this one, and we could roll our own if needed. Just throwing it
         out there.
     '''
+
+    #TODO Add functions that allow user to get all raw nmea data based on 
+    #TODO time and based on types return nmea data object. all by default.
+    #TODO Add interpolate_pings
+    #TODO 
 
 
     def __init__(self):
@@ -145,6 +150,13 @@ class NMEAData(object):
 
 
     def get_interpolate(self, processed_data, nmea_talker=None, nmea_type=None):
+        #TODO Add prioritization of location data based on type.
+        #TODO Get this from Chuck
+        #TODO Add ability to get the data by time.
+        #TODO Add a param to specify, lat, lon or something else.
+        #TODO Add code to handle outliers in lat/lon values.
+        #TODO make this work with both raw and processedata objects.
+
         if nmea_talker is not None and nmea_type is not None:
             index = np.intersect1d(self.nmea_talker_index[nmea_talker], \
                                    self.nmea_type_index[nmea_type])
@@ -160,12 +172,21 @@ class NMEAData(object):
         #Create time, lat and lon arrays.
         lat_time = np.empty(0,  dtype='datetime64[s]')
         lon_time = np.empty(0,  dtype='datetime64[s]')
+
         #TODO Set data types to work with pynmea2 and interp.
         lat = np.empty(1, dtype='float32')
         lon = np.empty(1, dtype='float32')
+
         for record in self.raw_datagrams[index]:
             if 'text' in record and isinstance(record['text'], str):
                 sentence_data = NMEASentence.parse(record['text'])
+                #Create an array with success or fail for each.
+                #Add a flag to the output.  
+                #Add an alert based on threshold based on data type, lat, lon.
+                #Generate a warning.  If over 60%.
+                #TODO if this data was munged, what gets returned?  
+                #TODO Do we want to generated a warning? something else?
+                #TODO Add call to get_interpolate in run_checks.py
                 if 'time' in record: 
                     if hasattr(sentence_data, 'lat'):
                         #lat = np.append(lat, sentence_data.lat)
@@ -184,11 +205,11 @@ class NMEAData(object):
             
         
         interpolated_lat = np.empty(1, dtype='float32')
-        #for timestamp in ping_times:
-        #    np.datetime64(timestamp).astype(datetime)
-        #    f = np.interp(self.to_float(timestamp), map(to_float, lat_time), lat)
-        #    interpolated_lat.append(f)
-        #print("interpolated_lat", interpolated_lat)
+        for timestamp in ping_times:
+            np.datetime64(timestamp).astype(datetime)
+            f = np.interp(self.to_float(timestamp), map(to_float, lat_time), lat[0])
+            interpolated_lat.append(f)
+        print("interpolated_lat", interpolated_lat)
 
 
     def to_float(self, d, epoch=None):
