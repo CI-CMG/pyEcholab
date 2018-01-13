@@ -3,13 +3,13 @@
 
 """
 
-from echolab2.instruments.EK60 import EK60
+from instruments.EK60 import EK60
 import pprint
 
 
 run_nmea_check = 1
-run_calibration_check = 1
-run_sv_check = 1
+run_calibration_check = 0
+run_sv_check = 0
 
 
 def nmea_check():
@@ -22,6 +22,14 @@ def nmea_check():
 
   pp = pprint.PrettyPrinter(indent=4)
   pp.pprint(r.nmea_data)
+
+  processed_data_obj = r.raw_data['GPT  38 kHz 0090720346b4 1-1 ES38'].get_power()
+  processed_data_obj = r.nmea_data.get_interpolate(processed_data_obj)
+  
+  print("interpolated latitude")
+  print("processed_data_obj.latitude")
+  pp.pprint(processed_data_obj.latitude)
+
 
 
 def calibration_check():
