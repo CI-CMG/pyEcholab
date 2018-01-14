@@ -45,11 +45,6 @@ class processed_data(data_container):
         #  the transducer face.
         self.sample_offset = 0
 
-        self.latitude = []
-        self.longintude = []
-
-
-
 
     def __str__(self):
         '''
