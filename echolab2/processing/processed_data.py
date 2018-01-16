@@ -19,7 +19,8 @@
 
 '''
 
-from ..data_container import data_container
+#from ..data_container import data_container
+from data_container import data_container
 
 
 class processed_data(data_container):
@@ -43,8 +44,6 @@ class processed_data(data_container):
         #  sample offset is the number of samples the first row of data are offset away from
         #  the transducer face.
         self.sample_offset = 0
-
-
 
 
     def __str__(self):

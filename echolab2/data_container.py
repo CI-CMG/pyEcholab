@@ -92,6 +92,21 @@ class data_container(object):
         #  when writing methods that operate on these data, we will *not* assume that they
         #  exist. An attribute should only exist if it contains data.
 
+        # nmea data
+        self.lat = []
+        self.lon = []
+        self.lat_dir = []
+        self.lon_dir= []
+        self.xgps_qual = []
+        self.num_sats = []
+        self.horizontal_dil = []
+        self.altitude = []
+        self.altitude_units = []
+        self.geo_sep_units = []
+        self.age_gps_data = []
+        self.ref_station_id = []
+
+
 
     def add_attribute(self, name, data):
         """
