@@ -33,10 +33,10 @@ until finished
 End with an example of getting some data out of the system or using it for a little demo
 
 ## Data
-
-Data used for running the examples and verifying the results of the conversion and integration functions.
-
 *Note that these files are not shared publicly and will need to be moved before making this project public.*
+Data used for running the examples and verifying the results of the conversion and integration functions. Place new files for testing into the Test Data Directory
+
+[Test Data Directory](https://drive.google.com/drive/u/0/folders/0BzfkO6wrXhxYOHVLOWVKUlJBYmc)
 
 [Test Data](https://drive.google.com/open?id=1SYbK2eDGSEtrGbH4G82cw2aq-lklLxKS)
 
