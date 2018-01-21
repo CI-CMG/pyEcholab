@@ -18,12 +18,12 @@
                       CLASS DESCRIPTION GOES HERE
 
 '''
+import numpy as np
+from ..sample_data import sample_data
+#from sample_data import sample_data
 
-#from ..data_container import data_container
-from data_container import data_container
 
-
-class processed_data(data_container):
+class processed_data(sample_data):
     '''
     The processed_data class contains
     '''
@@ -44,6 +44,67 @@ class processed_data(data_container):
         #  sample offset is the number of samples the first row of data are offset away from
         #  the transducer face.
         self.sample_offset = 0
+
+
+    def shift_pings(self, vert_shift):
+        """
+        shift_pings shifts sample data vertically by an arbitrary amount,
+        interpolating sample data to the new vertical axis.
+
+            vert_shift is a scalar or vector n_pings long that contains the
+            constant shift for all pings or a per-ping shift respectively.
+
+        """
+
+        #  determine the vertical extent of the shift
+        min_shift = np.min(vert_shift)
+        max_shift = np.max(vert_shift)
+        vert_ext = max_shift - min_shift
+
+        #  determine our vertical axis - this has to be range or depth
+        if hasattr(self, 'range'):
+            vert_axis = self.range
+        else:
+            vert_axis = self.depth
+
+        #  if there is a new vertical extent resize our arrays
+        if (vert_ext != 0):
+            #  determine the number of new samples as a result of the shift
+            new_samps = np.ceil(vert_ext.astype('float32') / self.sample_thickness)
+            #  and resize (n_samples will be updated in the _resize method)
+            old_samps = self.n_samples
+            self._resize_arrays(self.n_pings, self.n_samples + new_samps)
+
+        # create the new vertical axis
+        new_axis = (np.arange(self.n_samples) * self.sample_thickness) + np.min(vert_axis) + min_shift
+
+        #  check if this is not a constant shift
+        if (vert_ext != 0):
+            #  not constant, work thru the 2d attributes and interpolate the sample data
+            for attr_name in self._data_attributes:
+                attr = getattr(self, attr_name)
+                if (isinstance(attr, np.ndarray) and (attr.ndim == 2)):
+                    for ping in range(self.n_pings):
+                        attr[ping,:] = np.interp(new_axis, vert_axis + vert_shift[ping],
+                                attr[ping,:old_samps], left=np.nan, right=np.nan)
+
+        # and assign the new axis
+        vert_axis = new_axis
+
+
+    def _resize_arrays(self, new_ping_dim, new_sample_dim):
+        """
+        _resize_arrays reimplements sample_data._resize_arrays adding updating of the
+        n_pings attribute. In the processed data object we assume that all pings contain
+        data (unlike, for example EK60.raw_data where data arrays can be larger than
+        the actual data loaded.)
+        """
+
+        #  call the parent method to resize the arrays (n_samples is updated here)
+        super(processed_data, self)._resize_arrays(new_ping_dim, new_sample_dim)
+
+        #  and then update n_pings
+        self.n_pings = self.ping_time.shape[0]
 
 
     def __str__(self):
