@@ -70,7 +70,7 @@ class processed_data(sample_data):
         #  if there is a new vertical extent resize our arrays
         if (vert_ext != 0):
             #  determine the number of new samples as a result of the shift
-            new_samps = np.ceil(vert_ext.astype('float32') / self.sample_thickness)
+            new_samps = (np.ceil(vert_ext.astype('float32') / self.sample_thickness)).astype('uint')
             #  and resize (n_samples will be updated in the _resize method)
             old_samps = self.n_samples
             self._resize_arrays(self.n_pings, self.n_samples + new_samps)
@@ -91,6 +91,22 @@ class processed_data(sample_data):
         # and assign the new axis
         vert_axis = new_axis
 
+
+    def __getitem__(self, key):
+
+        #  slice objects have start, stop, and step properties
+
+        #  create a new processed_data object to return
+        p_data = processed_data(self.channel_id, self.frequency)
+
+        for attr_name in self._data_attributes:
+            attr = getattr(self, attr_name)
+            if (isinstance(attr, np.ndarray) and (attr.ndim == 2)):
+                p_data.add_attribute(attr_name, attr.__getitem__(key))
+            else:
+                p_data.add_attribute(attr_name, attr.__getitem__(key[0]))
+
+        return p_data
 
     def _resize_arrays(self, new_ping_dim, new_sample_dim):
         """
