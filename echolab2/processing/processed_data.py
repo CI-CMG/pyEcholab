@@ -94,11 +94,12 @@ class processed_data(sample_data):
 
     def __getitem__(self, key):
 
-        #  slice objects have start, stop, and step properties
-
         #  create a new processed_data object to return
         p_data = processed_data(self.channel_id, self.frequency)
+        p_data.sample_thickness = self.sample_thickness
+        p_data.sample_offset = self.sample_offset
 
+        #  and work thru the attributes, slicing them and adding to the new processed_data object
         for attr_name in self._data_attributes:
             attr = getattr(self, attr_name)
             if (isinstance(attr, np.ndarray) and (attr.ndim == 2)):
@@ -107,6 +108,7 @@ class processed_data(sample_data):
                 p_data.add_attribute(attr_name, attr.__getitem__(key[0]))
 
         return p_data
+
 
     def _resize_arrays(self, new_ping_dim, new_sample_dim):
         """

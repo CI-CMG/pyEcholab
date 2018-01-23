@@ -62,7 +62,8 @@ class sample_data(object):
         #  the number of samples in the 2d sample arrays
         self.n_samples = -1
 
-        #  allow the user to specify a dtype for the sample data.
+        #  allow the user to specify a dtype for the sample data. This should be set before
+        #  any attributes are added.
         self.sample_dtype = 'float32'
 
         #  frequency may be a scalar or vector value depending on the child's implementation
@@ -95,7 +96,6 @@ class sample_data(object):
 
         #  when writing methods that operate on these data, we will not assume that they
         #  exist. An attribute should only exist if it contains data.
-
 
 
     def add_attribute(self, name, data):
@@ -135,7 +135,10 @@ class sample_data(object):
             raise ValueError('Cannot add attribute as the new attribute has a different' +
                     'number of pings than the other attributes.')
 
+        #  add the name to our list of attributes
         self._data_attributes.append(name)
+
+        #  and add it to self
         setattr(self, name, data)
 
 
@@ -144,6 +147,8 @@ class sample_data(object):
         remove_attribute removes a data attribute from the object.
         """
 
+        #  try to remove the attribute given the name. Silently
+        #  fail if name is not in our list
         try:
             self._data_attributes.remove(name)
             delattr(self, name)
@@ -160,8 +165,36 @@ class sample_data(object):
         values are set to NaNs (or appropriate value based on type)
         """
         #  determine the indices of the pings we're deleting
-        idx = self.get_indices(start_time=start_time, end_time=end_time,
+        del_idx = self.get_indices(start_time=start_time, end_time=end_time,
                 start_ping=start_ping, end_ping=end_ping)
+
+        #  determine the indices of the pings we're keeping
+        keep_idx = np.setdiff1d(np.arange(del_idx.shape[0]), del_idx)
+        #  and the number of pings we're keeping
+        new_n_pings = keep_idx.shape[0]
+
+        #  work thru the attributes to delete the data - if we're removing the pings
+        #  we first copy the data we're keeping to a contiguous block before we
+        #  resize all of the arrays (which will shrink them.) If we're not removing
+        #  the pings, we simply set the values of the various attributes we're
+        #  deleting to NaNs.
+        for attr_name in self._data_attributes:
+            attr = getattr(self, attr_name)
+            if (isinstance(attr, np.ndarray) and (attr.ndim == 2)):
+                if (remove):
+                    attr[0:new_n_pings,:] = attr[keep_idx,:]
+                else:
+                    attr[del_idx,:] = np.nan
+            else:
+                if (remove):
+                    attr[0:new_n_pings] = attr[keep_idx]
+                else:
+                    attr[del_idx] = np.nan
+
+        #  check if we're removing pings
+        if (remove):
+            #  lastly resize if we're removing the pings from the array.
+            self._resize_arrays(new_n_pings, self.n_samples)
 
 
     def append(self, obj_to_append):
@@ -401,11 +434,6 @@ class sample_data(object):
             if (max_dim_this_sample_int > new_sample_dims):
                     new_sample_dims = max_dim_this_sample_int
 
-        #  emit some info to the logger
-#        log.info("Vertically resampling " + str(data.shape) + " array to " +
- #               str((n_pings, new_sample_dims)))
- #       log.info("New sample interval is " + str(resample_interval * 1000 * 1000) + " us.")
-
         #  now that we know the dimensions of the output array create the it and fill with NaNs
         resampled_data = np.empty((n_pings, new_sample_dims), dtype=self.sample_dtype, order='C')
         resampled_data.fill(np.nan)
@@ -447,7 +475,6 @@ class sample_data(object):
                     #  no change in resolution for this sample interval
                     this_data = data[rows_this_interval[sample_interval]] \
                             [sample_counts[rows_this_interval[sample_interval]] == count]
-
 
                 #  generate the index array for this sample interval/sample count chunk of data
                 rows_this_interval_count = rows_this_interval[sample_interval] \

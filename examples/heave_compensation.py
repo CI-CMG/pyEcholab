@@ -2,7 +2,7 @@
 """
 
 """
-
+import numpy as np
 from matplotlib.pyplot import figure, show, subplots_adjust
 from echolab2.instruments import EK60
 from echolab2.plotting.matplotlib import echogram
@@ -29,8 +29,11 @@ raw_data_38 = ek60.get_rawdata(channel_number=2)
 #  get a processed_data object containing the heave corrected Sv on a depth grid
 heave_corrected_Sv = raw_data_38.get_sv(heave_correct=True)
 
-#  extract a portion of the data to plot "zoomed in"
+#  extract a portion of the data to plot "zoomed in". We can slice processed_data objects
+#  like numpy arrays. Note that slicing returns a view into the various attributes.
+#  IT DOES NOT RETURN A COPY.
 subset_Sv = heave_corrected_Sv[0:100,0:100]
+#subset_Sv.Sv[:,80:100] = np.nan
 
 #  create an axes
 ax_1 = fig.add_subplot(2,1,1)
