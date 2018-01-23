@@ -20,9 +20,9 @@ from pytz import timezone
 import logging
 import numpy as np
 from .util.raw_file import RawSimradFile, SimradEOF
-from ..data_container import data_container
+from ..sample_data import sample_data
 from ..processing import processed_data
-from .util.nmea_data import NMEAData
+#from .util.nmea_data import NMEAData
 
 log = logging.getLogger(__name__)
 
@@ -100,7 +100,7 @@ class EK60(object):
         self.raw_data = {}
 
         #  create a dictionary to store the NMEA object
-        self.nmea_data = NMEAData()
+        #self.nmea_data = NMEAData()
 
         #  Define the class's "private" properties. These should not be generally be directly
         #  manipulated by the user.
@@ -130,11 +130,13 @@ class EK60(object):
         #  that the oldest data is dropped and the new ping is added.
         self._data_array_dims = [-1, -1]
 
-        #  store the time and ping range parameters
+        #  store the time and ping range, and sample range parameters
         self.read_start_time = None
         self.read_end_time = None
         self.read_start_ping = None
         self.read_end_ping = None
+        self.read_sample_start = None
+        self.read_sample_end = None
 
         #  read_frequencies can be set to a list of floats specifying the frequencies to
         #  read. An empty list will result in all frequencies being read.
@@ -151,7 +153,8 @@ class EK60(object):
 
     def read_raw(self, raw_files, power=None, angles=None, max_sample_count=None, start_time=None,
             end_time=None, start_ping=None, end_ping=None, frequencies=None, channel_ids=None,
-            time_format_string='%Y-%m-%d %H:%M:%S', incremental=None):
+            time_format_string='%Y-%m-%d %H:%M:%S', incremental=None, start_sample=None,
+            end_sample=None):
         """
         read_raw reads one or many Simrad EK60 ES60/70 .raw files
         """
@@ -165,6 +168,10 @@ class EK60(object):
             self.read_start_ping = start_ping
         if (end_ping):
             self.read_end_ping = end_ping
+        if (start_sample):
+            self.read_start_sample = start_sample
+        if (end_sample):
+            self.read_end_sample = end_sample
         if (power):
             self.read_power = power
         if (angles):
@@ -345,7 +352,9 @@ class EK60(object):
                     channel_id = self._channel_map[new_datagram['channel']]
 
                     #  and call the appropriate channel's append_ping method
-                    self.raw_data[channel_id].append_ping(new_datagram)
+                    self.raw_data[channel_id].append_ping(new_datagram,
+                            start_sample=self.read_start_sample,
+                            end_sample=self.read_end_sample)
 
                     # increment the sample datagram counter
                     num_sample_datagrams += 1
@@ -354,7 +363,8 @@ class EK60(object):
 
             #  NME datagrams store ancillary data as NMEA-0817 style ASCII data
             elif new_datagram['type'].startswith('NME'):
-              self.nmea_data.add_datagram(new_datagram['timestamp'], new_datagram['nmea_string'])
+                pass
+            #  self.nmea_data.add_datagram(new_datagram['timestamp'], new_datagram['nmea_string'])
 
             #  TAG datagrams contain time-stamped annotations inserted via the recording software
             elif new_datagram['type'].startswith('TAG'):
@@ -391,7 +401,7 @@ class EK60(object):
 
     def get_rawdata(self, channel_number=1, channel_id=None):
         """
-        get_rawdata returns a reference to the specified RawData object for the
+        get_rawdata returns a reference to the specified raw_data object for the
         specified channel id or channel number.
         """
 
@@ -429,7 +439,7 @@ class EK60(object):
         return msg
 
 
-class raw_data(data_container):
+class raw_data(sample_data):
     """
     the raw_data class contains a single channel's data extracted from a Simrad raw
     file. collected from an EK/ES60 or ES70. A raw_data object is created for each
@@ -551,7 +561,7 @@ class raw_data(data_container):
         #  the data properties.
 
 
-    def append_ping(self, sample_datagram):
+    def append_ping(self, sample_datagram, start_sample=None, end_sample=None):
         """
         append_ping is called when adding a ping's worth of data to the object. It should accept
         the parsed values from the sample datagram. It will handle the details of managing
@@ -670,12 +680,19 @@ class raw_data(data_container):
         self.heading[this_ping] = sample_datagram['heading']
         self.transmit_mode[this_ping] = sample_datagram['transmit_mode']
 
-        #TODO: implement storing only a subset of the sample data
-        #      sample_offset marks the start of the vertical offset (offset from sample 1)
-        #      and sample count marks the number of samples stored. offset + count
-        #      would be the bottom sample.
-        self.sample_count[this_ping] = sample_datagram['count']
-        self.sample_offset[this_ping] = 0
+        #  do the book keeping if we're storing a subset of samples
+        if (start_sample):
+            self.sample_offset[this_ping] = start_sample
+            if (end_sample):
+                self.sample_count[this_ping] = end_sample - start_sample + 1
+            else:
+                self.sample_count[this_ping] = sample_datagram['count'] - start_sample
+        else:
+            self.sample_offset[this_ping] = 0
+            if (end_sample):
+                self.sample_count[this_ping] = end_sample + 1
+            else:
+                self.sample_count[this_ping] = sample_datagram['count']
 
         #  now store the 2d "sample" data
         #      determine what we need to store based on operational mode
@@ -684,28 +701,31 @@ class raw_data(data_container):
         #  check if we need to store power data
         if (sample_datagram['mode'] != 2) and (self.store_power):
 
+            #  get the subset of samples we're storing
+            power = sample_datagram['power'][start_sample:end_sample + 1]
+
             #  convert the indexed power data to power dB
-            sample_datagram['power'] = sample_datagram['power'].astype(self.sample_dtype) * \
-                    self.INDEX2POWER
+            power = power.astype(self.sample_dtype) * self.INDEX2POWER
 
             #  check if we need to pad or trim our sample data
-            sample_pad = max_data_samples - sample_datagram['power'].shape[0]
+            sample_pad = max_data_samples - power.shape[0]
             if (sample_pad > 0):
                 #  the data array has more samples than this datagram - we need to pad the datagram
-                self.power[this_ping,:] = np.pad(sample_datagram['power'],(0,sample_pad),
+                self.power[this_ping,:] = np.pad(power,(0,sample_pad),
                         'constant', constant_values=np.nan)
             elif (sample_pad < 0):
                 #  the data array has fewer samples than this datagram - we need to trim the datagram
-                self.power[this_ping,:] = sample_datagram['power'][0:sample_pad]
+                self.power[this_ping,:] = power[0:sample_pad]
             else:
                 #  the array has the same number of samples
-                self.power[this_ping,:] = sample_datagram['power']
+                self.power[this_ping,:] = power
+
         #  check if we need to store angle data
         if (sample_datagram['mode'] != 1) and (self.store_angles):
             #  first extract the alongship and athwartship angle data
             #  the low 8 bits are the athwartship values and the upper 8 bits are alongship.
-            alongship_e = (sample_datagram['angle'] >> 8).astype('int8')
-            athwartship_e = (sample_datagram['angle'] & 0xFF).astype('int8')
+            alongship_e = (sample_datagram['angle'][start_sample:end_sample + 1] >> 8).astype('int8')
+            athwartship_e = (sample_datagram['angle'][start_sample:end_sample + 1] & 0xFF).astype('int8')
 
             #  and convert from indexed to electrical angles
             alongship_e = alongship_e.astype(self.sample_dtype) * self.INDEX2ELEC
@@ -729,85 +749,36 @@ class raw_data(data_container):
                 self.angles_athwartship_e[this_ping,:] = athwartship_e
 
 
-    def _convert_power(self, power_data, calibration, convert_to, linear, return_indices,
-            tvg_correction):
+    def get_power(self, **kwargs):
         """
-        _convert_power is a generalized method for converting power to Sv/sv/Sp/sp
+        get_power returns a processed data object that contains the power data. It performs
+        all of the required transformations to place the raw power data into a rectangular
+        array where all samples share the same thickness and are correctly arranged relative
+        to each other.
+
+        This process happens in 3 steps:
+
+                Data are resampled so all samples have the same thickness
+                Data are shifted vertically to account for the sample offsets
+                Data are then regridded to a fixed time, range grid
+
+        Each step is performed only when required. Calls to this method will return much
+        faster if the raw data share the same sample thickness, offset and sound speed.
+
+        If calibration is set to an instance of EK60.CalibrationParameters the values in
+        that object (if set) will be used when performing the transformations required to
+        return the results. If the required parameters are not set in the calibration
+        object or if no object is provided, this method will extract these parameters from
+        the raw file data.
         """
 
-        #  populate the calibration parameters required for this method. First, create a dict with key
-        #  names that match the attributes names of the calibration parameters we require for this method
-        cal_parms = {'gain':None,
-                     'transmit_power':None,
-                     'equivalent_beam_angle':None,
-                     'pulse_length':None,
-                     'absorption_coefficient':None,
-                     'sa_correction':None}
-
-        #  next, iterate thru the dict, calling the method to extract the values for each parameter
-        for key in cal_parms:
-            cal_parms[key] = self._get_calibration_param(calibration, key, return_indices)
-
-        #  get sound_velocity from the power data since get_power might have manipulated this value
-        cal_parms['sound_velocity'] = np.empty((return_indices.shape[0]), dtype=self.sample_dtype)
-        cal_parms['sound_velocity'].fill(power_data.sound_velocity)
-
-        #  calculate the system gains
-        wavelength = cal_parms['sound_velocity'] / power_data.frequency
-        if (convert_to in ['sv','Sv']):
-            gains = 10 * np.log10((cal_parms['transmit_power'] * (10**(cal_parms['gain']/10.0))**2 * \
-                    wavelength**2 * cal_parms['sound_velocity'] * cal_parms['pulse_length'] * \
-                    10**(cal_parms['equivalent_beam_angle']/10.0)) /  (32 * np.pi**2))
-        else:
-            gains = 10 * np.log10((cal_parms['transmit_power'] * (10**(cal_parms['gain']/10.0))**2 * \
-                    wavelength**2) / (16 * np.pi**2))
+        #  call the generalized _get_sample_data method requesting the 'power' sample attribute
+        return self._get_sample_data('power', **kwargs)
 
 
-        #  get the range for TVG calculation - if tvg_correction = True we will apply a correction
-        #  to the range of 2 * sample thickness. The corrected range is also used for absorption
-        #  calculations as well. A corrected range should be used to calculate when converting Power
-        #  to Sv/sv and
-        if (tvg_correction):
-            c_range = power_data.range.copy() - (self.TVG_CORRECTION * power_data.sample_thickness)
-            c_range[c_range < 0] = 0
-        else:
-            c_range = power_data.range
-
-        #  #  calculate time varied gain
-        tvg = c_range.copy()
-        tvg[tvg <= 0] = 1
-        if (convert_to in ['sv','Sv']):
-            tvg[:] = 20.0 * np.log10(tvg)
-        else:
-            tvg[:] = 40.0 * np.log10(tvg)
-        tvg[tvg < 0] = 0
-
-        #  calculate absorption - this is the outer product of our corrected range
-        #  and 2 * absorption_coefficient. We'll use this for our output array to
-        #  minimize the arrays we're creating.
-        data = np.outer(2.0 * cal_parms['absorption_coefficient'], c_range)
-
-        #  now add in power and TVG
-        data += power_data.power + tvg
-
-        #  subtract the applied gains
-        data -= gains[:, np.newaxis]
-
-        #  and apply sa correction for Sv/sv
-        if (convert_to in ['sv','Sv']):
-            data -= (2.0 * cal_parms['sa_correction'])[:, np.newaxis]
-
-        #  now check if we're returning linear or log values
-        if (linear):
-            #  convert to linear units (use [:] to operate in-place)
-            data[:] = 10**(data / 10.0)
-
-        #  and return the result
-        return data
-
-
-    def get_sv(self, calibration=None, linear=False, keep_power=False, insert_into=None,
-                tvg_correction=True, **kwargs):
+    def get_sv(self, calibration=None, linear=False, keep_power=False,
+                tvg_correction=True, heave_correct=False, return_depth=False,
+                **kwargs):
         """
         get_sv returns a processed_data object containing Sv (or sv if linear is
         True).
@@ -824,20 +795,8 @@ class raw_data(data_container):
 
         """
 
-        #  check if we have been given a processed_data object that already has power
-        if (hasattr(insert_into, 'power')):
-            for channel in self.channel_id:
-                if (not channel in insert_into.channel_id):
-                    raise ValueError("The channel ID(s) the object you are inserting into " +
-                            "do not match the channel ID(s) of this raw_data object.")
-
-            #TODO - add checks on the array dimensions
-
-            p_data = insert_into
-        else:
-            #  get the power data - this step also resamples and arranges the raw data
-            p_data = self.get_power(calibration=calibration, insert_into=insert_into,
-                    **kwargs)
+        #  get the power data - this step also resamples and arranges the raw data
+        p_data = self.get_power(calibration=calibration, **kwargs)
 
         #  get the index array of returned pings we'll use to extract the cal params we need
         return_indices = p_data.ping_number - 1
@@ -852,17 +811,21 @@ class raw_data(data_container):
                 return_indices, tvg_correction)
 
         #  set the attribute in the processed_data object
-        setattr(p_data, attribute_name, sv_data)
+        p_data.add_attribute(attribute_name, sv_data)
 
         #  and check if we should delete the power attribute
         if (not keep_power):
-            delattr(p_data, 'power')
+            p_data.remove_attribute('power')
+
+        if (heave_correct or return_depth):
+            self._to_depth(p_data, calibration, heave_correct)
 
         return p_data
 
 
-    def get_sp(self,  calibration=None, linear=False, keep_power=False, insert_into=None,
-            tvg_correction=False, **kwargs):
+    def get_sp(self,  calibration=None, linear=False, keep_power=False,
+            tvg_correction=False, heave_correct=False, return_depth=False,
+            **kwargs):
         """
         get_sp returns a processed_data object containing TS (or sigma_bs if linear is
         True).
@@ -884,20 +847,8 @@ class raw_data(data_container):
 
         """
 
-        #  check if we have been given a processed_data object that already has power
-        if (hasattr(insert_into, 'power')):
-            for channel in self.channel_id:
-                if (not channel in insert_into.channel_id):
-                    raise ValueError("The channel ID(s) the object you are inserting into " +
-                            "do not match the channel ID(s) of this raw_data object.")
-
-            #TODO - add checks on the array dimensions
-
-            p_data = insert_into
-        else:
-            #  get the power data - this step also resamples and arranges the raw data
-            p_data = self.get_power(calibration=calibration, insert_into=insert_into,
-                    **kwargs)
+        #  get the power data - this step also resamples and arranges the raw data
+        p_data = self.get_power(calibration=calibration, **kwargs)
 
         #  get the index array of returned pings we'll use to extract the cal params we need
         return_indices = p_data.ping_number - 1
@@ -912,22 +863,22 @@ class raw_data(data_container):
                 return_indices, tvg_correction)
 
         #  set the attribute in the processed_data object
-        setattr(p_data, attribute_name, sp_data)
+        p_data.add_attribute(attribute_name, sp_data)
 
         #  and check if we should delete the power attribute
         if (not keep_power):
-            delattr(p_data, 'power')
+            p_data.remove_attribute('power')
+
+        if (heave_correct or return_depth):
+            self._to_depth(p_data, calibration, heave_correct)
 
         return p_data
 
 
-    def get_physical_angles(self, calibration=None,  keep_elec_angles=False,
-            return_indices=None, **kwargs):
+    def get_physical_angles(self, calibration=None, keep_elec_angles=False, **kwargs):
         """
         get_physical_angles returns a processed data object that contains the alongship and
         athwartship angle data.
-
-        This method would call getElectricalAngles to get a vertically aligned
 
         """
 
@@ -956,54 +907,46 @@ class raw_data(data_container):
         p_angle_athwart -= cal_parms['angle_offset_athwartship'][:, np.newaxis]
 
         #  set the attributes in our processed_data object
-        setattr(p_data, 'angles_alongship', p_angle_along)
-        setattr(p_data, 'angles_athwartship', p_angle_athwart)
+        p_data.add_attribute('angles_alongship', p_angle_along)
+        p_data.add_attribute('angles_athwartship', p_angle_athwart)
 
         #  check if we should get rid of the electrical angles
         if (not keep_elec_angles):
-            delattr(p_data, 'angles_alongship_e')
-            delattr(p_data, 'angles_athwartship_e')
+            p_data.remove_attribute('angles_alongship_e')
+            p_data.remove_attribute('angles_athwartship_e')
+
+        #  we do not need to convert to depth here since the electrical_angle data will
+        #  already have been converted to depth if requested
 
         return p_data
 
 
-    def get_electrical_angles(self, **kwargs):
+    def get_electrical_angles(self, heave_correct=False, return_depth=False,
+            calibration=None, **kwargs):
         """
         get_electrical_angles returns a processed data object that contains the unconverted
         angle data.
         """
 
         #  call the generalized _get_sample_data method requesting the 'angles_alongship_e' sample
-        #  attribute. The method will return a reference to either the passed in processed_data object
-        #  (via insert_into) or the newly created instance if insert_into us unset.
+        #  attribute. The method will return a reference to anewly created iprocessed_data nstance.
         p_data = self._get_sample_data('angles_alongship_e', **kwargs)
 
-        #  check if we've been provided with a data object to insert results into
-        inserting = False
-        for name, value in kwargs.items():
-            if (name == 'insert_into'):
-                inserting = True
-                break
+        #  We use the "private" insert_into keyword to insert the athwartship_e data into p_data
+        p_data = self._get_sample_data('angles_athwartship_e', _insert_into=p_data, **kwargs)
 
-        #  and call it again requesting 'angles_athwartship_e'
-        if (inserting):
-            #  insert_into is already set by the user (provided in kwargs)
-            p_data = self._get_sample_data('angles_athwartship_e', **kwargs)
-        else:
-            #  insert_into is not set by the user so we set it here to insert
-            #  angles_athwartship_e into our newly created processed_data object
-            p_data = self._get_sample_data('angles_athwartship_e',
-                    insert_into=p_data, **kwargs)
+        if (heave_correct or return_depth):
+            self._to_depth(p_data, calibration, heave_correct)
 
         return p_data
 
 
     def _get_sample_data(self, property_name, calibration=None,  resample_interval=RESAMPLE_SHORTEST,
-            resample_soundspeed=None, insert_into=None, return_indices=None, **kwargs):
+            resample_soundspeed=None, _insert_into=None, return_indices=None, **kwargs):
         """
         _get_sample_data returns a processed data object that contains the sample data from
         the property name provided. It performs all of the required transformations to place
-        the raw power data into a rectangular array where all samples share the same thickness
+        the raw data into a rectangular array where all samples share the same thickness
         and are correctly arranged relative to each other.
 
         This process happens in 3 steps:
@@ -1021,12 +964,11 @@ class raw_data(data_container):
         object or if no object is provided, this method will extract these parameters from
         the raw file data.
 
-        if insert_into is a reference to another processed_data object and the channel IDs
+        _insert_into is a "private" argument and is not intended to be used by the user. If
+        insert_into is a reference to another processed_data object and the channel IDs
         of self and the processed_data instance match, it is assumed that the calibration
         and data collection parameters are the same and it will insert the requested property
-        data into the processed_data instance. This method will check if the resulting sample
-        array is the same shape as the sample arrays in the processed_data class and that the
-        range vector matches and will raise an error if they do not.
+        data into the processed_data instance.
         """
 
         def get_range_vector(num_samples, sample_interval, sound_speed, sample_offset):
@@ -1041,19 +983,19 @@ class raw_data(data_container):
             return range
 
         #  check if we're inserting data into an existing processed_data object
-        if isinstance(insert_into, processed_data.processed_data):
+        if isinstance(_insert_into, processed_data.processed_data):
             #  check that the channel IDs match
             for channel in self.channel_id:
-                if (not channel in insert_into.channel_id):
+                if (not channel in _insert_into.channel_id):
                     raise ValueError("The channel ID(s) the object you are inserting into " +
                             "do not match the channel ID(s) of this raw_data object.")
 
             #  when inserting into a processed_data object we ignore the start/end arguments and
             #  extract the same indices as the data in the object we are inserting into
-            return_indices = insert_into.ping_number - 1
+            return_indices = _insert_into.ping_number - 1
 
             #  we're inserting so we just copy the reference to the object and set the inserting flag
-            p_data = insert_into
+            p_data = _insert_into
             inserting = True
 
         else:
@@ -1086,8 +1028,7 @@ class raw_data(data_container):
         #  names that match the attributes names of the calibration parameters we require for this method
         cal_parms = {'sample_interval':None,
                      'sound_velocity':None,
-                     'sample_offset':None,
-                     'transducer_depth':None}
+                     'sample_offset':None}
 
         #  next, iterate thru the dict, calling the method to extract the values for each parameter
         for key in cal_parms:
@@ -1152,7 +1093,10 @@ class raw_data(data_container):
                     sound_velocity, min_sample_offset)
 
         #  assign the results to the output processed_data object
-        setattr(p_data, property_name, output)
+        p_data.add_attribute(property_name, output)
+
+        #  calculate the sample thickness in m
+        sample_thickness = sample_interval * sound_velocity / 2.0
 
         #  now assign range, sound_velocity, sample thickness and offset, and transducer_depth
         #  to the processed_data object. If we're inserting we assume all of these values
@@ -1164,49 +1108,131 @@ class raw_data(data_container):
                 raise ValueError("The sample ranges calculated for " + property_name +
                         " do not match the existing sample ranges in the processed_data " +
                         "object you are inserting into.")
-            #  ANY OTHER CHECKS WE NEED TO DO?
+
+            #  TODO: ANY OTHER CHECKS WE NEED TO DO?
 
         else:
+            #  assign range
+            p_data.add_attribute('range', range)
+
             #  assign range and sound speed to our processed_data object
-            p_data.range = range
             p_data.sound_velocity = sound_velocity
 
             #  compute sample thickness and set the sample offset
-            p_data.sample_thickness = sample_interval * sound_velocity / 2.0
+            p_data.sample_thickness = sample_thickness
             p_data.sample_offset = min_sample_offset
-
-            #  copy the transducer depth data
-            p_data.transducer_depth = cal_parms['transducer_depth'].copy()
 
         #  return the processed_data object containing the requested data
         return p_data
 
 
-    def get_power(self, **kwargs):
+    def _convert_power(self, power_data, calibration, convert_to, linear, return_indices,
+            tvg_correction):
         """
-        get_power returns a processed data object that contains the power data. It performs
-        all of the required transformations to place the raw power data into a rectangular
-        array where all samples share the same thickness and are correctly arranged relative
-        to each other.
-
-        This process happens in 3 steps:
-
-                Data are resampled so all samples have the same thickness
-                Data are shifted vertically to account for the sample offsets
-                Data are then regridded to a fixed time, range grid
-
-        Each step is performed only when required. Calls to this method will return much
-        faster if the raw data share the same sample thickness, offset and sound speed.
-
-        If calibration is set to an instance of EK60.CalibrationParameters the values in
-        that object (if set) will be used when performing the transformations required to
-        return the results. If the required parameters are not set in the calibration
-        object or if no object is provided, this method will extract these parameters from
-        the raw file data.
+        _convert_power is a generalized method for converting power to Sv/sv/Sp/sp
         """
 
-        #  call the generalized _get_sample_data method requesting the 'power' sample attribute
-        return self._get_sample_data('power', **kwargs)
+        #  populate the calibration parameters required for this method. First, create a dict with key
+        #  names that match the attributes names of the calibration parameters we require for this method
+        cal_parms = {'gain':None,
+                     'transmit_power':None,
+                     'equivalent_beam_angle':None,
+                     'pulse_length':None,
+                     'absorption_coefficient':None,
+                     'sa_correction':None}
+
+        #  next, iterate thru the dict, calling the method to extract the values for each parameter
+        for key in cal_parms:
+            cal_parms[key] = self._get_calibration_param(calibration, key, return_indices)
+
+        #  get sound_velocity from the power data since get_power might have manipulated this value
+        cal_parms['sound_velocity'] = np.empty((return_indices.shape[0]), dtype=self.sample_dtype)
+        cal_parms['sound_velocity'].fill(power_data.sound_velocity)
+
+        #  calculate the system gains
+        wavelength = cal_parms['sound_velocity'] / power_data.frequency
+        if (convert_to in ['sv','Sv']):
+            gains = 10 * np.log10((cal_parms['transmit_power'] * (10**(cal_parms['gain']/10.0))**2 * \
+                    wavelength**2 * cal_parms['sound_velocity'] * cal_parms['pulse_length'] * \
+                    10**(cal_parms['equivalent_beam_angle']/10.0)) /  (32 * np.pi**2))
+        else:
+            gains = 10 * np.log10((cal_parms['transmit_power'] * (10**(cal_parms['gain']/10.0))**2 * \
+                    wavelength**2) / (16 * np.pi**2))
+
+        #  get the range for TVG calculation - if tvg_correction = True we will apply a correction
+        #  to the range of 2 * sample thickness. The corrected range is also used for absorption
+        #  calculations as well. A corrected range should be used to calculate when converting Power
+        #  to Sv/sv and
+        if (tvg_correction):
+            c_range = power_data.range.copy() - (self.TVG_CORRECTION * power_data.sample_thickness)
+            c_range[c_range < 0] = 0
+        else:
+            c_range = power_data.range
+
+        #  #  calculate time varied gain
+        tvg = c_range.copy()
+        tvg[tvg <= 0] = 1
+        if (convert_to in ['sv','Sv']):
+            tvg[:] = 20.0 * np.log10(tvg)
+        else:
+            tvg[:] = 40.0 * np.log10(tvg)
+        tvg[tvg < 0] = 0
+
+        #  calculate absorption - this is the outer product of our corrected range
+        #  and 2 * absorption_coefficient. We'll use this for our output array to
+        #  minimize the arrays we're creating.
+        data = np.outer(2.0 * cal_parms['absorption_coefficient'], c_range)
+
+        #  now add in power and TVG
+        data += power_data.power + tvg
+
+        #  subtract the applied gains
+        data -= gains[:, np.newaxis]
+
+        #  and apply sa correction for Sv/sv
+        if (convert_to in ['sv','Sv']):
+            data -= (2.0 * cal_parms['sa_correction'])[:, np.newaxis]
+
+        #  now check if we're returning linear or log values
+        if (linear):
+            #  convert to linear units (use [:] to operate in-place)
+            data[:] = 10**(data / 10.0)
+
+        #  and return the result
+        return data
+
+
+    def _to_depth(self, p_data, calibration, heave_correct):
+        """
+        _to_depth is an internal method that converts data from range to depth and
+        optionally applies heave correction.
+        """
+
+        #  populate the calibration parameters required for this method. First, create a dict with key
+        #  names that match the attributes names of the calibration parameters we require for this method
+        cal_parms = {'transducer_depth':None,
+                     'heave':None}
+
+        #  generate a vector of return indices used to extract heave and draft data if not
+        #  explicitly provided in the calibration data
+        return_indices = p_data.ping_number - 1
+
+        #  next, iterate thru the dict, calling the method to extract the values for each parameter
+        for key in cal_parms:
+            cal_parms[key] = self._get_calibration_param(calibration, key, return_indices)
+
+        #  check if we're applying heave correction and/or returning depth by applying a
+        #  transducer offset.
+        if (heave_correct):
+            #  heave correction implies returning depth - determine the vertical shift per-ping
+            vert_shift = cal_parms['heave'] + cal_parms['transducer_depth']
+        else:
+            #  we're only converting to depth, determine the vertical shift per-ping only applying
+            #  the transducer draft
+            vert_shift = cal_parms['transducer_depth']
+
+        #  now shift the pings
+        p_data.shift_pings(vert_shift)
 
 
     def _get_calibration_param(self, cal_object, param_name, return_indices, dtype='float32'):
@@ -1381,16 +1407,12 @@ class raw_data(data_container):
         self.sample_count = np.empty((n_pings), np.uint32)
         if (self.store_power):
             self.power = np.empty((n_pings, n_samples), dtype=self.sample_dtype, order='C')
-        else:
-            #  create an empty array as a place holder
-            self.power = np.empty((0,0), dtype=self.sample_dtype, order='C')
+            self.n_samples = n_samples
+
         if (self.store_angles):
             self.angles_alongship_e = np.empty((n_pings, n_samples), dtype=self.sample_dtype, order='C')
             self.angles_athwartship_e = np.empty((n_pings, n_samples), dtype=self.sample_dtype, order='C')
-        else:
-            #  create an empty arrays as place holders
-            self.angles_alongship_e = np.empty((0, 0), dtype=self.sample_dtype, order='C')
-            self.angles_athwartship_e = np.empty((0, 0), dtype=self.sample_dtype, order='C')
+            self.n_samples = n_samples
 
         #  check if we should initialize them
         if (initialize):

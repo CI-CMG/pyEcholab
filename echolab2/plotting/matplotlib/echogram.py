@@ -41,6 +41,7 @@ class echogram(object):
             self.cmap = self._simrad_cmap
         else:
             self.cmap = cmap
+            self.cmap.set_bad(color='grey')
 
         self.set_data(data_object, attribute=attribute)
 
@@ -54,12 +55,12 @@ class echogram(object):
                 self.update()
 
 
-    def set_colormap(self, colormap, bad_data=None, update=True):
+    def set_colormap(self, colormap, bad_data='grey', update=True):
         if (isinstance(colormap, str)):
             colormap = Colormap(colormap)
         self.cmap = colormap
         if (bad_data):
-            self.cmap.set_bad = bad_data
+            self.cmap.set_bad(color=bad_data)
         if update:
             self.update()
 

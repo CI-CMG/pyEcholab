@@ -30,9 +30,9 @@
 
 import numpy as np
 
-class data_container(object):
+class sample_data(object):
     """
-    echolab2.data_container is the base class for all classes that store "ping"
+    echolab2.sample_data is the base class for all classes that store "ping"
     based data from fisheries sonar systems.  This class is not intended to be
     instantiated by the user. It is a base class that defines the common data
     attributes and methods that the user facing classes share.
@@ -62,7 +62,8 @@ class data_container(object):
         #  the number of samples in the 2d sample arrays
         self.n_samples = -1
 
-        #  allow the user to specify a dtype for the sample data.
+        #  allow the user to specify a dtype for the sample data. This should be set before
+        #  any attributes are added.
         self.sample_dtype = 'float32'
 
         #  frequency may be a scalar or vector value depending on the child's implementation
@@ -89,38 +90,70 @@ class data_container(object):
         self._data_attributes = ['ping_time',
                                  'ping_number']
 
-        #  when writing methods that operate on these data, we will *not* assume that they
+        #  attributes are added using the add_attribute method. You can add them manually
+        #  by appending the name of the new attribute to the _data_attributes dict and
+        #  then setting the attribute using setattr().
+
+        #  when writing methods that operate on these data, we will not assume that they
         #  exist. An attribute should only exist if it contains data.
-
-        # nmea data
-        self.lat = []
-        self.lon = []
-        self.lat_dir = []
-        self.lon_dir= []
-        self.xgps_qual = []
-        self.num_sats = []
-        self.horizontal_dil = []
-        self.altitude = []
-        self.altitude_units = []
-        self.geo_sep_units = []
-        self.age_gps_data = []
-        self.ref_station_id = []
-
 
 
     def add_attribute(self, name, data):
         """
-        add_attribute adds a "data attribute" to the class. It simply appends
-        the attribute name to our internal list of data attributes and then
-        creates an attribute by that name and sets it to the provided reference.
+        add_attribute adds a "data attribute" to the class. It first checks if the new
+        attribute shares the same dimensions as existing attributes and if so appends the
+        attribute name to our internal list of data attributes and then creates an
+        attribute by that name and sets it to the provided reference.
+        """
+        #  get the new data's dimensions
+        data_samples = -1
+        if (isinstance(data, list)):
+            data_pings = len(data)
+        elif (isinstance(data, np.ndarray)):
+            data_pings = data.shape[0]
+            if (data.ndim == 2):
+                data_samples = data.shape[1]
+                #  check if n_samples has been set yet. If not, set it. If so, check that dimensions match
+                if (self.n_samples < 0):
+                    self.n_samples = data_samples
+                elif (self.n_samples != data_samples):
+                    #TODO:  Better error message
+                    raise ValueError('Cannot add attribute as the new attribute has a different' +
+                            'number of samples than the other attributes.')
+        else:
+            #  currently we only allow lists and numpy arays as data attributes
+            raise ValueError('Invalid data attribute type. Data attributes must be a list ' +
+                    'or numpy array')
 
-        It performs some basic checks on the data, enforcing dimensions.
+        #  check if n_pings has been set yet. If not, set it. If so, check that dimensions match
+        #  when checking if dimensions match we allow a match on the number of pings OR the number
+        #  of the samples since a 1d data attribute can be on either axis.
+        if (self.n_pings < 0):
+            self.n_pings = data_pings
+        elif (self.n_pings != data_pings and self.n_samples != data_pings):
+            #TODO:  Better error message
+            raise ValueError('Cannot add attribute as the new attribute has a different' +
+                    'number of pings than the other attributes.')
+
+        #  add the name to our list of attributes
+        self._data_attributes.append(name)
+
+        #  and add it to self
+        setattr(self, name, data)
+
+
+    def remove_attribute(self, name):
+        """
+        remove_attribute removes a data attribute from the object.
         """
 
-        #  TODO - check if the dimensions match our
-
-        self._data_attributes.append(name)
-        setattr(self, name, object)
+        #  try to remove the attribute given the name. Silently
+        #  fail if name is not in our list
+        try:
+            self._data_attributes.remove(name)
+            delattr(self, name)
+        except:
+            pass
 
 
     def delete(self, start_ping=None, end_ping=None, start_time=None,
@@ -132,8 +165,36 @@ class data_container(object):
         values are set to NaNs (or appropriate value based on type)
         """
         #  determine the indices of the pings we're deleting
-        idx = self.get_indices(start_time=start_time, end_time=end_time,
+        del_idx = self.get_indices(start_time=start_time, end_time=end_time,
                 start_ping=start_ping, end_ping=end_ping)
+
+        #  determine the indices of the pings we're keeping
+        keep_idx = np.setdiff1d(np.arange(del_idx.shape[0]), del_idx)
+        #  and the number of pings we're keeping
+        new_n_pings = keep_idx.shape[0]
+
+        #  work thru the attributes to delete the data - if we're removing the pings
+        #  we first copy the data we're keeping to a contiguous block before we
+        #  resize all of the arrays (which will shrink them.) If we're not removing
+        #  the pings, we simply set the values of the various attributes we're
+        #  deleting to NaNs.
+        for attr_name in self._data_attributes:
+            attr = getattr(self, attr_name)
+            if (isinstance(attr, np.ndarray) and (attr.ndim == 2)):
+                if (remove):
+                    attr[0:new_n_pings,:] = attr[keep_idx,:]
+                else:
+                    attr[del_idx,:] = np.nan
+            else:
+                if (remove):
+                    attr[0:new_n_pings] = attr[keep_idx]
+                else:
+                    attr[del_idx] = np.nan
+
+        #  check if we're removing pings
+        if (remove):
+            #  lastly resize if we're removing the pings from the array.
+            self._resize_arrays(new_n_pings, self.n_samples)
 
 
     def append(self, obj_to_append):
@@ -312,150 +373,6 @@ class data_container(object):
         return primary_index[mask]
 
 
-    def _shift_pings(self, shift, v_axis, thickness):
-        """
-
-        """
-
-        #  determine the vertical extent of the shift
-        min_shift = np.min(shift)
-        max_shift = np.max(shift)
-        v_ext = max_shift - min_shift
-
-        #  if there is a new vertical extent resize our arrays
-        if (v_ext != 0):
-            #  determine the number of new samples as a result of the shift
-            new_samps = np.ceil(v_ext.astype('float32') / thickness)
-            #  and resize
-            self._resize_arrays(self.n_pings, self.n_samples + new_samps)
-
-        # create the new vertical axis
-        new_axis = np.arange(np.min(v_axis) + min_shift, np.max(v_axis) + max_shift,
-                thickness, dtype=self.sample_dtype)
-
-        #  check if this is a constant shift, in which case we simply change the axes.
-        #  Otherwise we need to interpolate
-        if (v_ext == 0):
-            #  assign the new axis
-            v_axis = new_axis
-        else:
-            #  work thru the attributes and operate on sample data (2d) arrays
-            for attr_name in self._data_attributes:
-                if (isinstance(attr, np.ndarray) and (attr.ndim == 2)):
-
-
-
-
-
-
-
-
-    def _get_data_dimensions(self):
-        """
-        _get_data_dimensions is an internal method that determines
-        """
-
-        #  work thru our list of attributes to find a 2d array and get the sample number
-
-        n_samples = -1
-        n_pings = -1
-        for attr_name in self._data_attributes:
-            #  get a reference to this attribute
-            if (hasattr(self, attr_name)):
-                attr = getattr(self, attr_name)
-            else:
-                continue
-            #  get the nunber of samples if this is a 2d array
-            if (isinstance(attr, np.ndarray) and (n_samples < 0) and (attr.ndim == 2)):
-                n_samples = attr.shape[1]
-                n_pings = attr.shape[0]
-                break
-            #  get the nunber of pings if this is a 2d array
-            elif (isinstance(attr, np.ndarray) and (n_pings < 0)):
-                n_pings = attr.shape[0]
-
-            if (n_pings > -1 and n_samples > -1):
-                break
-
-
-    def _get_calibration_param(self, cal_object, param_name, return_indices, dtype='float32'):
-        """
-        _get_calibration_param interrogates the provided cal_object for the provided param_name
-        property and returns the parameter values based on what it finds. It handles 4 cases:
-
-            If the user has provided a scalar calibration value, the function will return
-            a 1D array the length of return_indices filled with that scalar.
-
-            If the user has provided a 1D array the length of return_indices it will return
-            that array without modification.
-
-            If the user has provided a 1D array the length of self.ping_number, it will
-            return a 1D array the length of return_indices that is the subset of this data
-            defined by the return_indices index array.
-
-            Lastly, if the user has not provided anything, this function will return a
-            1D array the length of return_indices filled with data extracted from the raw
-            data.
-        """
-
-        if (cal_object and hasattr(cal_object, param_name)):
-
-            #  try to get the parameter from the calibration object
-            param = getattr(cal_object, param_name)
-
-            #  check if the input param is an numpy array
-            if isinstance(param, np.ndarray):
-                #  check if it is a single value array
-                if (param.shape[0] == 1):
-                    param_data = np.empty((return_indices.shape[0]), dtype=dtype)
-                    param_data.fill(param)
-                #  check if it is an array the same length as contained in the raw data
-                elif (param.shape[0] == self.ping_number.shape[0]):
-                    #  cal params provided as full length array, get the selection subset
-                    param_data = param[return_indices]
-                #  check if it is an array the same length as return_indices
-                elif (param.shape[0] == return_indices.shape[0]):
-                    #  cal params provided as a subset so no need to index with return_indices
-                    param_data = param
-                else:
-                    #  it is an array that is the wrong shape
-                    raise ValueError("The calibration parameter array " + param_name +
-                            " is the wrong length.")
-            #  not an array - check if it is a scalar int or float
-            elif (type(param) == int or type(param) == float or type(param) == np.float64):
-                    param_data = np.empty((return_indices.shape[0]), dtype=dtype)
-                    param_data.fill(param)
-            else:
-                #  invalid type provided
-                raise ValueError("The calibration parameter " + param_name +
-                        " must be an ndarray or scalar float.")
-        else:
-            #  Parameter is not provided in the calibration object, copy it from the raw data.
-            #  Calibration parameters are found directly in the RawData object and they are
-            #  in the channel_metadata objects. If we don't find it directly in RawData then
-            #  we need to fish it out of the channel_metadata objects.
-            try:
-                #  first check if this parameter is a direct property in RawData
-                self_param = getattr(self, param_name)
-                #  it is - return a view of the subset of data we're interested in
-                param_data = self_param[return_indices]
-            except:
-                #  It is not a direct property so it must be in the channel_metadata object.
-                #  Create the return array
-                param_data = np.empty((return_indices.shape[0]), dtype=dtype)
-                #  then populate with the data found in the channel_metadata objects
-                for idx in return_indices:
-                    #  sa_correction is annoying - have to dig out of the table
-                    if (param_name == 'sa_correction'):
-                        sa_table = getattr(self.channel_metadata[idx],'sa_correction_table')
-                        pl_table = getattr(self.channel_metadata[idx],'pulse_length_table')
-                        param_data[idx] = sa_table[np.where(np.isclose(pl_table,self.pulse_length[idx]))[0]][0]
-                    else:
-                        param_data[idx] = getattr(self.channel_metadata[idx],param_name)
-
-        return param_data
-
-
     def _vertical_resample(self, data, sample_intervals, unique_sample_intervals, resample_interval,
             sample_offsets, min_sample_offset, is_power=True):
         """
@@ -517,11 +434,6 @@ class data_container(object):
             if (max_dim_this_sample_int > new_sample_dims):
                     new_sample_dims = max_dim_this_sample_int
 
-        #  emit some info to the logger
-#        log.info("Vertically resampling " + str(data.shape) + " array to " +
- #               str((n_pings, new_sample_dims)))
- #       log.info("New sample interval is " + str(resample_interval * 1000 * 1000) + " us.")
-
         #  now that we know the dimensions of the output array create the it and fill with NaNs
         resampled_data = np.empty((n_pings, new_sample_dims), dtype=self.sample_dtype, order='C')
         resampled_data.fill(np.nan)
@@ -564,7 +476,6 @@ class data_container(object):
                     this_data = data[rows_this_interval[sample_interval]] \
                             [sample_counts[rows_this_interval[sample_interval]] == count]
 
-
                 #  generate the index array for this sample interval/sample count chunk of data
                 rows_this_interval_count = rows_this_interval[sample_interval] \
                         [sample_counts[rows_this_interval[sample_interval]] == count]
@@ -590,7 +501,7 @@ class data_container(object):
         relative to each other with a sample offset that is constant and equal to the
         minimum of the original sample offsets.
 
-        This function is only called if our data has a constant sample interval but
+        This method is only called if our data has a constant sample interval but
         varying sample offsets. If the data has multiple sample intervals the offset
         adjustment is done in vertical_resample.
         """
