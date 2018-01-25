@@ -103,7 +103,7 @@ class echogram(object):
 
         #  plot the sample data
         self.axes_image = self.axes.imshow(echodata, cmap=self.cmap, vmin=threshold[0],
-                vmax=threshold[1], aspect='auto')
+                vmax=threshold[1], aspect='auto', interpolation='none')
 
 
         #  THE AXES LABELING BELOW DOESN'T WORK
