@@ -130,6 +130,8 @@ class processed_data(sample_data):
         reimplemented string method that provides some basic info about the RawData object
         '''
 
+
+
         #  print the class and address
         msg = str(self.__class__) + " at " + str(hex(id(self))) + "\n"
 
@@ -144,14 +146,21 @@ class processed_data(sample_data):
             msg = msg + "           data start time: " + str(self.ping_time[0])+ "\n"
             msg = msg + "             data end time: " + str(self.ping_time[n_pings-1])+ "\n"
             msg = msg + "           number of pings: " + str(n_pings)+ "\n"
-            if (hasattr(self, 'power')):
-                n_pings,n_samples = self.power.shape
-                msg = msg + ("    power array dimensions: (" + str(n_pings)+ "," +
-                        str(n_samples) +")\n")
-            if (hasattr(self, 'angles_alongship')):
-                n_pings,n_samples = self.angles_alongship.shape
-                msg = msg + ("    angle array dimensions: (" + str(n_pings)+ "," +
-                        str(n_samples) +")\n")
+            msg = msg + "          data attributes:"
+            n_attr = 0
+            padding = " "
+            for attr_name in self._data_attributes:
+                attr = getattr(self, attr_name)
+                if (n_attr > 0):
+                    padding = "                           "
+                if (isinstance(attr, np.ndarray)):
+                    if (attr.ndim == 1):
+                        msg = msg + padding + attr_name + " (%u)\n" % (attr.shape[0])
+                    else:
+                        msg = msg + padding + attr_name + " (%u,%u)\n" % (attr.shape[0], attr.shape[1])
+                elif (isinstance(attr, list)):
+                        msg = msg + padding + attr_name + " (%u)\n" % (len(attr))
+                n_attr += 1
         else:
             msg = msg + ("  ProcessedData object contains no data\n")
 
