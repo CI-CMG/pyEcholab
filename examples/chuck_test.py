@@ -12,7 +12,7 @@ import pstats
 import time
 from matplotlib.pyplot import figure, show, subplots_adjust, get_cmap
 from echolab2.instruments.EK60 import EK60
-from echolab2.plotting.matplotlib import echogram
+from echolab2.plotting.matplotlib.echogram import echogram
 import numpy as np
 
 if sys.version_info[0] == 3:
@@ -70,7 +70,7 @@ ek60 = EK60()
 # profiler.enable()
 # time.clock()
 # ek60.read_raw(rawfiles)
-ek60.read_raw(rawfiles, power=None, angles=None, max_sample_count=600,
+ek60.read_raw(rawfiles, power=None, angles=None, max_sample_count=None,
               start_time=None, end_time=None, start_ping=None, end_ping=None,
               frequencies=None, channel_ids=None,
               time_format_string='%Y-%m-%d %H:%M:%S', incremental=None,
@@ -94,7 +94,7 @@ recorded with a 1024us transmit pulse length which on the EK60 and related
 hardware results in a sample interval of 256us (sample interval = pulse 
 length / 4). The data were recorded in 2012.
 '''
-print(raw_data_38_1)
+# print(raw_data_38_1)
 
 #  and get a reference to the RawData object that contains data from the
 # second 38 kHz channel.
@@ -103,7 +103,7 @@ raw_data_38_2 = ek60.get_rawdata(channel_number=7)
 Channel 7's sample data is a 763x1059 array recoded with a 512us pulse length
 resulting in a sample interval of 128us. These data were recorded in 2017.
 '''
-print(raw_data_38_2)
+# print(raw_data_38_2)
 
 #  append the 2nd object's data to the first and print out the results
 # t = time.clock()
@@ -115,23 +115,25 @@ pings. The first 136 pings are the 2012 data and the next 763 the 2017 data.
 The sample data arrays are 899x1059 and the object contains 2 unique sample 
 intervals.
 '''
-print(raw_data_38_1)
+# print(raw_data_38_1)
 
 #  insert the 2nd object's data into the first at ping 50
 t = time.clock()
-raw_data_38_1.insert(raw_data_38_2, ping_number=50)
+# raw_data_38_1.insert(raw_data_38_2, ping_number=50)
 # print("insert time: " + str(time.clock() - t))
+# print(raw_data_38_1)
 '''
 Now raw_data_38_1 contains 1662 pings. Pings 1-50 are from the 2012 data. Pings
 51-813 are the 763 pings from the 2012 data. Pings 814-899 are the rest of 
 the 2012 data and pings 900-1663 are a second copy of the 2017 data
 '''
-# print(raw_data_38_1)
+
 
 #  create an axes
 ax_1 = fig.add_subplot(3,1,1)
 #  create an echogram to plot up the raw sample data
-echogram_2 = echogram.echogram(ax_1, raw_data_38_1, 'power')
+echogram_2 = echogram(ax_1, raw_data_38_1, 'power', threshold=None,
+                      cmap=None)
 ax_1.set_title("Raw power as stored in RawData object")
 
 
@@ -162,7 +164,7 @@ keyword.
 
 #  call get_power to get a processed data object that contains power data. We provide
 #  no arguments so we get all pings ordered by time.
-t = time.clock()
+# t = time.clock()
 processed_power_1 = raw_data_38_1.get_power()
 # print("get_power - time ordered: " + str(time.clock() - t))
 #  that should be 1662 pings by 1988 samples.
@@ -171,7 +173,7 @@ processed_power_1 = raw_data_38_1.get_power()
 #  create an axes
 ax_2 = fig.add_subplot(3,1,2)
 #  create an echogram which will display on our newly created axes
-echogram_2 = echogram.echogram(ax_2, processed_power_1, 'power')
+echogram_2 = echogram(ax_2, processed_power_1, 'power')
 ax_2.set_title("Power data in time order")
 
 #  now request Sv data in time order
@@ -184,7 +186,7 @@ Sv = raw_data_38_1.get_sv()
 #  create another axes
 ax_3 = fig.add_subplot(3,1,3)
 #  create an echogram which will display on our newly created axes
-echogram_3 = echogram.echogram(ax_3, Sv, 'Sv', threshold=[-70,-34])
+echogram_3 = echogram(ax_3, Sv, 'Sv', threshold=[-70,-34])
 ax_3.set_title("Sv data in time order")
 
 

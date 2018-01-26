@@ -174,7 +174,7 @@ ax_3.set_title("Sv data in time order")
 show()
 
 
-fig = figure()
+fig1 = figure()
 #  set some properties for the sub plot layout
 subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.93, wspace=None, hspace=0.5)
 

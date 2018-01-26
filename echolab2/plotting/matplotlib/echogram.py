@@ -15,7 +15,8 @@ class echogram(object):
     '''
 
 
-    def __init__(self, axes, data_object=None, attribute='Sv', threshold=None, cmap=None):
+    def __init__(self, axes, data_object=None, attribute='Sv',
+                 threshold=None, cmap=None):
 
         self.axes = axes
         self.threshold = threshold

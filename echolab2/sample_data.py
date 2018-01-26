@@ -210,7 +210,8 @@ class sample_data(object):
     def insert(self, obj_to_insert, ping_number=None, ping_time=None,
             insert_after=True):
         """
-        insert inserts the data from the provided echolab2 data object into this object.
+        insert inserts the data from the provided echolab2 data object into
+        this object.
         The insertion point is specified by ping number or time. After inserting
         data, the ping_number property is updated and the ping numbers from the insertion
         point onward will be re-numbered accordingly.
@@ -354,6 +355,7 @@ class sample_data(object):
         #  get the primary index
         if (time_order):
             #  return indices in time order
+
             primary_index = self.ping_time.argsort()
         else:
             #  return indices in ping order
