@@ -5,7 +5,7 @@ state. It's in the repo so I can access it at home and work without needing a
 separate branch. You are happy to test this script but please don't change
 it. thanks...Chuck
 """
-import os
+
 import sys
 import cProfile
 import pstats
