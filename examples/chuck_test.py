@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 This is Chuck's personal testing script. It could well be in an unhappy
-state. It's in teh repo so I can access it at home and work without needed a
+state. It's in the repo so I can access it at home and work without needing a
 separate branch. You are happy to test this script but please don't change
 it. thanks...Chuck
 """
-
+import os
 import sys
 import cProfile
 import pstats
@@ -13,7 +13,7 @@ import time
 from matplotlib.pyplot import figure, show, subplots_adjust, get_cmap
 from echolab2.instruments.EK60 import EK60
 from echolab2.plotting.matplotlib.echogram import echogram
-import numpy as np
+
 
 if sys.version_info[0] == 3:
     from io import StringIO
@@ -37,6 +37,10 @@ def print_profile_stats(profiler):
 
 #  create a profiler object
 profiler = cProfile.Profile()
+
+
+
+print(stop)
 
 #  create the list of input files - for this test I am purposly picking
 #  two files with the same channels but the channels have different pulse
