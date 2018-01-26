@@ -28,11 +28,13 @@ raw_data_38 = ek60.get_rawdata(channel_number=2)
 
 #  get a processed_data object containing the heave corrected Sv on a depth grid
 heave_corrected_Sv = raw_data_38.get_sv(heave_correct=True)
+print(heave_corrected_Sv)
 
 #  extract a portion of the data to plot "zoomed in". We can slice processed_data objects
 #  like numpy arrays. Note that slicing returns a view into the various attributes.
 #  IT DOES NOT RETURN A COPY.
 subset_Sv = heave_corrected_Sv[0:100,0:100]
+print(subset_Sv)
 #subset_Sv.Sv[:,80:100] = np.nan
 
 #  create an axes
@@ -46,6 +48,9 @@ ax_2 = fig.add_subplot(2,1,2)
 #  create an echogram which will display the Sv data on a range grid
 echogram_2 = echogram.echogram(ax_2, subset_Sv, 'Sv', threshold=[-70,-34])
 ax_2.set_title("zoomed heave compensated Sv on depth grid")
+
+
+
 
 #  show our figure
 show()
