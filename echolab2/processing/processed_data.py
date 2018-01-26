@@ -130,8 +130,6 @@ class processed_data(sample_data):
         reimplemented string method that provides some basic info about the RawData object
         '''
 
-
-
         #  print the class and address
         msg = str(self.__class__) + " at " + str(hex(id(self))) + "\n"
 
