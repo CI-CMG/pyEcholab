@@ -8,7 +8,6 @@ it. thanks...Chuck
 
 import os
 import re
-from operator import methodcaller
 from datetime import datetime, timedelta
 
 
