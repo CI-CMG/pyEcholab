@@ -28,6 +28,7 @@ class AlignPings(object):
             if mode == 'pad':
                 # create empyty 1-ping object to insert
                 fill = self._create_fill(value=None)
+                print(fill)
 
             elif mode == 'trim':
                 pass
@@ -53,9 +54,21 @@ class AlignPings(object):
             missing.append(this_missing)
         return missing
 
+    def _create_fill(self, value):
+
+        fill = FillObject(value)
+
+        return fill
+
 
 class FillObject(sample_data):
-    def __init__(self):
+    def __init__(self, value):
         super(FillObject, self).__init__()
+
+
+    def __str__(self):
+        msg = str(vars(self))
+        return msg
+
 
 

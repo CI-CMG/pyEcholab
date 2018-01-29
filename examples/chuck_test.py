@@ -114,7 +114,7 @@ echo_200 = echogram(ax_200, Sv_200, 'Sv', threshold=threshold)
 ax_200.set_title("200kHz Sv data in time order")
 # print(Sv_200)
 
-AlignPings([Sv_18, Sv_38, Sv_70, Sv_120, Sv_200], 'trim')
+AlignPings([Sv_18, Sv_38, Sv_70, Sv_120, Sv_200], 'pad')
 
 #  show our figure
 # show()
