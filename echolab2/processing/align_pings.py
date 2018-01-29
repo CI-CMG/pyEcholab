@@ -21,38 +21,52 @@ class AlignPings(object):
                             'align.'.format(channel))
 
         longest = sizes.argmax()
-
-        self.missing = self._find_difference(channels, longest)
+        shortest = sizes.argmin()
+        self._find_extra(channels, shortest)
 
         if auto:
             if mode == 'pad':
-                # create empyty 1-ping object to insert
-                fill = self._create_fill(value=None)
-                print(fill)
-
+                missing = self._find_missing(channels, longest)
             elif mode == 'trim':
-                pass
+                extras = self._find_extra(channels, shortest)
+                self._delete_extras(channels, extras)
+
             else:
                 raise ValueError('"{0}" is not a valid ping time alignment '
                                  'mode,'.format(mode))
 
-        # print(channels[longest].ping_time[missing - 1], channel.ping_time[
-        #     missing - 1])
-        # print(channels[longest].ping_time[missing], channel.ping_time[missing])
-        # print(channels[longest].ping_time[missing + 1],
-        #       channel.ping_time[missing + 1])
-
-
-
-    def _find_difference(self, channels, longest):
+    @staticmethod
+    def _find_missing(channels, longest):
         missing = []
         for channel in channels:
             matched = np.searchsorted(channels[longest].ping_time,
                                       channel.ping_time)
             this_missing = (np.delete(np.arange(np.alen(channels[longest].
                                                    ping_time)), matched))
-            missing.append(this_missing)
+            pings = np.take(channel.ping_number, this_missing)
+            missing.append(pings)
+
         return missing
+    
+    @staticmethod
+    def _find_extra(channels, shortest):
+        extras = []
+        for channel in channels:
+            matched = np.searchsorted(channel.ping_time, channels[
+                                          shortest].ping_time)
+            this_extras = np.delete(np.arange(np.alen(channel.ping_time)),
+                                    matched)
+            pings = np.take(channel.ping_number, this_extras)
+            extras.append(pings)
+
+        return extras
+
+    @staticmethod
+    def _delete_extras(channels, extras):
+        for index, channel in enumerate(channels):
+            for ping in extras[index]:
+                channel.delete(ping, ping)
+
 
     def _create_fill(self, value):
 
