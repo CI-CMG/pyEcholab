@@ -48,7 +48,6 @@ class sample_data(object):
     that time. As a result, all attributes should share the same primary dimension.
     """
 
-
     def __init__(self):
 
         #  all data classes contain the following attribites
@@ -97,7 +96,6 @@ class sample_data(object):
         #  when writing methods that operate on these data, we will not assume that they
         #  exist. An attribute should only exist if it contains data.
 
-
     def add_attribute(self, name, data):
         """
         add_attribute adds a "data attribute" to the class. It first checks if the new
@@ -141,7 +139,6 @@ class sample_data(object):
         #  and add it to self
         setattr(self, name, data)
 
-
     def remove_attribute(self, name):
         """
         remove_attribute removes a data attribute from the object.
@@ -155,47 +152,46 @@ class sample_data(object):
         except:
             pass
 
-
     def delete(self, start_ping=None, end_ping=None, start_time=None,
-            end_time=None, remove=True):
+               end_time=None, remove=True):
         """
         delete deletes data from an echolab2 data object by ping over the range
         defined by the start and end pings/times. If remove is True, the data
         arrays are shrunk, if False the arrays stay the same size and the data
         values are set to NaNs (or appropriate value based on type)
         """
-        #  determine the indices of the pings we're deleting
+        #  determine the indices of the pings we're deleting.
         del_idx = self.get_indices(start_time=start_time, end_time=end_time,
-                start_ping=start_ping, end_ping=end_ping)
+                                   start_ping=start_ping, end_ping=end_ping)
 
         #  determine the indices of the pings we're keeping
-        keep_idx = np.setdiff1d(np.arange(del_idx.shape[0]), del_idx)
+        keep_idx = np.delete(np.arange(np.alen(self.ping_number)), del_idx)
+
         #  and the number of pings we're keeping
         new_n_pings = keep_idx.shape[0]
 
-        #  work thru the attributes to delete the data - if we're removing the pings
-        #  we first copy the data we're keeping to a contiguous block before we
-        #  resize all of the arrays (which will shrink them.) If we're not removing
-        #  the pings, we simply set the values of the various attributes we're
-        #  deleting to NaNs.
+        #  work thru the attributes to delete the data - if we're removing
+        # the pings we first copy the data we're keeping to a contiguous
+        # block before we resize all of the arrays (which will shrink them.)
+        # If we're not removing the pings, we simply set the values of the
+        # various attributes we're deleting to NaNs.
         for attr_name in self._data_attributes:
             attr = getattr(self, attr_name)
-            if (isinstance(attr, np.ndarray) and (attr.ndim == 2)):
-                if (remove):
-                    attr[0:new_n_pings,:] = attr[keep_idx,:]
+            if isinstance(attr, np.ndarray) and (attr.ndim == 2):
+                if remove:
+                    attr[0:new_n_pings, :] = attr[keep_idx, :]
                 else:
-                    attr[del_idx,:] = np.nan
+                    attr[del_idx, :] = np.nan
             else:
-                if (remove):
+                if remove:
                     attr[0:new_n_pings] = attr[keep_idx]
                 else:
-                    attr[del_idx] = np.nan
-
-        #  check if we're removing pings
-        if (remove):
-            #  lastly resize if we're removing the pings from the array.
-            self._resize_arrays(new_n_pings, self.n_samples)
-
+                    # trying to set datetime ping_time or int ping_number to
+                    # Nan throws valueError because float Nan can not be
+                    # converted
+                    if (attr_name != 'ping_time' and attr_name !=
+                            'ping_number'):
+                        attr[del_idx] = np.nan
 
     def append(self, obj_to_append):
         """
@@ -206,9 +202,8 @@ class sample_data(object):
         #  append simply inserts at the end of our internal array.
         self.insert(obj_to_append, ping_number=self.ping_number[-1])
 
-
     def insert(self, obj_to_insert, ping_number=None, ping_time=None,
-            insert_after=True):
+               insert_after=True):
         """
         insert inserts the data from the provided echolab2 data object into
         this object.
@@ -322,7 +317,6 @@ class sample_data(object):
             self.channel_id += obj_to_insert.channel_id
         self.n_pings = self.ping_number.shape[0]
 
-
     def trim(self, n_pings=None, n_samples=None):
         """
         trim deletes pings from an echolab2 data object to a given length
@@ -336,9 +330,8 @@ class sample_data(object):
         #  resize keeping the sample number the same
         self._resize_arrays(n_pings, n_samples)
 
-
     def get_indices(self, start_ping=None, end_ping=None, start_time=None,
-            end_time=None, time_order=True):
+                    end_time=None, time_order=True):
         """
         get_indices returns an index array containing the indices contained in the range
         defined by the times and/or ping numbers provided. By default the indexes are in time
@@ -373,7 +366,6 @@ class sample_data(object):
 
         #  and return the indices that are included in the specified range
         return primary_index[mask]
-
 
     def _vertical_resample(self, data, sample_intervals, unique_sample_intervals, resample_interval,
             sample_offsets, min_sample_offset, is_power=True):
@@ -491,7 +483,6 @@ class sample_data(object):
         #  return the resampled data and the sampling interval used
         return (resampled_data, resample_interval)
 
-
     def _vertical_shift(self, data, sample_offsets, unique_sample_offsets, min_sample_offset):
         """
         vertical_shift adjusts the output array size and pads the top of the
@@ -524,11 +515,11 @@ class sample_data(object):
 
         return shifted_data
 
-
     def _resize_arrays(self, new_ping_dim, new_sample_dim):
         """
-        resize_arrays iterates thru the provided list of attributes and resizes them in the
-        instance of the object provided given the new array dimensions.
+        resize_arrays iterates thru the provided list of attributes and
+        resizes them in the instance of the object provided given the new
+        array dimensions.
         """
 
         #  initialize arrays to store the "old" data dimensions
@@ -537,15 +528,17 @@ class sample_data(object):
 
         def resize2d(data, ping_dim, sample_dim):
             """
-            resize2d returns a new array of the specified dimensions with the data from
-            the provided array copied into it. This funciton is used when we need to resize
-            2d arrays along the minor axis as ndarray.resize and numpy.resize don't maintain
-            the order of the data in these cases.
+            resize2d returns a new array of the specified dimensions with the
+            data from the provided array copied into it. This funciton is
+            used when we need to resize 2d arrays along the minor axis as
+            ndarray.resize and numpy.resize don't maintain the order of the
+            data in these cases.
             """
 
-            #  if the minor axis is changing we have to either concatenate or copy into a new resized
-            #  array. I'm taking the second approach for now as I don't think there are performance
-            #  differences between the two approaches.
+            #  if the minor axis is changing we have to either concatenate or
+            #  opy into a new resized array. I'm taking the second approach
+            # for now as I don't think there are performance differences
+            # between the two approaches.
 
             #  create a new array
             new_array = np.empty((ping_dim, sample_dim))
