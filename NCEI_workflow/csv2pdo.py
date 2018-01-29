@@ -45,8 +45,7 @@ class PlotData(sample_data):
         self.sample_count[this_ping] = ping_data[column_index['Sample_count']]
         self.latitude[this_ping] = ping_data[column_index['Latitude']]
         self.longitude[this_ping] = ping_data[column_index['Longitude']]
-        self.depth_start[this_ping] = float(ping_data[column_index[
-            'Depth_start']])
+        self.depth_start[this_ping] = float(ping_data[column_index['Depth_start']])
         self.depth_stop = float(ping_data[column_index['Depth_stop']])
         self.range_start = float(ping_data[column_index['Range_start']])
         self.range_stop = float(ping_data[column_index['Range_stop']])
@@ -125,6 +124,7 @@ class PlotData(sample_data):
             msg = msg + "  ProcessedData object contains no data\n"
 
         return msg
+
 
 
 csv_file = 'data/SaKe2015-D20150626-T060353_to_SaKe2015-D20150626-T065817.csv'
