@@ -71,6 +71,7 @@ class AlignPings(object):
     def _pad_pings(self, channels, missing, longest):
         for index, channel in enumerate(channels):
             print(channel.data_atributes)
+            print('huh?')
 
 
 
