@@ -193,6 +193,11 @@ class sample_data(object):
                             'ping_number'):
                         attr[del_idx] = np.nan
 
+        # update ping number and n_pings
+        new_pings = np.arange(1, self.ping_number.shape[0])
+        setattr(self, 'ping_number', new_pings)
+        self.n_pings = self.ping_number.shape[0]
+
     def append(self, obj_to_append):
         """
         append appends another echolab2 data object to this one. The objects must
