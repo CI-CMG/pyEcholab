@@ -4,7 +4,7 @@
 Time align pings
 """
 import numpy as np
-from ..sample_data import sample_data
+from copy import deepcopy
 
 class AlignPings(object):
     def __init__(self, channels, mode='pad', auto=True):
@@ -27,6 +27,7 @@ class AlignPings(object):
         if auto:
             if mode == 'pad':
                 missing = self._find_missing(channels, longest)
+                self._pad_pings(channels, missing, longest)
             elif mode == 'trim':
                 extras = self._find_extra(channels, shortest)
                 self._delete_extras(channels, extras)
@@ -67,22 +68,12 @@ class AlignPings(object):
             for ping in extras[index]:
                 channel.delete(ping, ping)
 
-
-    def _create_fill(self, value):
-
-        fill = FillObject(value)
-
-        return fill
+    def _pad_pings(self, channels, missing, longest):
+        for index, channel in enumerate(channels):
+            print(channel.data_atributes)
 
 
-class FillObject(sample_data):
-    def __init__(self, value):
-        super(FillObject, self).__init__()
 
-
-    def __str__(self):
-        msg = str(vars(self))
-        return msg
-
-
+    def _make_fill(self, object, ping_time, ping_number):
+        pass
 
