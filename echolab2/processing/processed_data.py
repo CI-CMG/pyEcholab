@@ -77,9 +77,11 @@ class processed_data(sample_data):
         if (vert_ext != 0):
             #  determine the number of new samples as a result of the shift
             new_samps = (np.ceil(vert_ext.astype('float32') / self.sample_thickness)).astype('uint')
+            # calculate new sample dimension
+            new_sample_dim = (self.n_samples+new_samps).astype('uint')
             #  and resize (n_samples will be updated in the _resize method)
             old_samps = self.n_samples
-            self._resize_arrays(self.n_pings, self.n_samples + new_samps)
+            self._resize_arrays(self.n_pings, new_sample_dim)
 
         # create the new vertical axis
         new_axis = (np.arange(self.n_samples) * self.sample_thickness) + np.min(vert_axis) + min_shift
