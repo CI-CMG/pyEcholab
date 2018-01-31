@@ -22,7 +22,6 @@ class AlignPings(object):
 
         longest = sizes.argmax()
         shortest = sizes.argmin()
-        self._find_extra(channels, shortest)
 
         if auto:
             if mode == 'pad':
@@ -43,7 +42,8 @@ class AlignPings(object):
             matched = np.searchsorted(channels[longest].ping_time,
                                       channel.ping_time)
             this_missing = (np.delete(np.arange(np.alen(channels[longest].
-                                                   ping_time)), matched))
+                                                        ping_time)), matched))
+
             pings = np.take(channel.ping_number, this_missing)
             missing.append(pings)
 
@@ -55,8 +55,10 @@ class AlignPings(object):
         for channel in channels:
             matched = np.searchsorted(channel.ping_time, channels[
                                           shortest].ping_time)
+
             this_extras = np.delete(np.arange(np.alen(channel.ping_time)),
                                     matched)
+
             pings = np.take(channel.ping_number, this_extras)
             extras.append(pings)
 
@@ -68,13 +70,14 @@ class AlignPings(object):
             for ping in extras[index]:
                 channel.delete(ping, ping)
 
-    def _pad_pings(self, channels, missing, longest):
+    @staticmethod
+    def _pad_pings(channels, missing, longest):
         for index, channel in enumerate(channels):
-            print(channel.data_atributes)
-            print('huh?')
+            fill = deepcopy(channel)
+            fill.delete(2, )
+            fill.nan_values(1, 1)
+            for ping in missing[index]:
+                fill.ping_time[0] = channels[longest].ping_time[ping-1]
+                channel.insert(fill, ping_number=ping, insert_after=False)
 
-
-
-    def _make_fill(self, object, ping_time, ping_number):
-        pass
 
