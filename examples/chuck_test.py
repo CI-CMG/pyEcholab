@@ -55,6 +55,9 @@ subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.93, wspace=None,
 #  to interact with EK60 and  data sources
 ek60 = EK60()
 
+# for method in methods:
+#     print(method)
+
 
 #  use the read_raw method to read in a data file
 # profiler.enable()
@@ -73,7 +76,7 @@ ek60.read_raw(raw_files, power=None, angles=None, max_sample_count=None,
 # reported. Each file has 5 channels and they in fact are physically the same
 #  hardware. The reason there are 10 channels reported is that their
 # transceiver number in the ER60 software changed.
-# print(ek60)
+
 
 #  now get a reference to the RawData object that contains data from the
 # first  38 kHz channel.
@@ -82,6 +85,7 @@ raw_data_38 = ek60.get_rawdata(channel_number=2)
 raw_data_70 = ek60.get_rawdata(channel_number=3)
 raw_data_120 = ek60.get_rawdata(channel_number=4)
 raw_data_200 = ek60.get_rawdata(channel_number=5)
+
 
 threshold = [-70, 0]
 Sv_18 = raw_data_18.get_sv()
@@ -114,7 +118,16 @@ echo_200 = echogram(ax_200, Sv_200, 'Sv', threshold=threshold)
 ax_200.set_title("200kHz Sv data in time order")
 # print(Sv_200)
 
-AlignPings([Sv_18, Sv_38, Sv_70, Sv_120, Sv_200], 'trim')
+print(Sv_18.ping_time[488], Sv_18.ping_time[489], Sv_18.ping_time[490])
+print(Sv_38.ping_time[488], Sv_38.ping_time[489], Sv_38.ping_time[490])
+
+AlignPings([Sv_18, Sv_38, Sv_70, Sv_120, Sv_200], 'pad')
+
+print(Sv_18.ping_time[488], Sv_18.ping_time[489], Sv_18.ping_time[490])
+print(Sv_38.ping_time[488], Sv_38.ping_time[489], Sv_38.ping_time[490], '\n')
+
+
+
 
 #  show our figure
 # show()
