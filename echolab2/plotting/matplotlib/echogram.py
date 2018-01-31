@@ -15,25 +15,28 @@ class echogram(object):
     '''
 
 
-    def __init__(self, axes, data_object=None, attribute='Sv', threshold=None, cmap=None):
+    def __init__(self, axes, data_object=None, attribute='Sv', threshold=None,
+            cmap=None, x_label_attribute='ping_time', y_label_attribute='range'):
 
         self.axes = axes
         self.threshold = threshold
+        self.x_label_attribute = x_label_attribute
+        self.y_label_attribute = y_label_attribute
 
         #  set the default SIMRAD EK500 color table plus grey for NoData
-        self._simrad_color_table = [ (1,1,1),
-                                              (0.6235,0.6235,0.6235),
-                                              (0.3725,0.3725,0.3725),
-                                              (0,0,1),
-                                              (0,0,0.5),
-                                              (0,0.7490,0),
-                                              (0,0.5,0),
-                                              (1,1,0),
-                                              (1,0.5,0),
-                                              (1,0,0.7490),
-                                              (1,0,0),
-                                              (0.6509,0.3255,0.2353),
-                                              (0.4705,0.2353,0.1568)]
+        self._simrad_color_table = [(1,1,1),
+                                    (0.6235,0.6235,0.6235),
+                                    (0.3725,0.3725,0.3725),
+                                    (0,0,1),
+                                    (0,0,0.5),
+                                    (0,0.7490,0),
+                                    (0,0.5,0),
+                                    (1,1,0),
+                                    (1,0.5,0),
+                                    (1,0,0.7490),
+                                    (1,0,0),
+                                    (0.6509,0.3255,0.2353),
+                                    (0.4705,0.2353,0.1568)]
         self._simrad_cmap = LinearSegmentedColormap.from_list('Simrad',  self._simrad_color_table)
         self._simrad_cmap.set_bad(color='grey')
 
@@ -81,6 +84,10 @@ class echogram(object):
         #  update attributes if required
         if (threshold):
             self.threshold = threshold
+        if (threshold):
+            self.x_label_attribute = x_label_attribute
+        if (threshold):
+            self.y_label_attribute = y_label_attribute
         if (data_object):
             self. set_data(data_object, attribute=attribute, update=False)
 
@@ -107,19 +114,19 @@ class echogram(object):
 
 
         #  THE AXES LABELING BELOW DOESN'T WORK
-        if (0):
+        if (1):
 
             #  update the axes
             if (hasattr(self.data_object, x_label_attribute)):
-                tick_labels = getattr(self.data_object, x_label_attribute)
+                tick_labels = getattr(self.data_object, self.x_label_attribute)
                 tic_locs = self.axes.get_xticks()
-                tic_locs = tic_locs[ np.logical_and(tic_locs >= 0, tic_locs <= tick_labels.shape[0])].astype('uint32')
+                tic_locs = tic_locs[ np.logical_and(tic_locs >= 0, tic_locs < tick_labels.shape[0])].astype('uint32')
                 tick_labels = tick_labels[tic_locs]
                 self.axes.set_xticklabels(tick_labels)
 
             if (hasattr(self.data_object, y_label_attribute)):
 
-                tick_labels = getattr(self.data_object, y_label_attribute)
+                tick_labels = getattr(self.data_object, self.y_label_attribute)
 
                 tic_locs = np.arange(0, tick_labels.shape[0], 25)
                 tick_labels = tick_labels[tic_locs]

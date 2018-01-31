@@ -135,8 +135,9 @@ class sample_data(object):
             raise ValueError('Cannot add attribute as the new attribute has a different' +
                     'number of pings than the other attributes.')
 
-        #  add the name to our list of attributes
-        self._data_attributes.append(name)
+        #  add the name to our list of attributes if it doesn't already exist
+        if (name not in self._data_attributes):
+            self._data_attributes.append(name)
 
         #  and add it to self
         setattr(self, name, data)
