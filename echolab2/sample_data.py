@@ -186,17 +186,12 @@ class sample_data(object):
                 if remove:
                     attr[0:new_n_pings] = attr[keep_idx]
                 else:
-                    # trying to set datetime ping_time or int ping_number to
-                    # Nan throws valueError because float Nan can not be
-                    # converted
+                    # Skip setting ping_time and ping_number to NaN
                     if (attr_name != 'ping_time' and attr_name !=
                             'ping_number'):
                         attr[del_idx] = np.nan
 
-        # update ping number and n_pings
-        new_pings = np.arange(1, self.ping_number.shape[0])
-        setattr(self, 'ping_number', new_pings)
-        self.n_pings = self.ping_number.shape[0]
+        self._resize_arrays(new_n_pings, self.n_samples)
 
     def append(self, obj_to_append):
         """
@@ -238,7 +233,13 @@ class sample_data(object):
                 str(self.__class__))
 
         #  make sure that the frequencies match - we don't allow insrting/appending of different frequencies
-        if (self.frequency[0] != obj_to_insert.frequency[0]):
+        if isinstance(self.frequency, np.float32):
+            freq_test = self.frequency != obj_to_insert.frequency
+        elif isinstance(self.frequency, np.ndarray):
+            freq_test = self.frequency[0] != obj_to_insert.frequency[0]
+        else:
+            freq_test = False
+        if (freq_test):
             raise TypeError('The frequency of the object you are inserting/appending ' +
                     'does not match the  frequency of this object. Frequencies must match to ' +
                     'append or insert.')
@@ -253,10 +254,14 @@ class sample_data(object):
             idx += 1
 
         #  get some info about the shape of the data we're inserting
-        my_pings = self.ping_number.shape[0]
-        new_pings = obj_to_insert.ping_number.shape[0]
-        my_samples = self.power.shape[1]
-        new_samples = obj_to_insert.power.shape[1]
+        # my_pings = self.ping_number.shape[0]
+        # new_pings = obj_to_insert.ping_number.shape[0]
+        # my_samples = self.power.shape[1]
+        # new_samples = obj_to_insert.power.shape[1]
+        my_pings = self.n_pings
+        new_pings = obj_to_insert.n_pings
+        my_samples = self.n_samples
+        new_samples = obj_to_insert.n_samples
 
         #  check if we need to vertically resize one of the arrays - we resize the smaller to
         #  the size of the larger array. It will automatically be padded with NaNs
@@ -589,5 +594,23 @@ class sample_data(object):
             #  update the attribute
             setattr(self, attr_name, attr)
 
-            #  set the sample number
-            self.n_samples = new_sample_dim
+        # set the sample number and renumber pings
+        self.n_samples = new_sample_dim
+        setattr(self, 'ping_number', np.arange(1, new_ping_dim+1))
+
+    def nan_values(self, start_ping, end_ping):
+
+        #TODO Add ability to NaN a list of pings?
+
+        nan_start = np.where(self.ping_number == start_ping)[0][0]
+        nan_end = np.where(self.ping_number == end_ping)[0][0]+1
+
+        for attr_name in self._data_attributes:
+            attr = getattr(self, attr_name)
+            if isinstance(attr, np.ndarray) and (attr.ndim == 2):
+                attr[nan_start: nan_end, :] = np.nan
+            else:
+                # Skip setting ping_time and ping_number to NaN
+                if attr_name != 'ping_time' and attr_name != 'ping_number':
+                    attr[nan_start: nan_end] = np.nan
+
