@@ -184,7 +184,8 @@ class sample_data(object):
                     attr[del_idx, :] = np.nan
             else:
                 if remove:
-                    attr[0:new_n_pings] = attr[keep_idx]
+                    if attr_name != 'channel_metadata':
+                        attr[0:new_n_pings] = attr[keep_idx]
                 else:
                     # Skip setting ping_time and ping_number to NaN
                     if (attr_name != 'ping_time' and attr_name !=
@@ -232,7 +233,8 @@ class sample_data(object):
             raise TypeError('The object you are inserting/appending must be an instance of ' +
                 str(self.__class__))
 
-        #  make sure that the frequencies match - we don't allow insrting/appending of different frequencies
+        #  make sure that the frequencies match - we don't allow insrting/
+        # appending of different frequencies
         if isinstance(self.frequency, np.float32):
             freq_test = self.frequency != obj_to_insert.frequency
         elif isinstance(self.frequency, np.ndarray):
@@ -240,9 +242,10 @@ class sample_data(object):
         else:
             freq_test = False
         if (freq_test):
-            raise TypeError('The frequency of the object you are inserting/appending ' +
-                    'does not match the  frequency of this object. Frequencies must match to ' +
-                    'append or insert.')
+            raise TypeError('The frequency of the object you are inserting' +
+                            '/appending does not match the frequency of this ' +
+                            'object. Frequencies must match to append or ' +
+                            'insert.')
 
         #  determine the index of the insertion point
         idx = self.get_indices(start_time=ping_time, end_time=ping_time,
@@ -412,7 +415,6 @@ class sample_data(object):
         #  the sample intervals, determine the resampling factor, then find the maximum sample
         #  count at that sample interval (taking into account the sample's offset) and multiply
         #  by the resampling factor to determine the max number of samples for that sample interval.
-        new_sample_dims = 0
         for sample_interval in unique_sample_intervals:
             #  determine the resampling factor
             if (resample_interval > sample_interval):
@@ -599,6 +601,14 @@ class sample_data(object):
         setattr(self, 'ping_number', np.arange(1, new_ping_dim+1))
 
     def nan_values(self, start_ping, end_ping):
+        """
+        Set values in 2d arrays to Nan. Used in creating Nan filled data
+        object to insert in time aligning by padding
+
+        :param start_ping: 1st ping in sequence to Nan
+        :param end_ping: last ping in sequence to Nan
+        :return: None
+        """
 
         #TODO Add ability to NaN a list of pings?
 
@@ -609,8 +619,4 @@ class sample_data(object):
             attr = getattr(self, attr_name)
             if isinstance(attr, np.ndarray) and (attr.ndim == 2):
                 attr[nan_start: nan_end, :] = np.nan
-            else:
-                # Skip setting ping_time and ping_number to NaN
-                if attr_name != 'ping_time' and attr_name != 'ping_number':
-                    attr[nan_start: nan_end] = np.nan
 
