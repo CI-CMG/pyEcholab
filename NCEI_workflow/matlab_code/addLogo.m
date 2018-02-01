@@ -1,6 +1,7 @@
 function hPanel = addLogo(filename, pixelPosition, hContainer)
 % addLogo - adds the specified logo image at the specified container pixel position
 %
+
 % Syntax:
 %           hPanel = addLogo(filename,pixelPosition,hContainer)
 %
