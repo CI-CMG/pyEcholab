@@ -83,15 +83,20 @@ raw = [raw_18, raw_38, raw_70, raw_120, raw_200]
 # uncomment to test aligning of raw data objects
 print('Before alignment')
 for channel in raw:
+    print(channel.channel_id)
     for ping in range(488, 491):
         print(ping, channel.ping_time[ping], channel.power[ping][100])
     print()
 
 # call align pings
-AlignPings(raw, 'pad')
+aligned = AlignPings(raw, 'delete')
 
 print('\n After align')
-for channel in raw:
+for index, channel in enumerate(raw):
+    if aligned.missing[index]:
+        print('missing pings:{0}'.format(aligned.missing[index]))
+    else:
+        print('extra pings:{0}'.format(aligned.extras[index]))
     for ping in range(488, 491):
         print(ping, channel.ping_time[ping], channel.power[ping][100])
     print()
