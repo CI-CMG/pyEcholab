@@ -4,7 +4,7 @@
 Class that takes a list of either raw data objects or processed dat objects 
 and aligns data by ping time. The self.longest and self.shortest of the data objects (
 number of pings) is used to either pad short objects with NaN  value "pings" 
-or trim long objects to length of short object by deleting pings not found 
+or delete long objects to length of short object by deleting pings not found 
 in short object.
 
 """
@@ -23,7 +23,7 @@ class AlignPings(object):
 
         :param channels: list of data objects. these must by channels from 
         the same reader instance
-        :param mode: either 'pad' for align by padding or 'trim' for align by 
+        :param mode: either 'pad' for align by padding or 'delete' for align by 
         removing pings
         """
 
@@ -44,7 +44,7 @@ class AlignPings(object):
             # find pings missing in shorter objects and pad shorter objects
             self.missing = self._find_missing(channels, self.longest)
             self._pad_pings(channels, self.missing, self.longest)
-        elif mode == 'trim':
+        elif mode == 'delete':
             # find extra pings in longer objects and delete pings
             self.extras = self._find_extra(channels, self.shortest)
             self._delete_extras(channels, self.extras)
