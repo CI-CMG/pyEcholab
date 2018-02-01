@@ -11,7 +11,6 @@ import re
 from datetime import datetime, timedelta
 
 
-
 class FileAggregator(object):
     """
     Class that returns an object containing an time sorted list of files with
