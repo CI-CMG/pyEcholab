@@ -13,8 +13,6 @@ class echogram(object):
 
     https://matplotlib.org/examples/api/custom_projection_example.html
     '''
-
-
     def __init__(self, axes, data_object=None, attribute='Sv', threshold=None,
             cmap=None, x_label_attribute='ping_time', y_label_attribute='range'):
 
@@ -112,9 +110,8 @@ class echogram(object):
         self.axes_image = self.axes.imshow(echodata, cmap=self.cmap, vmin=threshold[0],
                 vmax=threshold[1], aspect='auto', interpolation='none')
 
-
         #  THE AXES LABELING BELOW DOESN'T WORK
-        if (1):
+        if (0):
 
             #  update the axes
             if (hasattr(self.data_object, x_label_attribute)):

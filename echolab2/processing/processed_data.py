@@ -20,7 +20,7 @@
 '''
 import numpy as np
 from ..sample_data import sample_data
-#from sample_data import sample_data
+
 
 
 class processed_data(sample_data):
@@ -57,6 +57,10 @@ class processed_data(sample_data):
             Set to_depth to True if you are converting from range to depth
             This option will remove the range attribute and replace it with
             the depth attribute.
+
+        If to_depth is False and you are shifting pings in a processed data
+        instance with range as the vertical axis, you will no longer have a
+        range vector that is range from the transducer face.
 
         """
 
@@ -107,6 +111,14 @@ class processed_data(sample_data):
 
 
     def __getitem__(self, key):
+        """
+        __getitem__ implements indexing/slicing of processed data objects.
+
+        A critical detail to understand is that __getitem__ will return a copy of the
+        processed data instance that contains *views* of the sliced data.
+
+
+        """
 
         #  create a new processed_data object to return
         p_data = processed_data(self.channel_id, self.frequency)
