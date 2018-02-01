@@ -31,25 +31,26 @@ heave_corrected_Sv = raw_data_38.get_sv(heave_correct=True)
 print(heave_corrected_Sv)
 
 #  extract a portion of the data to plot "zoomed in". We can slice processed_data objects
-#  like numpy arrays. Note that slicing returns a view into the various attributes.
-#  IT DOES NOT RETURN A COPY.
+#  like numpy arrays. Note that slicing returns a copy of the processed data object that contains
+#  *views* into the various attributes. It is not a full copy.
 subset_Sv = heave_corrected_Sv[0:100,0:100]
 print(subset_Sv)
+
+#  you can prove this by uncommenting the line below and then zooming into the full echogram
+#  to view the subsampled area, It will be greyed out after setting it to np.nan
 #subset_Sv.Sv[:,80:100] = np.nan
 
 #  create an axes
 ax_1 = fig.add_subplot(2,1,1)
 #  create an echogram which will display on our heave corrected data
-echogram_1 = echogram.echogram(ax_1, heave_corrected_Sv, 'Sv', threshold=[-70,-34])
+echogram_1 = echogram.echogram(ax_1, heave_corrected_Sv, 'Sv', threshold=[-70,-34],y_label_attribute='depth')
 ax_1.set_title("heave compensated Sv on depth grid")
 
 #  create another axes
 ax_2 = fig.add_subplot(2,1,2)
 #  create an echogram which will display the Sv data on a range grid
-echogram_2 = echogram.echogram(ax_2, subset_Sv, 'Sv', threshold=[-70,-34])
+echogram_2 = echogram.echogram(ax_2, subset_Sv, 'Sv', threshold=[-70,-34],y_label_attribute='depth')
 ax_2.set_title("zoomed heave compensated Sv on depth grid")
-
-
 
 
 #  show our figure

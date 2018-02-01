@@ -46,13 +46,17 @@ class processed_data(sample_data):
         self.sample_offset = 0
 
 
-    def shift_pings(self, vert_shift):
+    def shift_pings(self, vert_shift, to_depth=False):
         """
         shift_pings shifts sample data vertically by an arbitrary amount,
         interpolating sample data to the new vertical axis.
 
             vert_shift is a scalar or vector n_pings long that contains the
             constant shift for all pings or a per-ping shift respectively.
+
+            Set to_depth to True if you are converting from range to depth
+            This option will remove the range attribute and replace it with
+            the depth attribute.
 
         """
 
@@ -66,6 +70,8 @@ class processed_data(sample_data):
             vert_axis = self.range
         else:
             vert_axis = self.depth
+            #  if we've already converted to depth, unset the to_depth keyword
+            to_depth = False
 
         #  if there is a new vertical extent resize our arrays
         if (vert_ext != 0):
@@ -91,13 +97,21 @@ class processed_data(sample_data):
                                 attr[ping,:old_samps], left=np.nan, right=np.nan)
 
         # and assign the new axis
-        vert_axis = new_axis
+        if (to_depth):
+            #  if we're converting from range to depth, add depth and remove range
+            self.add_attribute('depth', new_axis)
+            self.remove_attribute('range')
+        else:
+            #  no conversion, just assign the new vertical axis data
+            vert_axis = new_axis
 
 
     def __getitem__(self, key):
 
         #  create a new processed_data object to return
         p_data = processed_data(self.channel_id, self.frequency)
+
+        #  copy common attributes
         p_data.sample_thickness = self.sample_thickness
         p_data.sample_offset = self.sample_offset
 
