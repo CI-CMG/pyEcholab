@@ -96,6 +96,7 @@ class sample_data(object):
         #  when writing methods that operate on these data, we will not assume that they
         #  exist. An attribute should only exist if it contains data.
 
+
     def add_attribute(self, name, data):
         """
         add_attribute adds a "data attribute" to the class. It first checks if the new
@@ -140,6 +141,7 @@ class sample_data(object):
         #  and add it to self
         setattr(self, name, data)
 
+
     def remove_attribute(self, name):
         """
         remove_attribute removes a data attribute from the object.
@@ -152,6 +154,7 @@ class sample_data(object):
             delattr(self, name)
         except:
             pass
+
 
     def delete(self, start_ping=None, end_ping=None, start_time=None,
                end_time=None, remove=True):
@@ -199,6 +202,7 @@ class sample_data(object):
         setattr(self, 'ping_number', new_pings)
         self.n_pings = self.ping_number.shape[0]
 
+
     def append(self, obj_to_append):
         """
         append appends another echolab2 data object to this one. The objects must
@@ -207,6 +211,7 @@ class sample_data(object):
 
         #  append simply inserts at the end of our internal array.
         self.insert(obj_to_append, ping_number=self.ping_number[-1])
+
 
     def insert(self, obj_to_insert, ping_number=None, ping_time=None,
                insert_after=True):
@@ -323,6 +328,7 @@ class sample_data(object):
             self.channel_id += obj_to_insert.channel_id
         self.n_pings = self.ping_number.shape[0]
 
+
     def trim(self, n_pings=None, n_samples=None):
         """
         trim deletes pings from an echolab2 data object to a given length
@@ -335,6 +341,7 @@ class sample_data(object):
 
         #  resize keeping the sample number the same
         self._resize_arrays(n_pings, n_samples)
+
 
     def get_indices(self, start_ping=None, end_ping=None, start_time=None,
                     end_time=None, time_order=True):
@@ -372,6 +379,7 @@ class sample_data(object):
 
         #  and return the indices that are included in the specified range
         return primary_index[mask]
+
 
     def _vertical_resample(self, data, sample_intervals, unique_sample_intervals, resample_interval,
             sample_offsets, min_sample_offset, is_power=True):
@@ -489,6 +497,7 @@ class sample_data(object):
         #  return the resampled data and the sampling interval used
         return (resampled_data, resample_interval)
 
+
     def _vertical_shift(self, data, sample_offsets, unique_sample_offsets, min_sample_offset):
         """
         vertical_shift adjusts the output array size and pads the top of the
@@ -520,6 +529,7 @@ class sample_data(object):
             shifted_data[rows_this_offset, start_index:end_index] = data[rows_this_offset, 0:data.shape[1]]
 
         return shifted_data
+
 
     def _resize_arrays(self, new_ping_dim, new_sample_dim):
         """

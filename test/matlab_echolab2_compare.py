@@ -216,7 +216,7 @@ if __name__ == "__main__":
 
         #  get the Sv array for this channel
         #  extract the power data into a processed_data object
-        data = raw_data.get_sv(insert_into=data, keep_power=True)
+        data = raw_data.get_sv()
         title = '%3.0f kHz Sv results' % (ref_data[reference_input[i][0]]['frequency'] / 1000)
         difference = ref_data[reference_input[i][0]]['sv'] - data.Sv
         print_difference(difference, title)
@@ -245,7 +245,7 @@ if __name__ == "__main__":
 
 
         #  get the sv array for this channel
-        data = raw_data.get_sv(insert_into=data, linear=True)
+        data = raw_data.get_sv(linear=True)
         title = '%3.0f kHz sv results' % (ref_data[reference_input[i][0]]['frequency'] / 1000)
         difference = ref_data[reference_input[i][0]]['sv_linear'] - data.sv
         print_difference(difference, title)
@@ -257,7 +257,7 @@ if __name__ == "__main__":
 
 
         #  get the Sp array for this channel
-        data = raw_data.get_sp(insert_into=data)
+        data = raw_data.get_sp()
         title = '%3.0f kHz Sp results' % (ref_data[reference_input[i][0]]['frequency'] / 1000)
         difference = ref_data[reference_input[i][0]]['sp'] - data.Sp
         print_difference(difference, title)
@@ -268,7 +268,7 @@ if __name__ == "__main__":
             plt.show(block=True)
 
         #  get the sp array for this channel
-        data = raw_data.get_sp(insert_into=data, linear=True)
+        data = raw_data.get_sp(linear=True)
         title = '%3.0f kHz sp results' % (ref_data[reference_input[i][0]]['frequency'] / 1000)
         difference = ref_data[reference_input[i][0]]['sp_linear'] - data.sp
         print_difference(difference, title)
@@ -279,7 +279,7 @@ if __name__ == "__main__":
             plt.show(block=True)
 
         #  get the physical angles array
-        data = raw_data.get_physical_angles(insert_into=data)
+        data = raw_data.get_physical_angles()
         #  plot alongship angles
         title = '%3.0f kHz alongship angle results' % (ref_data[reference_input[i][0]]['frequency'] / 1000)
         difference = ref_data[reference_input[i][0]]['alongship'] - data.angles_alongship

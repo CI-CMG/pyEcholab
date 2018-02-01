@@ -169,18 +169,20 @@ echogram_3 = echogram.echogram(ax_3, Sv, 'Sv', threshold=[-70,-34])
 ax_3.set_title("Sv data in time order")
 
 
-
 #  show our figure
 show()
 
 
-fig1 = figure()
-#  set some properties for the sub plot layout
+#  now create a figure to display the angle data
+fig = figure()
+
+#  and again, set some properties for the sub plot layout
 subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.93, wspace=None, hspace=0.5)
 
+#  pick a colormap for the angle display
 angle_cmap = get_cmap('plasma')
 
-#  now request angles data in time order
+#  request angles data in time order
 t = time.clock()
 angles = raw_data_38_1.get_physical_angles()
 print("get_physical_angles - time ordered: " + str(time.clock() - t))
@@ -198,7 +200,7 @@ ax_2 = fig.add_subplot(2,1,2)
 echogram_3 = echogram.echogram(ax_2, angles, 'angles_athwartship', cmap=angle_cmap)
 ax_2.set_title("angles_athwartship data in time order")
 
-#  show our figure
+#  show our angles figure
 show()
 
 
