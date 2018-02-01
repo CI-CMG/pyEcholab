@@ -1,4 +1,7 @@
 
+"""
+WARNING: This module uses PyQt4 and is incompatible with PyQt5
+"""
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 from echolab2.instruments import EK60
