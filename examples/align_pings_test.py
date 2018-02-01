@@ -53,21 +53,26 @@ raw = [raw_18, raw_38, raw_70, raw_120, raw_200]
 # time 2015-06-26T06:12:03 is missing in the 38kHz channel. this is ping #
 # 489 in he other channels
 # uncomment lines 56-69 to test aligning of raw data objects the keyword
-# 'pad' aligns by padding, 'trim' aligns by dropping extra pings
-print('Before alignment')
-for channel in raw:
-    for ping in range(488, 491):
-        print(ping, channel.ping_time[ping], channel.power[ping][100])
-    print()
-
-# call align pings
-AlignPings(raw, 'pad')
-
-print('\n After align')
-for channel in raw:
-    for ping in range(488, 491):
-        print(ping, channel.ping_time[ping], channel.power[ping][100])
-    print()
+# 'pad' aligns by padding, 'delete' aligns by dropping extra pings
+# print('Before alignment')
+# for channel in raw:
+#     print(channel.channel_id)
+#     for ping in range(488, 491):
+#         print(ping, channel.ping_time[ping], channel.power[ping][100])
+#     print()
+#
+# # call align pings
+# aligned = AlignPings(raw, 'delete')
+#
+# print('\n After align')
+# for index, channel in enumerate(raw):
+#     if hasattr(aligned, 'missing') and len(aligned.missing[index]) > 0:
+#         print('missing pings:{0}'.format(aligned.missing[index]))
+#     elif hasattr(aligned, 'extras') and len(aligned.extras[index]) > 0:
+#         print('extra pings:{0}'.format(aligned.extras[index]))
+#     for ping in range(488, 491):
+#         print(ping, channel.ping_time[ping], channel.power[ping][100])
+#     print()
 
 # get Sv for each channel
 Sv_18 = raw_18.get_sv()
@@ -78,20 +83,25 @@ Sv_200 = raw_200.get_sv()
 Sv = [Sv_18, Sv_38, Sv_70, Sv_120, Sv_200]
 
 # uncomment lines 83-96 to test aligning of processed data object.
-# print('Before alignment')
-# for channel in Sv:
-#     for ping in range(488, 491):
-#         print(ping, channel.ping_time[ping], channel.Sv[ping][100])
-#     print()
-#
-# # call align pings
-# AlignPings(Sv, 'pad')
-#
-# print('\n After align')
-# for channel in Sv:
-#     for ping in range(488, 491):
-#         print(ping, channel.ping_time[ping], channel.Sv[ping][100])
-#     print()
+print('Before alignment')
+for channel in raw:
+    print(channel.channel_id)
+    for ping in range(488, 491):
+        print(ping, channel.ping_time[ping], channel.power[ping][100])
+    print()
+
+# call align pings
+aligned = AlignPings(Sv, 'delete')
+
+print('\n After align')
+for index, channel in enumerate(raw):
+    if hasattr(aligned, 'missing') and len(aligned.missing[index]) > 0:
+        print('missing pings:{0}'.format(aligned.missing[index]))
+    elif hasattr(aligned, 'extras') and len(aligned.extras[index]) > 0:
+        print('extra pings:{0}'.format(aligned.extras[index]))
+    for ping in range(488, 491):
+        print(ping, channel.ping_time[ping], channel.power[ping][100])
+    print()
 
 # plot Sv values
 threshold = [-70, 0]
