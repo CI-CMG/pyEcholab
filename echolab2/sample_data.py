@@ -348,8 +348,8 @@ class sample_data(object):
         """
         get_indices returns an index array containing the indices contained in the range
         defined by the times and/or ping numbers provided. By default the indexes are in time
-        order. If time_order is set to False, the data will be returned in the order they
-        occur in the data arrays.
+        order. If time_order is set to False, the data will be returned in the
+        order they occur in the data arrays.
         """
 
         #  if starts and/or ends are omitted, assume fist and last respectively
