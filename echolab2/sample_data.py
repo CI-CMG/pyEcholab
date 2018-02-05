@@ -96,6 +96,7 @@ class sample_data(object):
         #  when writing methods that operate on these data, we will not assume that they
         #  exist. An attribute should only exist if it contains data.
 
+
     def add_attribute(self, name, data):
         """
         add_attribute adds a "data attribute" to the class. It first checks if the new
@@ -140,6 +141,7 @@ class sample_data(object):
         #  and add it to self
         setattr(self, name, data)
 
+
     def remove_attribute(self, name):
         """
         remove_attribute removes a data attribute from the object.
@@ -152,6 +154,7 @@ class sample_data(object):
             delattr(self, name)
         except:
             pass
+
 
     def delete(self, start_ping=None, end_ping=None, start_time=None,
                end_time=None, remove=True):
@@ -185,15 +188,20 @@ class sample_data(object):
                     attr[del_idx, :] = np.nan
             else:
                 if remove:
-                    if attr_name != 'channel_metadata':
-                        attr[0:new_n_pings] = attr[keep_idx]
+                    attr[0:new_n_pings] = attr[keep_idx]
                 else:
-                    # Skip setting ping_time and ping_number to NaN
+                    # trying to set datetime ping_time or int ping_number to
+                    # Nan throws valueError because float Nan can not be
+                    # converted
                     if (attr_name != 'ping_time' and attr_name !=
                             'ping_number'):
                         attr[del_idx] = np.nan
 
-        self._resize_arrays(new_n_pings, self.n_samples)
+        # update ping number and n_pings
+        new_pings = np.arange(1, self.ping_number.shape[0])
+        setattr(self, 'ping_number', new_pings)
+        self.n_pings = self.ping_number.shape[0]
+
 
     def append(self, obj_to_append):
         """
@@ -203,6 +211,7 @@ class sample_data(object):
 
         #  append simply inserts at the end of our internal array.
         self.insert(obj_to_append, ping_number=self.ping_number[-1])
+
 
     def insert(self, obj_to_insert, ping_number=None, ping_time=None,
                insert_after=True):
@@ -234,19 +243,11 @@ class sample_data(object):
             raise TypeError('The object you are inserting/appending must be an instance of ' +
                 str(self.__class__))
 
-        #  make sure that the frequencies match - we don't allow insrting/
-        # appending of different frequencies
-        if isinstance(self.frequency, np.float32):
-            freq_test = self.frequency != obj_to_insert.frequency
-        elif isinstance(self.frequency, np.ndarray):
-            freq_test = self.frequency[0] != obj_to_insert.frequency[0]
-        else:
-            freq_test = False
-        if (freq_test):
-            raise TypeError('The frequency of the object you are inserting' +
-                            '/appending does not match the frequency of this ' +
-                            'object. Frequencies must match to append or ' +
-                            'insert.')
+        #  make sure that the frequencies match - we don't allow insrting/appending of different frequencies
+        if (self.frequency[0] != obj_to_insert.frequency[0]):
+            raise TypeError('The frequency of the object you are inserting/appending ' +
+                    'does not match the  frequency of this object. Frequencies must match to ' +
+                    'append or insert.')
 
         #  determine the index of the insertion point
         idx = self.get_indices(start_time=ping_time, end_time=ping_time,
@@ -258,14 +259,10 @@ class sample_data(object):
             idx += 1
 
         #  get some info about the shape of the data we're inserting
-        # my_pings = self.ping_number.shape[0]
-        # new_pings = obj_to_insert.ping_number.shape[0]
-        # my_samples = self.power.shape[1]
-        # new_samples = obj_to_insert.power.shape[1]
-        my_pings = self.n_pings
-        new_pings = obj_to_insert.n_pings
-        my_samples = self.n_samples
-        new_samples = obj_to_insert.n_samples
+        my_pings = self.ping_number.shape[0]
+        new_pings = obj_to_insert.ping_number.shape[0]
+        my_samples = self.power.shape[1]
+        new_samples = obj_to_insert.power.shape[1]
 
         #  check if we need to vertically resize one of the arrays - we resize the smaller to
         #  the size of the larger array. It will automatically be padded with NaNs
@@ -331,6 +328,7 @@ class sample_data(object):
             self.channel_id += obj_to_insert.channel_id
         self.n_pings = self.ping_number.shape[0]
 
+
     def trim(self, n_pings=None, n_samples=None):
         """
         trim deletes pings from an echolab2 data object to a given length
@@ -343,6 +341,7 @@ class sample_data(object):
 
         #  resize keeping the sample number the same
         self._resize_arrays(n_pings, n_samples)
+
 
     def get_indices(self, start_ping=None, end_ping=None, start_time=None,
                     end_time=None, time_order=True):
@@ -381,6 +380,7 @@ class sample_data(object):
         #  and return the indices that are included in the specified range
         return primary_index[mask]
 
+
     def _vertical_resample(self, data, sample_intervals, unique_sample_intervals, resample_interval,
             sample_offsets, min_sample_offset, is_power=True):
         """
@@ -416,6 +416,7 @@ class sample_data(object):
         #  the sample intervals, determine the resampling factor, then find the maximum sample
         #  count at that sample interval (taking into account the sample's offset) and multiply
         #  by the resampling factor to determine the max number of samples for that sample interval.
+        new_sample_dims = 0
         for sample_interval in unique_sample_intervals:
             #  determine the resampling factor
             if (resample_interval > sample_interval):
@@ -496,6 +497,7 @@ class sample_data(object):
         #  return the resampled data and the sampling interval used
         return (resampled_data, resample_interval)
 
+
     def _vertical_shift(self, data, sample_offsets, unique_sample_offsets, min_sample_offset):
         """
         vertical_shift adjusts the output array size and pads the top of the
@@ -527,6 +529,7 @@ class sample_data(object):
             shifted_data[rows_this_offset, start_index:end_index] = data[rows_this_offset, 0:data.shape[1]]
 
         return shifted_data
+
 
     def _resize_arrays(self, new_ping_dim, new_sample_dim):
         """
@@ -597,27 +600,5 @@ class sample_data(object):
             #  update the attribute
             setattr(self, attr_name, attr)
 
-        # set the sample number and renumber pings
-        self.n_samples = new_sample_dim
-        setattr(self, 'ping_number', np.arange(1, new_ping_dim+1))
-
-    def nan_values(self, start_ping, end_ping):
-        """
-        Set values in 2d arrays to Nan. Used in creating Nan filled data
-        object to insert in time aligning by padding
-
-        :param start_ping: 1st ping in sequence to Nan
-        :param end_ping: last ping in sequence to Nan
-        :return: None
-        """
-
-        #TODO Add ability to NaN a list of pings?
-
-        nan_start = np.where(self.ping_number == start_ping)[0][0]
-        nan_end = np.where(self.ping_number == end_ping)[0][0]+1
-
-        for attr_name in self._data_attributes:
-            attr = getattr(self, attr_name)
-            if isinstance(attr, np.ndarray) and (attr.ndim == 2):
-                attr[nan_start: nan_end, :] = np.nan
-
+            #  set the sample number
+            self.n_samples = new_sample_dim
