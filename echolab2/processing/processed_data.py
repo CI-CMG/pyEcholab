@@ -143,13 +143,13 @@ class processed_data(sample_data):
 
     def __str__(self):
         '''
-        reimplemented string method that provides some basic info about the RawData object
+        reimplemented string method that provides some basic info about the processed_data object
         '''
 
         #  print the class and address
         msg = str(self.__class__) + " at " + str(hex(id(self))) + "\n"
 
-        #  print some more info about the ProcessedData instance
+        #  print some more info about the processed_data instance
         n_pings = len(self.ping_time)
         if (n_pings > 0):
             msg = msg + "                channel(s): ["
@@ -176,6 +176,6 @@ class processed_data(sample_data):
                         msg = msg + padding + attr_name + " (%u)\n" % (len(attr))
                 n_attr += 1
         else:
-            msg = msg + ("  ProcessedData object contains no data\n")
+            msg = msg + ("  processed_data object contains no data\n")
 
         return msg

@@ -114,7 +114,7 @@ class echogram(object):
 
 
         #  THE AXES LABELING BELOW DOESN'T WORK
-        if (1):
+        if (0):
 
             #  update the axes
             if (hasattr(self.data_object, x_label_attribute)):
