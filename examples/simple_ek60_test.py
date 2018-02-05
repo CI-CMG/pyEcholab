@@ -40,10 +40,10 @@ profiler = cProfile.Profile()
 #  The descriptions below apply to reading these 2 files in this order:
 #       ./data/EK60/DY1201_EK60-D20120214-T231011.raw
 #       ./data/EK60/DY1706_EK60-D20170609-T005736.raw
-#rawfiles = ['./data/EK60/DY1201_EK60-D20120214-T231011.raw','./data/EK60/DY1706_EK60-D20170609-T005736.raw']
+rawfiles = ['./data/EK60/DY1201_EK60-D20120214-T231011.raw','./data/EK60/DY1706_EK60-D20170609-T005736.raw']
 
 #  NEED TO CHECK ON AN APPEND ERROR WITH THESE FILES:
-rawfiles = ['./data/EK60/DY1706_EK60-D20170609-T005736.raw','./data/EK60/DY1706_EK60-D20170625-T061707.raw']
+#rawfiles = ['./data/EK60/DY1706_EK60-D20170609-T005736.raw','./data/EK60/DY1706_EK60-D20170625-T061707.raw']
 
 
 #  create a matplotlib figure to plot our echograms on
