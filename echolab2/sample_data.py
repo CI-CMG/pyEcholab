@@ -188,7 +188,8 @@ class sample_data(object):
                     attr[del_idx, :] = np.nan
             else:
                 if remove:
-                    attr[0:new_n_pings] = attr[keep_idx]
+                    if attr_name != 'channel_metadata':
+                        attr[0:new_n_pings] = attr[keep_idx]
                 else:
                     # trying to set datetime ping_time or int ping_number to
                     # Nan throws valueError because float Nan can not be
@@ -198,9 +199,11 @@ class sample_data(object):
                         attr[del_idx] = np.nan
 
         # update ping number and n_pings
-        new_pings = np.arange(1, self.ping_number.shape[0])
-        setattr(self, 'ping_number', new_pings)
-        self.n_pings = self.ping_number.shape[0]
+        self._resize_arrays(new_n_pings, self.n_samples)
+        
+        #new_pings = np.arange(1, self.ping_number.shape[0])
+        #setattr(self, 'ping_number', new_pings)
+        #self.n_pings = self.ping_number.shape[0]
 
 
     def append(self, obj_to_append):
@@ -243,11 +246,19 @@ class sample_data(object):
             raise TypeError('The object you are inserting/appending must be an instance of ' +
                 str(self.__class__))
 
-        #  make sure that the frequencies match - we don't allow insrting/appending of different frequencies
-        if (self.frequency[0] != obj_to_insert.frequency[0]):
-            raise TypeError('The frequency of the object you are inserting/appending ' +
-                    'does not match the  frequency of this object. Frequencies must match to ' +
-                    'append or insert.')
+        #  make sure that the frequencies match - we don't allow inserting/
+        #  appending of different frequencies
+        if isinstance(self.frequency, np.float32):
+            freq_test = self.frequency != obj_to_insert.frequency
+        elif isinstance(self.frequency, np.ndarray):
+            freq_test = self.frequency[0] != obj_to_insert.frequency[0]
+        else:
+            freq_test = False
+        if (freq_test):
+            raise TypeError('The frequency of the object you are inserting' +
+                            '/appending does not match the frequency of this ' +
+                            'object. Frequencies must match to append or ' +
+                            'insert.')
 
         #  determine the index of the insertion point
         idx = self.get_indices(start_time=ping_time, end_time=ping_time,
@@ -259,17 +270,21 @@ class sample_data(object):
             idx += 1
 
         #  get some info about the shape of the data we're inserting
-        my_pings = self.ping_number.shape[0]
-        new_pings = obj_to_insert.ping_number.shape[0]
-        my_samples = self.power.shape[1]
-        new_samples = obj_to_insert.power.shape[1]
+        #my_pings = self.ping_number.shape[0]
+        #new_pings = obj_to_insert.ping_number.shape[0]
+        #my_samples = self.power.shape[1]
+        #new_samples = obj_to_insert.power.shape[1]
+        my_pings = self.n_pings
+        new_pings = obj_to_insert.n_pings
+        my_samples = self.n_samples
+        new_samples = obj_to_insert.n_samples
 
         #  check if we need to vertically resize one of the arrays - we resize the smaller to
         #  the size of the larger array. It will automatically be padded with NaNs
         if (my_samples < new_samples):
             #  resize our data arrays - check if we have a limit on the max number of samples
             if (hasattr(self, 'max_sample_number') and (self.max_sample_number)):
-                #  we have the attribue and a value is set - chech if the new array exceeds our max_sample_count
+                #  we have the attribute and a value is set - check if the new array exceeds our max_sample_count
                 if (new_samples > self.max_sample_number):
                     #  it does - we have to change our new_samples
                     new_samples = self.max_sample_number
@@ -552,9 +567,9 @@ class sample_data(object):
             """
 
             #  if the minor axis is changing we have to either concatenate or
-            #  opy into a new resized array. I'm taking the second approach
-            # for now as I don't think there are performance differences
-            # between the two approaches.
+            #  copy into a new resized array. I'm taking the second approach
+            #  for now as I don't think there are performance differences
+            #  between the two approaches.
 
             #  create a new array
             new_array = np.empty((ping_dim, sample_dim))
@@ -600,5 +615,27 @@ class sample_data(object):
             #  update the attribute
             setattr(self, attr_name, attr)
 
-            #  set the sample number
-            self.n_samples = new_sample_dim
+        #  set the sample number
+        self.n_samples = new_sample_dim
+        setattr(self, 'ping_number', np.arange(1, new_ping_dim+1))
+
+            
+    def nan_values(self, start_ping, end_ping):
+        """
+        Set values in 2d arrays to Nan. Used in creating Nan filled data
+        object to insert in time aligning by padding
+
+        :param start_ping: 1st ping in sequence to Nan
+        :param end_ping: last ping in sequence to Nan
+        :return: None
+        """
+
+        #TODO Add ability to NaN a list of pings?
+
+        nan_start = np.where(self.ping_number == start_ping)[0][0]
+        nan_end = np.where(self.ping_number == end_ping)[0][0]+1
+
+        for attr_name in self._data_attributes:
+            attr = getattr(self, attr_name)
+            if isinstance(attr, np.ndarray) and (attr.ndim == 2):
+                attr[nan_start: nan_end, :] = np.nan
