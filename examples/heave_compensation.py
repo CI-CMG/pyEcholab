@@ -50,7 +50,7 @@ ax_1.set_title("heave compensated Sv on depth grid")
 ax_2 = fig.add_subplot(2,1,2)
 #  create an echogram which will display the Sv data on a range grid
 echogram_2 = echogram.echogram(ax_2, subset_Sv, 'Sv', threshold=[-70,-34],y_label_attribute='depth')
-ax_2.set_title("zoomed heave compensated Sv on depth grid")
+ax_2.set_title("zoomed view of heave compensated Sv on depth grid")
 
 
 #  show our figure

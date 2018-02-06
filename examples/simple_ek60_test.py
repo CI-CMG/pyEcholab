@@ -36,15 +36,11 @@ profiler = cProfile.Profile()
 #  two files with the same channels but the channels have different pulse
 #  lengths and a different installation order
 
-# THESE WORK
 #  The descriptions below apply to reading these 2 files in this order:
 #       ./data/EK60/DY1201_EK60-D20120214-T231011.raw
 #       ./data/EK60/DY1706_EK60-D20170609-T005736.raw
-rawfiles = ['./data/EK60/DY1201_EK60-D20120214-T231011.raw','./data/EK60/DY1706_EK60-D20170609-T005736.raw']
-
-#  NEED TO CHECK ON AN APPEND ERROR WITH THESE FILES:
-#rawfiles = ['./data/EK60/DY1706_EK60-D20170609-T005736.raw','./data/EK60/DY1706_EK60-D20170625-T061707.raw']
-
+rawfiles = ['./data/EK60/DY1201_EK60-D20120214-T231011.raw',
+            './data/EK60/DY1706_EK60-D20170609-T005736.raw']
 
 #  create a matplotlib figure to plot our echograms on
 fig = figure()
@@ -167,8 +163,6 @@ ax_3 = fig.add_subplot(3,1,3)
 #  create an echogram which will display on our newly created axes
 echogram_3 = echogram.echogram(ax_3, Sv, 'Sv', threshold=[-70,-34])
 ax_3.set_title("Sv data in time order")
-
-
 
 #  show our figure
 show()

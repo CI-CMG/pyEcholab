@@ -1,7 +1,17 @@
 # -*- coding: utf-8 -*-
 """
 
-THIS EXAMPLE REQUIRES THE PYTHON BASEMAP PACKAGE
+THIS EXAMPLE REQUIRES THE PYPROJ AND BASEMAP PACKAGES
+
+These packages are available for windows here:
+
+https://www.lfd.uci.edu/~gohlke/pythonlibs/
+
+Download the files that match your Python version and install using pip.
+You must install pyproj before basemap.
+
+D:\temp>pip install pyproj-1.9.5.1-cp36-cp36m-win_amd64.whl
+D:\temp>pip install basemap-1.1.0-cp36-cp36m-win_amd64.whl
 
 """
 
@@ -83,9 +93,9 @@ rawfiles = ['./data/EK60/DY1706_EK60-D20170609-T005736.raw']
 
 #  these files are in our example dataset
 rawfiles = ['./data/EK60/PC1106-D20110830-T034700.raw',
-            './data/EK60/PC1106-D20110830-T044817.raw',
-            './data/EK60/PC1106-D20110830-T052815.raw',
-            './data/EK60/PC1106-D20110830-T053815.raw']
+               './data/EK60/PC1106-D20110830-T044817.raw',
+               './data/EK60/PC1106-D20110830-T052815.raw',
+               './data/EK60/PC1106-D20110830-T053815.raw']
 
 #  create an instance of the EK60 instrument. This is the top level object used
 #  to interact with EK60 data sources

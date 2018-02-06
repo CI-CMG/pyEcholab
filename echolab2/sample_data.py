@@ -80,9 +80,9 @@ class sample_data(object):
         #
         #  "data attributes" are attributes that store data by ping. They can be 1d such as
         #  ping_time, sample_interval, and transducer_depth. Or they can be 2d such as power,
-        #  Sv, angle data, etc. echolab2 supports attributes that are lists and 1 and 2d
-        #  numpy arrays. When subclassing, you must extend this list in your __init__ method
-        #  to contain all of the possible data attributes of that class.
+        #  Sv, angle data, etc. echolab2 supports attributes that are 1 and 2d numpy
+        #  arrays. When subclassing, you must extend this list in your __init__ method
+        #  to contain all of the  data attributes of that class THAT EXIST AT INSTANTIATION.
 
         #  for the base class, we only define ping_time and ping_number which are attributes
         #  that all data objects must have.
@@ -157,19 +157,36 @@ class sample_data(object):
 
 
     def delete(self, start_ping=None, end_ping=None, start_time=None,
-               end_time=None, remove=True):
+               end_time=None, remove=True, index_array=None):
         """
         delete deletes data from an echolab2 data object by ping over the range
         defined by the start and end pings/times. If remove is True, the data
         arrays are shrunk, if False the arrays stay the same size and the data
         values are set to NaNs (or appropriate value based on type)
+
+        Args:
+            start_ping: The starting ping of the range of pings to delete
+            end_ping: The ending ping of the range of pings to delete
+            start_time: The starting time of the range of pings to delete
+            end_time: The ending time of the range of pings to delete
+
+                You should set only one start and end point.
+
+            remove: Set to True to remove the specified pings and shrink the
+                data arrays. When set to false, data in the deleted pings are
+                set to Nan (or appropriate value for the data type.)
+            index_array: A numpy array containing the indices of the pings you
+                want to delete. Unlike when using starts/ends to define the
+                ping range to delete, the pings do not have to be consecutive.
+                When this keyword is present, the start/end keywords are ignored.
+
         """
         #  determine the indices of the pings we're deleting.
         del_idx = self.get_indices(start_time=start_time, end_time=end_time,
                                    start_ping=start_ping, end_ping=end_ping)
 
         #  determine the indices of the pings we're keeping
-        keep_idx = np.delete(np.arange(np.alen(self.ping_number)), del_idx)
+        keep_idx = np.delete(np.arange(self.ping_number.shape[0]), del_idx)
 
         #  and the number of pings we're keeping
         new_n_pings = keep_idx.shape[0]
@@ -188,22 +205,22 @@ class sample_data(object):
                     attr[del_idx, :] = np.nan
             else:
                 if remove:
-                    if attr_name != 'channel_metadata':
                         attr[0:new_n_pings] = attr[keep_idx]
                 else:
-                    # trying to set datetime ping_time or int ping_number to
-                    # Nan throws valueError because float Nan can not be
-                    # converted
-                    if (attr_name != 'ping_time' and attr_name !=
-                            'ping_number'):
+                    # set the data tp NaN or apprpriate value
+                    if (attr.dtype in [np.float16, np.float32, np.float64, np.datetime64]):
+                        #  float like objects are set to NaN
                         attr[del_idx] = np.nan
+                    elif (attr.dtype in [np.uint16, np.uint32, np.uint64, np.uint8]):
+                        #  unsigned ints are set... well, what really is an appropriate value???
+                        attr[del_idx] = 0
+                    else:
+                        #  it's a good question and my values here will
+                        attr[del_idx] = -1
 
-        # update ping number and n_pings
-        self._resize_arrays(new_n_pings, self.n_samples)
-        
-        #new_pings = np.arange(1, self.ping_number.shape[0])
-        #setattr(self, 'ping_number', new_pings)
-        #self.n_pings = self.ping_number.shape[0]
+        #  if we're removing the pings, resize (shrink) the arrays
+        if (remove):
+            self._resize_arrays(new_n_pings, self.n_samples)
 
 
     def append(self, obj_to_append):
@@ -246,8 +263,7 @@ class sample_data(object):
             raise TypeError('The object you are inserting/appending must be an instance of ' +
                 str(self.__class__))
 
-        #  make sure that the frequencies match - we don't allow inserting/
-        #  appending of different frequencies
+        #  make sure that the frequencies match - don't allow inserting/appending of different freqs
         if isinstance(self.frequency, np.float32):
             freq_test = self.frequency != obj_to_insert.frequency
         elif isinstance(self.frequency, np.ndarray):
@@ -270,10 +286,6 @@ class sample_data(object):
             idx += 1
 
         #  get some info about the shape of the data we're inserting
-        #my_pings = self.ping_number.shape[0]
-        #new_pings = obj_to_insert.ping_number.shape[0]
-        #my_samples = self.power.shape[1]
-        #new_samples = obj_to_insert.power.shape[1]
         my_pings = self.n_pings
         new_pings = obj_to_insert.n_pings
         my_samples = self.n_samples
@@ -312,31 +324,23 @@ class sample_data(object):
                 #  get a reference to our obj_to_insert's attribute
                 data_to_insert = getattr(obj_to_insert, attribute)
 
-                #  handle lists and numpy arrays appropriately
-                if isinstance(data, list):
-                    #  this attribute is a list - create the new list
-                    new_data = data[0:idx] + data_to_insert + data[idx:]
-                    #  and update our property
-                    setattr(self, attribute, new_data)
-
-                elif isinstance(data, np.ndarray):
-                    #  this attribute is a numpy array - we have to handle the 2d and 1d differently
-                    if (data.ndim == 1):
-                        #  concatenate the 1d data
-                        if (attribute == 'ping_number'):
-                            #  update ping_number so it is sequential
-                            new_data = np.arange(data.shape[0]+data_to_insert.shape[0]) + 1
-                        else:
-                            new_data = np.concatenate((data[0:idx], data_to_insert, data[idx:]))
-                    elif (data.ndim == 2):
-                        #  concatenate the 2d data
-                        new_data = np.vstack((data[0:idx,:], data_to_insert, data[idx:,:]))
+                #  we have to handle the 2d and 1d differently
+                if (data.ndim == 1):
+                    #  concatenate the 1d data
+                    if (attribute == 'ping_number'):
+                        #  update ping_number so it is sequential
+                        new_data = np.arange(data.shape[0]+data_to_insert.shape[0]) + 1
                     else:
-                        #  at some point do we handle 3d arrays?
-                        pass
+                        new_data = np.concatenate((data[0:idx], data_to_insert, data[idx:]))
+                elif (data.ndim == 2):
+                    #  concatenate the 2d data
+                    new_data = np.vstack((data[0:idx,:], data_to_insert, data[idx:,:]))
+                else:
+                    #  at some point do we handle 3d arrays?
+                    pass
 
-                    #  update this attribute
-                    setattr(self, attribute, new_data)
+                #  update this attribute
+                setattr(self, attribute, new_data)
 
         #  now update our global properties
         if (obj_to_insert.channel_id not in self.channel_id):
@@ -589,10 +593,6 @@ class sample_data(object):
             else:
                 continue
 
-            #  check if this data attribute is a list ans skip over if so
-            if (isinstance(attr, list)):
-                continue
-
             #  determine the "old" dimensions
             if ((old_ping_dim < 0) and (attr.ndim == 1)):
                 old_ping_dim = attr.shape[0]
@@ -617,9 +617,9 @@ class sample_data(object):
 
         #  set the sample number
         self.n_samples = new_sample_dim
-        setattr(self, 'ping_number', np.arange(1, new_ping_dim+1))
+        setattr(self, 'ping_number', np.arange(1, new_ping_dim + 1))
 
-            
+
     def nan_values(self, start_ping, end_ping):
         """
         Set values in 2d arrays to Nan. Used in creating Nan filled data
