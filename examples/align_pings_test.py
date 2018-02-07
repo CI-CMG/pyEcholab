@@ -48,7 +48,7 @@ raw_38 = ek60.get_rawdata(channel_number=2)
 raw_70 = ek60.get_rawdata(channel_number=3)
 raw_120 = ek60.get_rawdata(channel_number=4)
 raw_200 = ek60.get_rawdata(channel_number=5)
-raw = [raw_18, raw_38, raw_70, raw_120, raw_200]
+# raw = [raw_18, raw_38, raw_70, raw_120, raw_200]
 
 # time 2015-06-26T06:12:03 is missing in the 38kHz channel. this is ping #
 # 489 in he other channels
@@ -84,23 +84,23 @@ Sv = [Sv_18, Sv_38, Sv_70, Sv_120, Sv_200]
 
 # uncomment lines 83-96 to test aligning of processed data object.
 print('Before alignment')
-for channel in raw:
+for channel in Sv:
     print(channel.channel_id)
     for ping in range(488, 491):
-        print(ping, channel.ping_time[ping], channel.power[ping][100])
+        print(ping, channel.ping_time[ping], channel.Sv[ping][100])
     print()
 
 # call align pings
 aligned = AlignPings(Sv, 'delete')
 
 print('\n After align')
-for index, channel in enumerate(raw):
+for index, channel in enumerate(Sv):
     if hasattr(aligned, 'missing') and len(aligned.missing[index]) > 0:
         print('missing pings:{0}'.format(aligned.missing[index]))
     elif hasattr(aligned, 'extras') and len(aligned.extras[index]) > 0:
         print('extra pings:{0}'.format(aligned.extras[index]))
     for ping in range(488, 491):
-        print(ping, channel.ping_time[ping], channel.power[ping][100])
+        print(ping, channel.ping_time[ping], channel.Sv[ping][100])
     print()
 
 # plot Sv values
