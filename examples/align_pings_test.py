@@ -91,17 +91,17 @@ for channel in raw:
     print()
 
 # call align pings
-aligned = AlignPings(Sv, 'delete')
+aligned = AlignPings(Sv, 'pad')
 
-print('\n After align')
-for index, channel in enumerate(raw):
-    if hasattr(aligned, 'missing') and len(aligned.missing[index]) > 0:
-        print('missing pings:{0}'.format(aligned.missing[index]))
-    elif hasattr(aligned, 'extras') and len(aligned.extras[index]) > 0:
-        print('extra pings:{0}'.format(aligned.extras[index]))
-    for ping in range(488, 491):
-        print(ping, channel.ping_time[ping], channel.power[ping][100])
-    print()
+# print('\n After align')
+# for index, channel in enumerate(raw):
+#     if hasattr(aligned, 'missing') and len(aligned.missing[index]) > 0:
+#         print('missing pings:{0}'.format(aligned.missing[index]))
+#     elif hasattr(aligned, 'extras') and len(aligned.extras[index]) > 0:
+#         print('extra pings:{0}'.format(aligned.extras[index]))
+#     for ping in range(488, 491):
+#         print(ping, channel.ping_time[ping], channel.power[ping][100])
+#     print()
 
 # plot Sv values
 threshold = [-70, 0]
