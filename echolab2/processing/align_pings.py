@@ -43,11 +43,13 @@ class AlignPings(object):
         if mode == 'pad':
             # find pings missing in shorter objects and pad shorter objects
             self.missing = self._find_missing(channels, self.longest)
-            self._pad_pings(channels, self.missing, self.longest)
+            print(self.missing)
+            # self._pad_pings(channels, self.missing, self.longest)
         elif mode == 'delete':
             # find extra pings in longer objects and delete pings
             self.extras = self._find_extra(channels, self.shortest)
-            self._delete_extras(channels, self.extras)
+            print(self.extras)
+            # self._delete_extras(channels, self.extras)
         else:
             raise ValueError('"{0}" is not a valid ping time alignment '
                              'mode,'.format(mode))
@@ -61,7 +63,7 @@ class AlignPings(object):
 
         :param channels: list of sample data objects=, one for each channel
         :param longest: sample data object of chanel with most pings
-        :return: array of arrays containing missing pings
+        :return: array of arrays containing missing ping times
         """
         missing = []
         for channel in channels:
@@ -70,7 +72,9 @@ class AlignPings(object):
             this_missing = (np.delete(np.arange(np.alen(channels[longest].
                                                         ping_time)), matched))
 
-            pings = np.take(channel.ping_number, this_missing)
+            # to get ping time of missing pings, use index of missing ping
+            # numbers and pull time from longest channel
+            pings = np.take(channels[longest].ping_time, this_missing)
             missing.append(pings)
 
         return missing
@@ -93,8 +97,9 @@ class AlignPings(object):
 
             this_extras = np.delete(np.arange(np.alen(channel.ping_time)),
                                     matched)
-
-            pings = np.take(channel.ping_number, this_extras)
+            # to get ping time of extra pings, use index of extras to get
+            ping_
+            pings = np.take(channel.ping_time, this_extras)
             extras.append(pings)
 
         return extras
