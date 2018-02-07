@@ -207,7 +207,7 @@ class sample_data(object):
                 if remove:
                         attr[0:new_n_pings] = attr[keep_idx]
                 else:
-                    # set the data tp NaN or apprpriate value
+                    # set the data tp NaN or appropriate value
                     if (attr.dtype in [np.float16, np.float32, np.float64, np.datetime64]):
                         #  float like objects are set to NaN
                         attr[del_idx] = np.nan
@@ -280,6 +280,7 @@ class sample_data(object):
         idx = self.get_indices(start_time=ping_time, end_time=ping_time,
                 start_ping=ping_number, end_ping=ping_number)[0]
 
+
         #  check if we're inserting before or after the provided insert point and adjust as necessary
         if (insert_after):
             #  we're inserting *after* - increment the index by 1
@@ -331,6 +332,7 @@ class sample_data(object):
                         #  update ping_number so it is sequential
                         new_data = np.arange(data.shape[0]+data_to_insert.shape[0]) + 1
                     else:
+
                         new_data = np.concatenate((data[0:idx], data_to_insert, data[idx:]))
                 elif (data.ndim == 2):
                     #  concatenate the 2d data
