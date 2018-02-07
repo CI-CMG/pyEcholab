@@ -20,7 +20,6 @@
 '''
 import numpy as np
 from ..sample_data import sample_data
-#from sample_data import sample_data
 
 
 class processed_data(sample_data):
