@@ -28,8 +28,7 @@ class AlignPings(object):
             mode: either 'pad' for align by padding or 'delete' for align by
         removing pings
 
-        Returns:
-        Raises:
+        Returns: None
         """
 
         # Get list of ping_time sizes
@@ -48,12 +47,13 @@ class AlignPings(object):
         if mode == 'pad':
             # find pings missing in shorter objects and pad shorter objects
             self.missing = self._find_missing(channels, self.longest)
-            print(self.missing)
-            self._pad_pings(channels, self.missing, self.longest)
+            if self._need_alignment(self.missing):
+                self._pad_pings(channels, self.missing, self.longest)
         elif mode == 'delete':
             # find extra pings in longer objects and delete pings
             self.extras = self._find_extra(channels, self.shortest)
-            self._delete_extras(channels, self.extras)
+            if self._need_alignment(self.extras):
+                self._delete_extras(channels, self.extras)
         else:
             raise ValueError('"{0}" is not a valid ping time alignment '
                              'mode,'.format(mode))
@@ -70,7 +70,6 @@ class AlignPings(object):
             longest: sample data object of chanel with most pings
 
         Returns: array of arrays containing missing ping times
-
         """
 
         missing = []
@@ -83,6 +82,7 @@ class AlignPings(object):
             # to get ping time of missing pings, use index of missing ping
             # numbers and pull time from longest channel
             pings = np.take(channels[longest].ping_time, this_missing)
+
             missing.append(pings)
 
         return missing
@@ -94,10 +94,13 @@ class AlignPings(object):
         but not in the shortest channel. Channels with matching ping time
         arrays will return an empty array for that channel
 
-        :param channels: list of sample data objects=, one for each channel
-        :param shortest: sample data object of chanel with fewest pings
-        :return: array of arrays containing extra pings
+        Args:
+            channels: list of sample data objects=, one for each channel
+            shortest: sample data object of chanel with fewest pings
+
+        Returns: array of arrays containing extra pings
         """
+
         extras = []
         for channel in channels:
             matched = np.searchsorted(channel.ping_time, channels[
@@ -108,9 +111,30 @@ class AlignPings(object):
             # to get ping time of extra pings, use index of extras to get
             # ping time from channel.ping_time
             pings = np.take(channel.ping_time, this_extras)
+
             extras.append(pings)
 
         return extras
+
+    @staticmethod
+    def _need_alignment(array_list):
+        """
+        Determine if there are any channels that have extra or missing pings.
+        Return true when first non-zero array is hit. Otherwise return false
+        because there is nothing to align.
+
+        Args:
+            array_list: List of arrays, one for each channel, that are either
+            empty or contain the ping times or extra or missing pings.
+
+        Returns: True or False
+
+        """
+        for array in array_list:
+            if array.size > 0:
+                return True
+
+        return False
 
     @staticmethod
     def _delete_extras(channels, extras):
@@ -145,16 +169,13 @@ class AlignPings(object):
          to set ping time for padding ping
 
         Returns: None
-
         """
 
         if isinstance(channels[0], processed_data):
             fill = processed_data(channels[0].channel_id, channels[0].frequency)
             for attr_name in channels[0]._data_attributes:
                 attr = getattr(channels[0], attr_name)
-                if attr_name == 'range':
-                    data = attr
-                elif attr.ndim == 1:
+                if attr.ndim == 1:
                     data = np.empty((1,), dtype=attr.dtype)
                 elif attr.ndim == 2:
                     data = np.empty((1, attr.shape[1]), dtype=attr.dtype)
@@ -173,7 +194,6 @@ class AlignPings(object):
                 fill.channel_id = channel.channel_id
                 for ping in missing[index]:
                     fill.ping_time[0] = ping
-                    print(fill)
                     idx = np.where(channels[longest].ping_time == ping)[0][0]
                     insert_time = channels[longest].ping_time[idx-1]
                     channel.insert(fill, ping_time=insert_time)
