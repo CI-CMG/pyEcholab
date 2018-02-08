@@ -10,6 +10,7 @@ in short object.
 """
 import numpy as np
 from copy import deepcopy
+from .processed_data import processed_data
 
 
 class AlignPings(object):
@@ -21,10 +22,13 @@ class AlignPings(object):
         arrays of ping missing in shorter objects. Self.extras is an array or
         arrays of pings on longer objects not found in shortest object
 
-        :param channels: list of data objects. these must by channels from 
+        Args:
+            channels: list of data objects. these must by channels from
         the same reader instance
-        :param mode: either 'pad' for align by padding or 'delete' for align by 
+            mode: either 'pad' for align by padding or 'delete' for align by
         removing pings
+
+        Returns: None
         """
 
         # Get list of ping_time sizes
@@ -43,11 +47,13 @@ class AlignPings(object):
         if mode == 'pad':
             # find pings missing in shorter objects and pad shorter objects
             self.missing = self._find_missing(channels, self.longest)
-            self._pad_pings(channels, self.missing, self.longest)
+            if self._need_alignment(self.missing):
+                self._pad_pings(channels, self.missing, self.longest)
         elif mode == 'delete':
             # find extra pings in longer objects and delete pings
             self.extras = self._find_extra(channels, self.shortest)
-            self._delete_extras(channels, self.extras)
+            if self._need_alignment(self.extras):
+                self._delete_extras(channels, self.extras)
         else:
             raise ValueError('"{0}" is not a valid ping time alignment '
                              'mode,'.format(mode))
@@ -59,10 +65,13 @@ class AlignPings(object):
         relative to the longest channel. Channels with matching ping time
         arrays will return an empty array for that channel
 
-        :param channels: list of sample data objects=, one for each channel
-        :param longest: sample data object of chanel with most pings
-        :return: array of arrays containing missing pings
+        Args:
+            channels: list of sample data objects=, one for each channel
+            longest: sample data object of chanel with most pings
+
+        Returns: array of arrays containing missing ping times
         """
+
         missing = []
         for channel in channels:
             matched = np.searchsorted(channels[longest].ping_time,
@@ -70,7 +79,10 @@ class AlignPings(object):
             this_missing = (np.delete(np.arange(np.alen(channels[longest].
                                                         ping_time)), matched))
 
-            pings = np.take(channel.ping_number, this_missing)
+            # to get ping time of missing pings, use index of missing ping
+            # numbers and pull time from longest channel
+            pings = np.take(channels[longest].ping_time, this_missing)
+
             missing.append(pings)
 
         return missing
@@ -82,10 +94,13 @@ class AlignPings(object):
         but not in the shortest channel. Channels with matching ping time
         arrays will return an empty array for that channel
 
-        :param channels: list of sample data objects=, one for each channel
-        :param shortest: sample data object of chanel with fewest pings
-        :return: array of arrays containing extra pings
+        Args:
+            channels: list of sample data objects=, one for each channel
+            shortest: sample data object of chanel with fewest pings
+
+        Returns: array of arrays containing extra pings
         """
+
         extras = []
         for channel in channels:
             matched = np.searchsorted(channel.ping_time, channels[
@@ -93,50 +108,93 @@ class AlignPings(object):
 
             this_extras = np.delete(np.arange(np.alen(channel.ping_time)),
                                     matched)
+            # to get ping time of extra pings, use index of extras to get
+            # ping time from channel.ping_time
+            pings = np.take(channel.ping_time, this_extras)
 
-            pings = np.take(channel.ping_number, this_extras)
             extras.append(pings)
 
         return extras
 
     @staticmethod
+    def _need_alignment(array_list):
+        """
+        Determine if there are any channels that have extra or missing pings.
+        Return true when first non-zero array is hit. Otherwise return false
+        because there is nothing to align.
+
+        Args:
+            array_list: List of arrays, one for each channel, that are either
+            empty or contain the ping times or extra or missing pings.
+
+        Returns: True or False
+
+        """
+        for array in array_list:
+            if array.size > 0:
+                return True
+
+        return False
+
+    @staticmethod
     def _delete_extras(channels, extras):
         """
         Iterate through list of channels and use channel's (sample data
-        object) delete method to delete extra pings from long channels.
-
-        :param channels: list of sample data objects=, one for each channel
-        :param extras: array of arrays containing extra pings to be deleted
+        object) delete method to delete extra pings from long channels
+        .
+        Args:
+            channels: list of sample data objects=, one for each channel
+            extras: array of arrays containing extra pings to be deleted
         from channels
-        :return: None
+
+        Returns: none
+
         """
 
         for index, channel in enumerate(channels):
             for ping in extras[index]:
-                channel.delete(ping, ping)
+                channel.delete(start_time=ping, end_time=ping)
 
-    @staticmethod
-    def _pad_pings(channels, missing, longest):
+    def _pad_pings(self, channels, missing, longest):
         """
         Iterate through list of channels. If channel is short and needs to be
         padded. Create a 1-ping long object to use as a pad and use
         channel's insert method to insert pad.
 
-        :param channels: list of sample data objects=, one for each channel
-        :param missing: array of arrays containing missing pings to be padded
+        Args:
+            channels: list of sample data objects=, one for each channel
+            missing: array of arrays containing missing pings to be padded
         into shorter channels
-        :param longest: channel sample data object from longest channel. Used
+            longest: channel sample data object from longest channel. Used
          to set ping time for padding ping
-        :return: None
+
+        Returns: None
         """
+
+        if isinstance(channels[0], processed_data):
+            fill = processed_data(channels[0].channel_id, channels[0].frequency)
+            for attr_name in channels[0]._data_attributes:
+                attr = getattr(channels[0], attr_name)
+                if attr.ndim == 1:
+                    data = np.empty((1,), dtype=attr.dtype)
+                elif attr.ndim == 2:
+                    data = np.empty((1, attr.shape[1]), dtype=attr.dtype)
+                    data[:] = np.nan
+                else:
+                    raise TypeError('align pings can only handle 1d and 2d '
+                                    'arrays')
+                fill.add_attribute(attr_name, data)
+        else:
+            raise TypeError('Align pings in pad mode currently only works on '
+                            'processed data objects')
 
         for index, channel in enumerate(channels):
             if len(missing[index]) > 0:
-                fill = deepcopy(channel)
-                fill.delete(2, )
-                fill.nan_values(1, 1)
+                fill.frequency = channel.frequency
+                fill.channel_id = channel.channel_id
                 for ping in missing[index]:
-                    fill.ping_time[0] = channels[longest].ping_time[ping-1]
-                    channel.insert(fill, ping_number=ping, insert_after=False)
-
+                    fill.ping_time[0] = ping
+                    idx = np.where(channels[longest].ping_time == ping)[0][0]
+                    insert_time = channels[longest].ping_time[idx-1]
+                    channel.insert(fill, ping_time=insert_time)
 
