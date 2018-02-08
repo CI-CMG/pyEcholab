@@ -48,6 +48,7 @@ class AlignPings(object):
         if mode == 'pad':
             # find pings missing in shorter objects and pad shorter objects
             self.missing = self._find_missing(channels, self.longest)
+            print(self.missing)
             self._pad_pings(channels, self.missing, self.longest)
         elif mode == 'delete':
             # find extra pings in longer objects and delete pings
@@ -130,7 +131,6 @@ class AlignPings(object):
             for ping in extras[index]:
                 channel.delete(start_time=ping, end_time=ping)
 
-
     def _pad_pings(self, channels, missing, longest):
         """
         Iterate through list of channels. If channel is short and needs to be
@@ -150,19 +150,31 @@ class AlignPings(object):
 
         if isinstance(channels[0], processed_data):
             fill = processed_data(channels[0].channel_id, channels[0].frequency)
-            print(fill._data_attributes)
+            for attr_name in channels[0]._data_attributes:
+                attr = getattr(channels[0], attr_name)
+                if attr_name == 'range':
+                    data = attr
+                elif attr.ndim == 1:
+                    data = np.empty((1,), dtype=attr.dtype)
+                elif attr.ndim == 2:
+                    data = np.empty((1, attr.shape[1]), dtype=attr.dtype)
+                    data[:] = np.nan
+                else:
+                    raise TypeError('align pings can only handle 1d and 2d '
+                                    'arrays')
+                fill.add_attribute(attr_name, data)
         else:
             raise TypeError('Align pings in pad mode currently only works on '
                             'processed data objects')
 
         for index, channel in enumerate(channels):
             if len(missing[index]) > 0:
-                fill = deepcopy(channel)
-                fill.delete(2, )
-                fill.nan_values(1, 1)
-                # for ping in missing[index]:
-                #     fill.ping_time[0] = ping
-                #     idx = np.where(channels[longest].ping_time == ping)[0][0]
-                #     insert_time = channels[longest].ping_time[idx-1]
-                #     channel.insert(fill, ping_time=insert_time)
+                fill.frequency = channel.frequency
+                fill.channel_id = channel.channel_id
+                for ping in missing[index]:
+                    fill.ping_time[0] = ping
+                    print(fill)
+                    idx = np.where(channels[longest].ping_time == ping)[0][0]
+                    insert_time = channels[longest].ping_time[idx-1]
+                    channel.insert(fill, ping_time=insert_time)
 

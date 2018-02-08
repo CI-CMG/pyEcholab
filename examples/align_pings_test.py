@@ -77,6 +77,7 @@ raw = [raw_18, raw_38, raw_70, raw_120, raw_200]
 # get Sv for each channel
 Sv_18 = raw_18.get_sv()
 Sv_38 = raw_38.get_sv()
+print(Sv_38)
 Sv_70 = raw_70.get_sv()
 Sv_120 = raw_120.get_sv()
 Sv_200 = raw_200.get_sv()
@@ -134,4 +135,4 @@ ax_200.set_title("200kHz Sv data in time order")
 # print(Sv_200)
 
 #  show our figure
-# show()
+show()

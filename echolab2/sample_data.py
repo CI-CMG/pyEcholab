@@ -110,6 +110,7 @@ class sample_data(object):
             data_pings = len(data)
         elif (isinstance(data, np.ndarray)):
             data_pings = data.shape[0]
+            data_samples = data.shape[0]
             if (data.ndim == 2):
                 data_samples = data.shape[1]
                 #  check if n_samples has been set yet. If not, set it. If so, check that dimensions match
@@ -127,9 +128,10 @@ class sample_data(object):
         #  check if n_pings has been set yet. If not, set it. If so, check that dimensions match
         #  when checking if dimensions match we allow a match on the number of pings OR the number
         #  of the samples since a 1d data attribute can be on either axis.
+        print(name, self.n_pings, data_pings, self.n_samples, data_samples)
         if (self.n_pings < 0):
             self.n_pings = data_pings
-        elif (self.n_pings != data_pings and self.n_samples != data_pings):
+        elif (self.n_pings != data_pings and self.n_samples != data_samples):
             #TODO:  Better error message
             raise ValueError('Cannot add attribute as the new attribute has a different' +
                     'number of pings than the other attributes.')
