@@ -9,7 +9,6 @@ in short object.
 
 """
 import numpy as np
-from copy import deepcopy
 from .processed_data import processed_data
 
 
@@ -24,12 +23,14 @@ class AlignPings(object):
 
         Args:
             channels: list of data objects. these must by channels from
-        the same reader instance
+                      the same reader instance
             mode: either 'pad' for align by padding or 'delete' for align by
-        removing pings
+                  removing pings
 
         Returns: None
         """
+
+        self.details = {}
 
         # Get list of ping_time sizes
         sizes = np.zeros(len(channels), 'uint64')
@@ -57,6 +58,36 @@ class AlignPings(object):
         else:
             raise ValueError('"{0}" is not a valid ping time alignment '
                              'mode,'.format(mode))
+
+        self.get_details(channels, mode)
+
+    def get_details(self, channels, mode):
+        """
+        Helper method to create an details attribute that contains details of
+        aligning process.
+
+        Args:
+            channels: List of processed data objects
+            mode: operation mode, 'pad or 'delete
+
+        Returns: None
+
+        """
+        if mode == 'pad':
+            counts = self.missing
+        elif mode == 'delete':
+            counts = self.extras
+
+        for index, channel in enumerate(channels):
+            percent = round((len(counts[index])/channel.n_pings)*100, 2)
+            if percent > 0 and mode == 'pad':
+                self.details[channel.channel_id[0]] = {'added pings':
+                                                       self.missing[index],
+                                                       'percent': percent}
+            elif percent > 0 and mode == 'delete':
+                self.details[channel.channel_id[0]] = {'deleted pings':
+                                                       self.extras[index],
+                                                       'percent': percent}
 
     @staticmethod
     def _find_missing(channels, longest):
@@ -125,7 +156,8 @@ class AlignPings(object):
 
         Args:
             array_list: List of arrays, one for each channel, that are either
-            empty or contain the ping times or extra or missing pings.
+                        empty or contain the ping times or extra or missing
+                        pings.
 
         Returns: True or False
 
@@ -145,7 +177,7 @@ class AlignPings(object):
         Args:
             channels: list of sample data objects=, one for each channel
             extras: array of arrays containing extra pings to be deleted
-        from channels
+                    from channels
 
         Returns: none
 
@@ -164,29 +196,14 @@ class AlignPings(object):
         Args:
             channels: list of sample data objects=, one for each channel
             missing: array of arrays containing missing pings to be padded
-        into shorter channels
-            longest: channel sample data object from longest channel. Used
-         to set ping time for padding ping
+                     into shorter channels
+            longest: channel sample data object from longest
+                     channel. Used to set ping time for padding ping
 
         Returns: None
         """
 
-        if isinstance(channels[0], processed_data):
-            fill = processed_data(channels[0].channel_id, channels[0].frequency)
-            for attr_name in channels[0]._data_attributes:
-                attr = getattr(channels[0], attr_name)
-                if attr.ndim == 1:
-                    data = np.empty((1,), dtype=attr.dtype)
-                elif attr.ndim == 2:
-                    data = np.empty((1, attr.shape[1]), dtype=attr.dtype)
-                    data[:] = np.nan
-                else:
-                    raise TypeError('align pings can only handle 1d and 2d '
-                                    'arrays')
-                fill.add_attribute(attr_name, data)
-        else:
-            raise TypeError('Align pings in pad mode currently only works on '
-                            'processed data objects')
+        fill = self.make_pad(channels[0])
 
         for index, channel in enumerate(channels):
             if len(missing[index]) > 0:
@@ -198,3 +215,34 @@ class AlignPings(object):
                     insert_time = channels[longest].ping_time[idx-1]
                     channel.insert(fill, ping_time=insert_time)
 
+    @staticmethod
+    def make_pad(source):
+        """
+        Creates a 1-ping length processed data object to use for padding
+        pings. Vertical axis attributes such as range and depth and not
+        created in pad object. data attributes (i.e. Sv are set to Nans
+
+        Args:
+            source: Processed data object used as a source for
+                    attributes in fill object
+
+        Returns: 1-ping length processed data object with appropriate attributes
+        """
+
+        if isinstance(source, processed_data):
+            fill = processed_data('', 0)
+
+            for attr_name in source._data_attributes:
+                attr = getattr(source, attr_name)
+                if attr.ndim == 1 and attr.size != source.n_samples:
+                    data = np.empty((1,), dtype=attr.dtype)
+                    fill.add_attribute(attr_name, data)
+                elif attr.ndim == 2:
+                    data = np.empty((1, attr.shape[1]), dtype=attr.dtype)
+                    data[:] = np.nan
+                    fill.add_attribute(attr_name, data)
+
+            return fill
+        else:
+            raise TypeError('Align pings in pad mode currently only works on '
+                            'processed data objects')
