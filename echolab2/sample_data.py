@@ -182,8 +182,13 @@ class sample_data(object):
 
         """
         #  determine the indices of the pings we're deleting.
-        del_idx = self.get_indices(start_time=start_time, end_time=end_time,
-                                   start_ping=start_ping, end_ping=end_ping)
+        if (index_array is None):
+            #  if we haven't been provided an explicit array, create one based on provided ranges
+            del_idx = self.get_indices(start_time=start_time, end_time=end_time,
+                                       start_ping=start_ping, end_ping=end_ping)
+        else:
+            #  explicit array provided
+            del_idx = index_array
 
         #  determine the indices of the pings we're keeping
         keep_idx = np.delete(np.arange(self.ping_number.shape[0]), del_idx)
@@ -205,6 +210,7 @@ class sample_data(object):
                     attr[del_idx, :] = np.nan
             else:
                 if remove:
+                        #  copy the data we're keeping into a contiguous block
                         attr[0:new_n_pings] = attr[keep_idx]
                 else:
                     # set the data tp NaN or apprpriate value
@@ -215,7 +221,7 @@ class sample_data(object):
                         #  unsigned ints are set... well, what really is an appropriate value???
                         attr[del_idx] = 0
                     else:
-                        #  it's a good question and my values here will
+                        #  and signed ints... -1? -999? -9999? it's a good question.
                         attr[del_idx] = -1
 
         #  if we're removing the pings, resize (shrink) the arrays
@@ -234,7 +240,7 @@ class sample_data(object):
 
 
     def insert(self, obj_to_insert, ping_number=None, ping_time=None,
-               insert_after=True):
+               insert_after=True, index_array=None):
         """
         insert inserts the data from the provided echolab2 data object into
         this object.
@@ -264,32 +270,57 @@ class sample_data(object):
                 str(self.__class__))
 
         #  make sure that the frequencies match - don't allow inserting/appending of different freqs
+        freq_match = False
         if isinstance(self.frequency, np.float32):
-            freq_test = self.frequency != obj_to_insert.frequency
-        elif isinstance(self.frequency, np.ndarray):
-            freq_test = self.frequency[0] != obj_to_insert.frequency[0]
+            freq_match = self.frequency == obj_to_insert.frequency
         else:
-            freq_test = False
-        if (freq_test):
+            freq_match = self.frequency[0] == obj_to_insert.frequency[0]
+        if (not freq_match):
             raise TypeError('The frequency of the object you are inserting' +
                             '/appending does not match the frequency of this ' +
                             'object. Frequencies must match to append or ' +
                             'insert.')
-
-        #  determine the index of the insertion point
-        idx = self.get_indices(start_time=ping_time, end_time=ping_time,
-                start_ping=ping_number, end_ping=ping_number)[0]
-
-        #  check if we're inserting before or after the provided insert point and adjust as necessary
-        if (insert_after):
-            #  we're inserting *after* - increment the index by 1
-            idx += 1
 
         #  get some info about the shape of the data we're inserting
         my_pings = self.n_pings
         new_pings = obj_to_insert.n_pings
         my_samples = self.n_samples
         new_samples = obj_to_insert.n_samples
+
+        #  determine the index of the insertion point or indices of the pings we're inserting.
+        if (index_array is None):
+            #  determine the index of the insertion point
+            insert_index  = self.get_indices(start_time=ping_time, end_time=ping_time,
+                    start_ping=ping_number, end_ping=ping_number)[0]
+            #  set contiguous to true since we know this is a contiguous insert
+            contiguous = True
+        else:
+            #  explicit array provided - these will be a vector of locations to insert
+            insert_index  = index_array
+            #  set contiguous to false since we don't know if all pings are contiguous
+            contiguous = False
+
+            #  make sure the index array is a numpy array
+            if (not isinstance(insert_index, np.ndarray)):
+                raise TypeError('index_array must be a numpy.ndarray.')
+
+            #  If we inserting with a user provided index, make sure the dimensions of the
+            #  index and the object to insert agree
+            if (insert_index.shape[0]):
+                raise IndexError('The length of the index_array does not match the ' +
+                        'number of pings in the object you are inserting.')
+
+            #  generate the index used to move the existing pings
+            move_index = np.arange(my_pings)
+            for i in insert_index:
+                idx = move_index >= i
+                move_index[idx] = move_index[idx] + 1
+
+
+        #  check if we're inserting before or after the provided insert point and adjust as necessary
+        if (insert_after):
+            #  we're inserting *after* - increment the index by 1
+            insert_index += 1
 
         #  check if we need to vertically resize one of the arrays - we resize the smaller to
         #  the size of the larger array. It will automatically be padded with NaNs
