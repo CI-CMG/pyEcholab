@@ -228,6 +228,9 @@ class sample_data(object):
         if (remove):
             self._resize_arrays(new_n_pings, self.n_samples)
 
+        #  update the n_pings attribute
+        self.n_pings = self.ping_number.shape[0]
+
 
     def append(self, obj_to_append):
         """
@@ -243,19 +246,26 @@ class sample_data(object):
                insert_after=True, index_array=None):
         """
         insert inserts the data from the provided echolab2 data object into
-        this object.
-        The insertion point is specified by ping number or time. After inserting
-        data, the ping_number property is updated and the ping numbers from the insertion
-        point onward will be re-numbered accordingly.
+        this object. The insertion point is specified by ping number or time. After
+        inserting data, the ping_number property is updated and the ping numbers
+        will be re-numbered accordingly.
 
-        Note that internally echolab2 RawData objects store data by ping number as read,
-        appended, or inserted. Data is not sorted by time until the user calls a get_*
-        method. Consequently if ping times are not ordered and/or repeating, specifying
-        a ping time as an insetion point may not yield the desired results since the
-        insertion index will be the *first* index that satisfies the condition.
+        Args:
+            ping_number: The ping number specifying the insertion point
+            ping_time: The ping time specifying the insertion point
 
-        By default, the insert is *after* the provided ping number or time. Set the
-        insert_after keyword to False to insert *before* the provided ping number or time.
+            You must specify a ping number or ping time. Existing data from
+            the insertion point on will be shifted after the inserted data.
+
+            insert_after: Set to True to insert *after* the specified ping time
+                or ping number. Set to False to insert *at* the specified time
+                or ping number.
+
+            index_array: A numpy array containing the indices of the pings you
+                want to insert. Unlike when using a ping number or ping time,
+                the pings do not have to be consecutive. When this keyword is
+                present, the ping_number, ping_time and insert_after keywords
+                are ignored.
 
         """
 
@@ -292,13 +302,23 @@ class sample_data(object):
             #  determine the index of the insertion point
             insert_index  = self.get_indices(start_time=ping_time, end_time=ping_time,
                     start_ping=ping_number, end_ping=ping_number)[0]
-            #  set contiguous to true since we know this is a contiguous insert
-            contiguous = True
+
+            #  check if we're inserting before or after the provided insert point and adjust as necessary
+            if (insert_after):
+                #  we're inserting *after* - increment the index by 1
+                insert_index += 1
+
+            #  create an index array
+            insert_index = np.arange(new_pings) + insert_index
+
+            #  generate the index used to move the existing pings
+            move_index = np.arange(my_pings)
+            idx = move_index >= insert_index[0]
+            move_index[idx] = move_index[idx] + new_pings
+
         else:
             #  explicit array provided - these will be a vector of locations to insert
             insert_index  = index_array
-            #  set contiguous to false since we don't know if all pings are contiguous
-            contiguous = False
 
             #  make sure the index array is a numpy array
             if (not isinstance(insert_index, np.ndarray)):
@@ -306,7 +326,7 @@ class sample_data(object):
 
             #  If we inserting with a user provided index, make sure the dimensions of the
             #  index and the object to insert agree
-            if (insert_index.shape[0]):
+            if (insert_index.shape[0] != new_pings):
                 raise IndexError('The length of the index_array does not match the ' +
                         'number of pings in the object you are inserting.')
 
@@ -315,12 +335,6 @@ class sample_data(object):
             for i in insert_index:
                 idx = move_index >= i
                 move_index[idx] = move_index[idx] + 1
-
-
-        #  check if we're inserting before or after the provided insert point and adjust as necessary
-        if (insert_after):
-            #  we're inserting *after* - increment the index by 1
-            insert_index += 1
 
         #  check if we need to vertically resize one of the arrays - we resize the smaller to
         #  the size of the larger array. It will automatically be padded with NaNs
@@ -333,11 +347,16 @@ class sample_data(object):
                     new_samples = self.max_sample_number
                     #  and vertically trim the array we're inserting
                     obj_to_insert._resize_arrays(new_pings, new_samples)
-            #  vertically resize the object we're inserting into
-            self._resize_arrays(my_pings, new_samples)
+            #  set the new vertical sample size
+            my_samples = new_samples
         elif (my_samples > new_samples):
             #  resize the object we're inserting
-            obj_to_insert._resize_arrays(new_pings, new_samples)
+            obj_to_insert._resize_arrays(new_pings, my_samples)
+
+        # update the number of pings in the object we're inserting into
+        #  and then resize it.
+        my_pings = my_pings + new_pings
+        self._resize_arrays(my_pings, my_samples)
 
         #  work thru our data properties inserting the data from obj_to_insert
         for attribute in self._data_attributes:
@@ -360,22 +379,28 @@ class sample_data(object):
                     #  concatenate the 1d data
                     if (attribute == 'ping_number'):
                         #  update ping_number so it is sequential
-                        new_data = np.arange(data.shape[0]+data_to_insert.shape[0]) + 1
+                        data[:] = np.arange(my_pings) + 1
                     else:
-                        new_data = np.concatenate((data[0:idx], data_to_insert, data[idx:]))
+                        #  move the existing data
+                        data[move_index] = data[0:move_index.shape[0]]
+                        #  and insert the new data
+                        data[insert_index] = data_to_insert[:]
+
                 elif (data.ndim == 2):
-                    #  concatenate the 2d data
-                    new_data = np.vstack((data[0:idx,:], data_to_insert, data[idx:,:]))
+                    #  move the existing data
+                    data[move_index, :] = data[0:move_index.shape[0],:]
+                    #  and insert the new data
+                    data[insert_index, :] = data_to_insert[:,:]
+
                 else:
                     #  at some point do we handle 3d arrays?
                     pass
 
-                #  update this attribute
-                setattr(self, attribute, new_data)
-
         #  now update our global properties
         if (obj_to_insert.channel_id not in self.channel_id):
             self.channel_id += obj_to_insert.channel_id
+
+        #  update the n_pings attribute
         self.n_pings = self.ping_number.shape[0]
 
 
@@ -646,9 +671,9 @@ class sample_data(object):
             #  update the attribute
             setattr(self, attr_name, attr)
 
-        #  set the sample number
+        #  set the sample and ping number
         self.n_samples = new_sample_dim
-        setattr(self, 'ping_number', np.arange(1, new_ping_dim + 1))
+        self.ping_number = np.arange(1, new_ping_dim + 1)
 
 
     def nan_values(self, start_ping, end_ping):
