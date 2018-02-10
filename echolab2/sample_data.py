@@ -106,9 +106,7 @@ class sample_data(object):
         """
         #  get the new data's dimensions
         data_samples = -1
-        if (isinstance(data, list)):
-            data_pings = len(data)
-        elif (isinstance(data, np.ndarray)):
+        if (isinstance(data, np.ndarray)):
             data_pings = data.shape[0]
             if (data.ndim == 2):
                 data_samples = data.shape[1]
@@ -120,9 +118,8 @@ class sample_data(object):
                     raise ValueError('Cannot add attribute as the new attribute has a different' +
                             'number of samples than the other attributes.')
         else:
-            #  currently we only allow lists and numpy arays as data attributes
-            raise ValueError('Invalid data attribute type. Data attributes must be a list ' +
-                    'or numpy array')
+            #  we only allow numpy arays as data attributes
+            raise TypeError('Invalid data attribute type. Data attributes must be numpy arrays.')
 
         #  check if n_pings has been set yet. If not, set it. If so, check that dimensions match
         #  when checking if dimensions match we allow a match on the number of pings OR the number
@@ -132,7 +129,7 @@ class sample_data(object):
         elif (self.n_pings != data_pings and self.n_samples != data_pings):
             #TODO:  Better error message
             raise ValueError('Cannot add attribute as the new attribute has a different' +
-                    'number of pings than the other attributes.')
+                    'number of pings (or samples) than the other attributes.')
 
         #  add the name to our list of attributes if it doesn't already exist
         if (name not in self._data_attributes):
@@ -147,13 +144,149 @@ class sample_data(object):
         remove_attribute removes a data attribute from the object.
         """
 
-        #  try to remove the attribute given the name. Silently
-        #  fail if name is not in our list
+        #  try to remove the attribute given the name. Silently fail if name is not in our list
         try:
             self._data_attributes.remove(name)
             delattr(self, name)
         except:
             pass
+
+
+    def replace(self, obj_to_insert, ping_number=None, ping_time=None,
+               index_array=None, _ignore_vertical_axes=False):
+        """
+        replace, er, replaces the data in this object using the data provided
+        in the obejct to "insert". Another way to think of this is that it
+        inserts data without shifting the existing data resulting in the
+        existing data being overwritten.
+
+        Args:
+            ping_number: The ping number specifying the first ping to replace
+            ping_time: The ping time specifying the first ping to replace
+            index_array: A numpy array containing the indices of the pings you
+                want to replace. Unlike when using a ping number or ping time,
+                the pings do not have to be consecutive. When this keyword is
+                present, the ping_number and ping_time keywords are ignored.
+
+        You must specify a ping number, ping time or provide an index array.
+        The number of pings replaced will be equal to the number of pings in
+        the object you are
+
+        """
+
+        #  check that we have been given an insetion point or index array
+        if ping_number is None and ping_time is None and index_array is None:
+            raise ValueError('Either ping_number or ping_time needs to be defined ' +
+                    'or an index array needs to be provided to specify an replacement point.')
+
+        #  make sure that obj_to_insert class matches "this" class
+        if (not isinstance(self, obj_to_insert.__class__)):
+            raise TypeError('The object provided as a source of replacement pings must ' +
+                    'be an instance of ' + str(self.__class__))
+
+        #  make sure that the frequencies match - don't allow replacing pings with different freqs
+        freq_match = False
+        if isinstance(self.frequency, np.float32):
+            freq_match = self.frequency == obj_to_insert.frequency
+        else:
+            freq_match = self.frequency[0] == obj_to_insert.frequency[0]
+        if (not freq_match):
+            raise TypeError('The frequency of the data you are providing as a replacement ' +
+                    'does not match the frequency of this object. The frequencies must match.')
+
+        #  get some info about the shape of the data we're working with
+        my_pings = self.n_pings
+        new_pings = obj_to_insert.n_pings
+        my_samples = self.n_samples
+        new_samples = obj_to_insert.n_samples
+
+        #  determine the index of the replacement point or indices of the pings we're inserting.
+        if (index_array is None):
+            #  determine the index of the replacement point
+            replace_index  = self.get_indices(start_time=ping_time, end_time=ping_time,
+                    start_ping=ping_number, end_ping=ping_number)[0]
+
+            #  create an index array
+            replace_index = np.arange(new_pings) + replace_index
+
+            #  clamp the index to the length of our existing data.
+            replace_index = replace_index[replace_index <  my_pings]
+
+        else:
+            #  explicit array provided - these will be a vector of locations to replace
+            replace_index  = index_array
+
+            #  make sure the index array is a numpy array
+            if (not isinstance(replace_index, np.ndarray)):
+                raise TypeError('index_array must be a numpy.ndarray.')
+
+            #  If we replacing with a user provided index, make sure the dimensions of the
+            #  index and the object to insert agree.
+            if (replace_index.shape[0] != new_pings):
+                raise IndexError('The length of the index_array does not match the ' +
+                        'number of pings in the object providing the replacement data. ' +
+                        'These dimensions must match.')
+
+        #  check if we need to vertically resize one of the arrays - we resize the smaller to
+        #  the size of the larger array. It will automatically be padded with NaNs
+        if (my_samples < new_samples):
+            #  resize our data arrays - check if we have a limit on the max number of samples
+            if (hasattr(self, 'max_sample_number') and (self.max_sample_number)):
+                #  we have the attribute and a value is set - check if the new array exceeds our max_sample_count
+                if (new_samples > self.max_sample_number):
+                    #  it does - we have to change our new_samples
+                    new_samples = self.max_sample_number
+                    #  and vertically trim the array we're inserting
+                    obj_to_insert._resize_arrays(new_pings, new_samples)
+            #  because we're not inserting, we can set the new vertical sample size here
+            self._resize_arrays(my_pings, new_samples)
+        elif (my_samples > new_samples):
+            #  resize the object we're inserting
+            obj_to_insert._resize_arrays(new_pings, my_samples)
+
+        #  work thru our data properties inserting the data from obj_to_insert
+        for attribute in self._data_attributes:
+
+            #  check if we have data for this attribute
+            if (not hasattr(self, attribute)):
+                #  data_obj does not have this attribute, move along
+                continue
+
+            #  get a reference to our data_obj's attribute
+            data = getattr(self, attribute)
+
+            #  check if we're ignoring vertical axes such as range or depth
+            #  we do this when operating on processed data objects since the
+            #  assumption with them is that the
+            if (_ignore_vertical_axes and (data.shape[0] == my_samples)):
+                continue
+
+            #  check if the obj_to_insert shares this attribute
+            if (hasattr(obj_to_insert, attribute)):
+                #  get a reference to our obj_to_insert's attribute
+                data_to_insert = getattr(obj_to_insert, attribute)
+
+                #  we have to handle the 2d and 1d differently
+                if (data.ndim == 1):
+                    #  concatenate the 1d data
+                    #  when replacing data, we ignore the ping number
+                    if (attribute == 'ping_number'):
+                        #  leave ping_number the same
+                        pass
+                    else:
+                        #  replace existing pings with this data
+                        data[replace_index] = data_to_insert[:]
+                elif (data.ndim == 2):
+                    #  and insert the new data
+                    data[replace_index, :] = data_to_insert[:,:]
+
+                else:
+                    #  at some point do we handle 3d arrays?
+                    pass
+
+        #  now update our global properties
+        if (obj_to_insert.channel_id not in self.channel_id):
+            self.channel_id += obj_to_insert.channel_id
 
 
     def delete(self, start_ping=None, end_ping=None, start_time=None,
@@ -213,9 +346,9 @@ class sample_data(object):
                         #  copy the data we're keeping into a contiguous block
                         attr[0:new_n_pings] = attr[keep_idx]
                 else:
-                    # set the data tp NaN or apprpriate value
+                    # set the data to NaN or apprpriate value
                     if (attr.dtype in [np.float16, np.float32, np.float64, np.datetime64]):
-                        #  float like objects are set to NaN
+                        #  float like objects are set to NaN == NaT for datetime64
                         attr[del_idx] = np.nan
                     elif (attr.dtype in [np.uint16, np.uint32, np.uint64, np.uint8]):
                         #  unsigned ints are set... well, what really is an appropriate value???
@@ -269,12 +402,12 @@ class sample_data(object):
 
         """
 
-        #  check that we have been given an insetion point
-        if ping_number is None and ping_time is None:
-            raise ValueError('Either ping_number or ping_time needs to be defined to ' +
-                    'specify an insertion point.')
+        #  check that we have been given an insetion point or index array
+        if ping_number is None and ping_time is None and index_array is None:
+            raise ValueError('Either ping_number or ping_time needs to be defined ' +
+                    'or an index array needs to be provided to specify an insertion point.')
 
-        #  make sure that data_object is an EK60.RawData raw data object
+        #  make sure that obj_to_insert class matches "this" class
         if (not isinstance(self, obj_to_insert.__class__)):
             raise TypeError('The object you are inserting/appending must be an instance of ' +
                 str(self.__class__))
@@ -291,7 +424,7 @@ class sample_data(object):
                             'object. Frequencies must match to append or ' +
                             'insert.')
 
-        #  get some info about the shape of the data we're inserting
+        #  get some info about the shape of the data we're working with
         my_pings = self.n_pings
         new_pings = obj_to_insert.n_pings
         my_samples = self.n_samples
@@ -477,7 +610,7 @@ class sample_data(object):
             resample_interval = max(unique_sample_intervals)
 
         #  generate a vector of sample counts - generalized method that works with both
-        #  RawData and ProcessedData classes that finds the first non-NaN value searching
+        #  raw_data and processed_data classes that finds the first non-NaN value searching
         #  from the "bottom up"
         sample_counts = data.shape[1] - np.argmax(~np.isnan(np.fliplr(data)), axis=1)
 
@@ -655,7 +788,7 @@ class sample_data(object):
             if ((old_sample_dim < 0) and (attr.ndim == 2)):
                 old_sample_dim = attr.shape[1]
 
-            #  resize the 1d arrays
+            #  resize the arrays using technique dependent on the array dimension
             if ((attr.ndim == 1) and (new_ping_dim != old_ping_dim)):
                 #  resize this 1d attribute
                 attr = np.resize(attr,(new_ping_dim))
@@ -674,6 +807,11 @@ class sample_data(object):
         #  set the sample and ping number
         self.n_samples = new_sample_dim
         self.ping_number = np.arange(1, new_ping_dim + 1)
+
+        #  we cannot update the n_pings attribute here since raw_data uses this attribute
+        #  to store the number of pings read, *not* the total number of pings in the array.
+        #  as the processed_data class uses it. Instead we have to set it either in the
+        #  child class or when context permits in other methods of this class.
 
 
     def nan_values(self, start_ping, end_ping):

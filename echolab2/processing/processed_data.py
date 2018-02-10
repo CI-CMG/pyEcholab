@@ -27,22 +27,49 @@ class processed_data(sample_data):
     The processed_data class contains
     '''
 
-    def __init__(self, channel_id, frequency):
+    def __init__(self, channel_id, frequency, data_type):
 
         super(processed_data, self).__init__()
 
-        #  set the frequency and channel_id
+        #  set the frequency, channel_id, and data type
         self.channel_id = channel_id
         self.frequency = frequency
+        self.data_type = data_type
 
         #  sample thickness is the vertical extent of the samples in meters
         #  it is calculated as thickness = sample interval(s) * sound speed(m/s) / 2
-        #  you should not append processed data arrays with different sample thicknesses
+        #  you should not insert/append processed data arrays with different sample thicknesses
         self.sample_thickness = 0
 
         #  sample offset is the number of samples the first row of data are offset away from
         #  the transducer face.
         self.sample_offset = 0
+
+
+
+    def replace(self, obj_to_insert, ping_number=None, ping_time=None,
+               index_array=None):
+
+        #  when inserting/replacing data in processed_data objects we have to make sure
+        #  the data are the same type and are on the same vertical "grid". (The parent
+        #  method will check if the frequencies are the same.)
+
+        #  check that the data types are the same
+        if (self.data_type != obj_to_insert.data_type):
+            raise TypeError('You cannot insert an object that contains ' +
+                    obj_to_insert.data_type + ' data into an object that ' +
+                    'contains ' + self.data_type + ' data.')
+
+        #  check that the data share the same vertical grid
+        if (self.sample_thickness != obj_to_insert.sample_thickness):
+            raise TypeError('You cannot insert an object into another object ' +
+                    'that has a different sample thickness.')
+
+
+
+
+    def insert(self, obj_to_insert, ping_number=None, ping_time=None,
+               index_array=None):
 
 
     def shift_pings(self, vert_shift, to_depth=False):
