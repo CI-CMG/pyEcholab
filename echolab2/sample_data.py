@@ -746,10 +746,6 @@ class sample_data(object):
         array dimensions.
         """
 
-        #  initialize arrays to store the "old" data dimensions
-        old_ping_dim = -1
-        old_sample_dim = -1
-
         def resize2d(data, ping_dim, sample_dim):
             """
             resize2d returns a new array of the specified dimensions with the
@@ -773,27 +769,27 @@ class sample_data(object):
             #  and return it
             return new_array
 
+        #  store the old sizes
+        old_sample_dim = self.n_samples
+        old_ping_dim = self.n_pings
+
         #  work thru our list of attributes
         for attr_name in self._data_attributes:
 
             #  get a reference to this attribute
-            if (hasattr(self, attr_name)):
-                attr = getattr(self, attr_name)
-            else:
-                continue
-
-            #  determine the "old" dimensions
-            if ((old_ping_dim < 0) and (attr.ndim == 1)):
-                old_ping_dim = attr.shape[0]
-            if ((old_sample_dim < 0) and (attr.ndim == 2)):
-                old_sample_dim = attr.shape[1]
+            attr = getattr(self, attr_name)
 
             #  resize the arrays using technique dependent on the array dimension
-            if ((attr.ndim == 1) and (new_ping_dim != old_ping_dim)):
-                #  resize this 1d attribute
-                attr = np.resize(attr,(new_ping_dim))
+            if (attr.ndim == 1):
+                #  1d arrays can be on the ping axes or sample axes and have to be handeld differently
+                if (attr.shape[0] == old_sample_dim != new_sample_dim):
+                    #  resize this sample axes attribute
+                    attr = np.resize(attr,(new_sample_dim))
+                elif (attr.shape[0] == old_ping_dim != new_ping_dim):
+                    #  resize this ping axes attribute
+                    attr = np.resize(attr,(new_ping_dim))
             elif (attr.ndim == 2):
-                #  resize this 2d array
+                #  resize this 2d sample data array
                 if (new_sample_dim == old_sample_dim):
                     #  if the minor axes isn't changing we can use ndarray.resize()
                     attr = np.resize(attr,(new_ping_dim, new_sample_dim))

@@ -67,9 +67,57 @@ class processed_data(sample_data):
 
 
 
+        #  get the existing range/depth vectors
+        if (hasattr(self, 'range')):
+            this_vaxis = getattr(self, 'range')
+        else:
+            this_vaxis = getattr(self, 'depth')
+        if (hasattr(obj_to_insert, 'range')):
+            ins_vaxis = getattr(obj_to_insert, 'range')
+        else:
+            ins_vaxis = getattr(obj_to_insert, 'depth')
+
+
+
+
+
 
     def insert(self, obj_to_insert, ping_number=None, ping_time=None,
                index_array=None):
+
+
+
+    def pad_top(self, n_samples):
+        """
+        pad_top shifts the data array vertically the specified number of samples
+        and insert NaNs. The range or depth axis is updated accordingly.
+
+        This method differs from shift_pings in that that you must shift by whole
+        samples. No interpolation is performed.
+        """
+        #  store the old sample number
+        old_samples = self.n_samples
+
+        #  resize the sample data arrays
+        self._resize_arrays(self.n_pings, self.n_samples + n_samples)
+
+        #  generate the new range/depth array
+        if (hasattr(self, 'range')):
+            attr = getattr(self, 'range')
+        else:
+            attr = getattr(self, 'depth')
+        attr[:] = (np.arange(self.n_samples) - n_samples) * self.sample_thickness + attr[0]
+
+        #  shift the sample data atrributes
+        for attr_name in self._data_attributes:
+            #  get the attribute
+            attr = getattr(self, attr_name)
+            #  check if it is a 2d array (which is a sample data array)
+            if (attr.ndim == 2):
+                #  this is a sample data array - shift the data and pad
+                attr[:,n_samples:] = attr[:,0:old_samples]
+                attr[:,0:n_samples] = np.nan
+
 
 
     def shift_pings(self, vert_shift, to_depth=False):
@@ -115,12 +163,23 @@ class processed_data(sample_data):
         #  check if this is not a constant shift
         if (vert_ext != 0):
             #  not constant, work thru the 2d attributes and interpolate the sample data
+
+            #  first convert to linear units if required
+            if (self.data_type[0] == 'S'):
+                is_log = True
+                self.to_linear()
+            else:
+                is_log = False
+            #  then pick out the sample data arrays and interpolate
             for attr_name in self._data_attributes:
                 attr = getattr(self, attr_name)
                 if (isinstance(attr, np.ndarray) and (attr.ndim == 2)):
                     for ping in range(self.n_pings):
                         attr[ping,:] = np.interp(new_axis, vert_axis + vert_shift[ping],
                                 attr[ping,:old_samps], left=np.nan, right=np.nan)
+            #  convert back to log units if required
+            if (is_log):
+                self.to_log()
 
         # and assign the new axis
         if (to_depth):
@@ -130,6 +189,30 @@ class processed_data(sample_data):
         else:
             #  no conversion, just assign the new vertical axis data
             vert_axis = new_axis
+
+
+    def to_linear(self):
+        """
+        to_linear converts sample data from log to linear
+        """
+        if (self.data_type == 'Sv'):
+            self.Sv[:] = np.power(self.Sv / 20.0, 10.0)
+            self.data_type = 'sv'
+        elif (self.data_type == 'Sp'):
+            self.Sp[:] = np.power(self.Sp / 20.0, 10.0)
+            self.data_type = 'sp'
+
+
+    def to_log(self):
+        """
+        to_log converts sample data from linear to log
+        """
+        if (self.data_type[0] == 'sv'):
+            self.sv[:] = 20.0 * np.log10(self.sv)
+            self.data_type = 'Sv'
+        elif (self.data_type == 'sp'):
+            self.sp[:] = 20.0 * np.log10(self.sp)
+            self.data_type = 'Sp'
 
 
     def __getitem__(self, key):
