@@ -47,8 +47,7 @@ class processed_data(sample_data):
 
 
 
-    def replace(self, obj_to_insert, ping_number=None, ping_time=None,
-               index_array=None):
+    def replace(self, obj_to_insert, **kwargs):
 
         #  when inserting/replacing data in processed_data objects we have to make sure
         #  the data are the same type and are on the same vertical "grid". (The parent
@@ -72,13 +71,50 @@ class processed_data(sample_data):
             this_vaxis = getattr(self, 'range')
         else:
             this_vaxis = getattr(self, 'depth')
+        this_vlen = this_vaxis.shape[0]
         if (hasattr(obj_to_insert, 'range')):
             ins_vaxis = getattr(obj_to_insert, 'range')
         else:
             ins_vaxis = getattr(obj_to_insert, 'depth')
+        ins_vlen = ins_vaxis.shape[0]
+
+        min_vaxis = np.amin([np.amin(ins_vaxis),np.amin(this_vaxis)])
+        max_vaxis = np.amax([np.amax(ins_vaxis),np.amax(this_vaxis)])
 
 
 
+        #  determine the combined range
+
+        #  check if they are the same length
+        if (ins_vlen == this_vlen):
+            #  they are the same length - check if same values
+
+            if (not np.all(np.isclose(ins_vaxis - this_vaxis))):
+                #  same length but different values - don't need to resize but interp inserted to this axis
+                for
+
+
+
+        elif (this_vlen > ins_vlen):
+            #  this instance's vertical axis vector is longer
+            new_samps = this_vlen
+
+            #  resize the object we're inserting
+            obj_to_insert._resize_arrays(obj_to_insert.n_pings, new_samps)
+
+
+
+        else:
+            #  the object we're inserting has a longer vertical axis
+            new_samps = ins_vlen
+
+            #  resize this object
+            self._resize_arrays(self.n_pings, new_samps)
+
+
+
+        #  we are now coexisting in harmony - call parent's insert
+        sample_data.insert(self, obj_to_insert, **kwargs)
 
 
 
@@ -213,6 +249,27 @@ class processed_data(sample_data):
         elif (self.data_type == 'sp'):
             self.sp[:] = 20.0 * np.log10(self.sp)
             self.data_type = 'Sp'
+
+
+
+    def _interp_sample_data(self, obj_to_interp, new_vaxis, old_vaxis):
+
+        #  first convert to linear units if required
+        if (obj_to_interp.data_type[0] == 'S'):
+            is_log = True
+            obj_to_interp.to_linear()
+        else:
+            is_log = False
+        #  then pick out the sample data arrays and interpolate
+        for attr_name in obj_to_interp._data_attributes:
+            attr = getattr(obj_to_interp, attr_name)
+            if (isinstance(attr, np.ndarray) and (attr.ndim == 2)):
+                for ping in range(obj_to_interp.n_pings):
+                    attr[ping,:] = np.interp(new_vaxis, old_vaxis,
+                            attr[ping,:old_vaxis.shape[0]], left=np.nan, right=np.nan)
+        #  convert back to log units if required
+        if (is_log):
+            obj_to_interp.to_log()
 
 
     def __getitem__(self, key):
