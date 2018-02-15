@@ -64,9 +64,7 @@ class processed_data(sample_data):
             raise TypeError('You cannot insert an object into another object ' +
                     'that has a different sample thickness.')
 
-
-
-        #  get the existing range/depth vectors
+        #  get the range/depth vectors
         if (hasattr(self, 'range')):
             this_vaxis = getattr(self, 'range')
         else:
@@ -78,6 +76,7 @@ class processed_data(sample_data):
             ins_vaxis = getattr(obj_to_insert, 'depth')
         ins_vlen = ins_vaxis.shape[0]
 
+        #  determine the min and max extents of the two vertical axes
         min_vaxis = np.amin([np.amin(ins_vaxis),np.amin(this_vaxis)])
         max_vaxis = np.amax([np.amax(ins_vaxis),np.amax(this_vaxis)])
 
@@ -88,29 +87,47 @@ class processed_data(sample_data):
         #  check if they are the same length
         if (ins_vlen == this_vlen):
             #  they are the same length - check if same values
-
             if (not np.all(np.isclose(ins_vaxis - this_vaxis))):
                 #  same length but different values - don't need to resize but interp inserted to this axis
-                for
+                old_axis = ins_vaxis.copy()
+                obj_to_interp.interpolate(old_axis, this_vaxis)
+            else:
 
+                pass
 
 
         elif (this_vlen > ins_vlen):
-            #  this instance's vertical axis vector is longer
-            new_samps = this_vlen
+            #  this instance's vertical axis vector is longer - need to resize obj_to_insert
+
+            #  first get a copy of the existing axis
+            old_axis = ins_vaxis.copy()
 
             #  resize the object we're inserting
-            obj_to_insert._resize_arrays(obj_to_insert.n_pings, new_samps)
+            obj_to_insert.resize(obj_to_insert.n_pings, this_vlen)
 
-
+            #  and initerpolate the sample data in the object we're inserting
+            obj_to_interp.interpolate(old_axis, this_vaxis)
 
         else:
             #  the object we're inserting has a longer vertical axis
             new_samps = ins_vlen
 
-            #  resize this object
-            self._resize_arrays(self.n_pings, new_samps)
+            #  first get a copy of this object's existing vertical axis
+            old_axis = this_vaxis.copy()
 
+            #  resize this object
+            self.resize(self.n_pings, new_samps)
+
+            #  and initerpolate the sample data in the object we're inserting
+            self.interpolate(old_axis, ins_vaxis)
+
+            #  TODO: how to handle inserting range into depth and oppostite???
+
+            #  and set our new vertical axis
+            if (hasattr(self, 'range')):
+                setattr(self, 'range', ins_vaxis.copy())
+            else:
+                setattr(self, 'depth', ins_vaxis.copy())
 
 
         #  we are now coexisting in harmony - call parent's insert
@@ -121,6 +138,7 @@ class processed_data(sample_data):
     def insert(self, obj_to_insert, ping_number=None, ping_time=None,
                index_array=None):
 
+        pass
 
 
     def pad_top(self, n_samples):
@@ -135,7 +153,7 @@ class processed_data(sample_data):
         old_samples = self.n_samples
 
         #  resize the sample data arrays
-        self._resize_arrays(self.n_pings, self.n_samples + n_samples)
+        self.resize(self.n_pings, self.n_samples + n_samples)
 
         #  generate the new range/depth array
         if (hasattr(self, 'range')):
@@ -191,7 +209,7 @@ class processed_data(sample_data):
             new_sample_dim = (self.n_samples+new_samps).astype('uint')
             #  and resize (n_samples will be updated in the _resize method)
             old_samps = self.n_samples
-            self._resize_arrays(self.n_pings, new_sample_dim)
+            self.resize(self.n_pings, new_sample_dim)
 
         # create the new vertical axis
         new_axis = (np.arange(self.n_samples) * self.sample_thickness) + np.min(vert_axis) + min_shift
@@ -251,25 +269,24 @@ class processed_data(sample_data):
             self.data_type = 'Sp'
 
 
-
-    def _interp_sample_data(self, obj_to_interp, new_vaxis, old_vaxis):
+    def interpolate(self, old_vaxis, new_vaxis):
 
         #  first convert to linear units if required
-        if (obj_to_interp.data_type[0] == 'S'):
+        if (self.data_type[0] == 'S'):
             is_log = True
-            obj_to_interp.to_linear()
+            self.to_linear()
         else:
             is_log = False
         #  then pick out the sample data arrays and interpolate
-        for attr_name in obj_to_interp._data_attributes:
-            attr = getattr(obj_to_interp, attr_name)
+        for attr_name in self._data_attributes:
+            attr = getattr(self, attr_name)
             if (isinstance(attr, np.ndarray) and (attr.ndim == 2)):
-                for ping in range(obj_to_interp.n_pings):
+                for ping in range(self.n_pings):
                     attr[ping,:] = np.interp(new_vaxis, old_vaxis,
                             attr[ping,:old_vaxis.shape[0]], left=np.nan, right=np.nan)
         #  convert back to log units if required
         if (is_log):
-            obj_to_interp.to_log()
+            self.to_log()
 
 
     def __getitem__(self, key):
@@ -292,16 +309,23 @@ class processed_data(sample_data):
         return p_data
 
 
-    def _resize_arrays(self, new_ping_dim, new_sample_dim):
+    def resize(self, new_ping_dim, new_sample_dim):
         """
-        _resize_arrays reimplements sample_data._resize_arrays adding updating of the
-        n_pings attribute. In the processed data object we assume that all pings contain
-        data (unlike, for example EK60.raw_data where data arrays can be larger than
-        the actual data loaded.)
+        resize reimplements sample_data.resize adding updating of the vertical axis and
+        n_pings attribute.
         """
 
+        #  get the existing vertical axis
+        if (hasattr(self, 'range')):
+            vaxis = getattr(self, 'range')
+        else:
+            vaxis = getattr(self, 'depth')
+
+        #  and generate the new vertical axis
+        vaxis = np.arange(new_sample_dim) * self.sample_thickness + vaxis[0]
+
         #  call the parent method to resize the arrays (n_samples is updated here)
-        super(processed_data, self)._resize_arrays(new_ping_dim, new_sample_dim)
+        super(processed_data, self).resize(new_ping_dim, new_sample_dim)
 
         #  and then update n_pings
         self.n_pings = self.ping_time.shape[0]
