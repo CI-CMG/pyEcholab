@@ -70,10 +70,6 @@ class sample_data(object):
         #  If frequency is used as a vector, it must be defined in the _data_attributes list
         self.frequency = None
 
-        #  ping number and ping time are required vectors that define the
-        self.ping_time = None
-        self.ping_number = None
-
         #  _data_attributes is an internal list that contains the names of all of the class's
         #  "data attributes". The echolab2 package uses this attribute to generalize various
         #  functions that manipulate these data.
@@ -84,10 +80,9 @@ class sample_data(object):
         #  arrays. When subclassing, you must extend this list in your __init__ method
         #  to contain all of the  data attributes of that class THAT EXIST AT INSTANTIATION.
 
-        #  for the base class, we only define ping_time and ping_number which are attributes
+        #  for the base class, we only define ping_time which is the only required attribute
         #  that all data objects must have.
-        self._data_attributes = ['ping_time',
-                                 'ping_number']
+        self._data_attributes = ['ping_time']
 
         #  attributes are added using the add_attribute method. You can add them manually
         #  by appending the name of the new attribute to the _data_attributes dict and
@@ -268,14 +263,8 @@ class sample_data(object):
 
                 #  we have to handle the 2d and 1d differently
                 if (data.ndim == 1):
-                    #  concatenate the 1d data
-                    #  when replacing data, we ignore the ping number
-                    if (attribute == 'ping_number'):
-                        #  leave ping_number the same
-                        pass
-                    else:
-                        #  replace existing pings with this data
-                        data[replace_index] = data_to_insert[:]
+                    #  concatenate the 1d data - replace existing pings with this data
+                    data[replace_index] = data_to_insert[:]
                 elif (data.ndim == 2):
                     #  and insert the new data
                     data[replace_index, :] = data_to_insert[:,:]
@@ -324,7 +313,7 @@ class sample_data(object):
             del_idx = index_array
 
         #  determine the indices of the pings we're keeping
-        keep_idx = np.delete(np.arange(self.ping_number.shape[0]), del_idx)
+        keep_idx = np.delete(np.arange(self.ping_time.shape[0]), del_idx)
 
         #  and the number of pings we're keeping
         new_n_pings = keep_idx.shape[0]
@@ -362,7 +351,7 @@ class sample_data(object):
             self._resize_arrays(new_n_pings, self.n_samples)
 
         #  update the n_pings attribute
-        self.n_pings = self.ping_number.shape[0]
+        self.n_pings = self.ping_time.shape[0]
 
 
     def append(self, obj_to_append):
@@ -372,7 +361,7 @@ class sample_data(object):
         """
 
         #  append simply inserts at the end of our internal array.
-        self.insert(obj_to_append, ping_number=self.ping_number[-1])
+        self.insert(obj_to_append, ping_number=self.n_pings)
 
 
     def insert(self, obj_to_insert, ping_number=None, ping_time=None,
@@ -510,15 +499,10 @@ class sample_data(object):
                 #  we have to handle the 2d and 1d differently
                 if (data.ndim == 1):
                     #  concatenate the 1d data
-                    if (attribute == 'ping_number'):
-                        #  update ping_number so it is sequential
-                        data[:] = np.arange(my_pings) + 1
-                    else:
-                        #  move the existing data
-                        data[move_index] = data[0:move_index.shape[0]]
-                        #  and insert the new data
-                        data[insert_index] = data_to_insert[:]
-
+                    #  move the existing data
+                    data[move_index] = data[0:move_index.shape[0]]
+                    #  and insert the new data
+                    data[insert_index] = data_to_insert[:]
                 elif (data.ndim == 2):
                     #  move the existing data
                     data[move_index, :] = data[0:move_index.shape[0],:]
@@ -534,7 +518,7 @@ class sample_data(object):
             self.channel_id += obj_to_insert.channel_id
 
         #  update the n_pings attribute
-        self.n_pings = self.ping_number.shape[0]
+        self.n_pings = self.ping_time.shape[0]
 
 
     def trim(self, n_pings=None, n_samples=None):
@@ -560,30 +544,32 @@ class sample_data(object):
         order they occur in the data arrays.
         """
 
+        #  generate the ping number vector - we start counting pings at 1
+        ping_number = np.arange(self.n_pings) + 1
+
         #  if starts and/or ends are omitted, assume fist and last respectively
         if (start_ping == start_time == None):
-            start_ping = self.ping_number[0]
+            start_ping = ping_number[0]
         if (end_ping == end_time == None):
-            end_ping = self.ping_number[-1]
+            end_ping = ping_number[-1]
 
         #  get the primary index
         if (time_order):
             #  return indices in time order
-
             primary_index = self.ping_time.argsort()
         else:
             #  return indices in ping order
-            primary_index = self.ping_number - 1
+            primary_index = ping_number
 
         #  generate a boolean mask of the values to return
         if (start_time):
             mask = self.ping_time[primary_index] >= start_time
         elif (start_ping >= 0):
-            mask = self.ping_number[primary_index] >= start_ping
+            mask = ping_number[primary_index] >= start_ping
         if (end_time):
             mask = np.logical_and(mask, self.ping_time[primary_index] <= end_time)
         elif (end_ping >= 0):
-            mask = np.logical_and(mask, self.ping_number[primary_index] <= end_ping)
+            mask = np.logical_and(mask, ping_number[primary_index] <= end_ping)
 
         #  and return the indices that are included in the specified range
         return primary_index[mask]
@@ -739,16 +725,16 @@ class sample_data(object):
         return shifted_data
 
 
-    def _resize_arrays(self, new_ping_dim, new_sample_dim):
+    def resize(self, new_ping_dim, new_sample_dim):
         """
         resize_arrays iterates thru the provided list of attributes and
         resizes them in the instance of the object provided given the new
         array dimensions.
         """
 
-        def resize2d(data, ping_dim, sample_dim):
+        def _resize2d(data, ping_dim, sample_dim):
             """
-            resize2d returns a new array of the specified dimensions with the
+            _resize2d returns a new array of the specified dimensions with the
             data from the provided array copied into it. This funciton is
             used when we need to resize 2d arrays along the minor axis as
             ndarray.resize and numpy.resize don't maintain the order of the
@@ -795,14 +781,13 @@ class sample_data(object):
                     attr = np.resize(attr,(new_ping_dim, new_sample_dim))
                 else:
                     #  if the minor axes is changing we need to use our resize2d function
-                    attr = resize2d(attr, new_ping_dim, new_sample_dim)
+                    attr = _resize2d(attr, new_ping_dim, new_sample_dim)
 
             #  update the attribute
             setattr(self, attr_name, attr)
 
-        #  set the sample and ping number
+        #  set the new sample count
         self.n_samples = new_sample_dim
-        self.ping_number = np.arange(1, new_ping_dim + 1)
 
         #  we cannot update the n_pings attribute here since raw_data uses this attribute
         #  to store the number of pings read, *not* the total number of pings in the array.
@@ -821,6 +806,7 @@ class sample_data(object):
         """
 
         #TODO Add ability to NaN a list of pings?
+
 
         nan_start = np.where(self.ping_number == start_ping)[0][0]
         nan_end = np.where(self.ping_number == end_ping)[0][0]+1

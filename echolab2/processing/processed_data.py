@@ -46,12 +46,123 @@ class processed_data(sample_data):
         self.sample_offset = 0
 
 
+    def replace(self, obj_to_insert, ping_number=None, ping_time=None,
+               insert_after=True, index_array=None):
+        """
+        replace, er, replaces the data in this object using the data provided
+        in the obejct to "insert". Another way to think of this is that it
+        inserts data without shifting the existing data resulting in the
+        existing data being overwritten.
 
-    def replace(self, obj_to_insert, **kwargs):
+        Args:
+            obj_to_insert: an instance of echolab2.processed_data that contains the
+                data you are using as the replacement. obj_to_insert's sample data
+                will be vertically interpolated to the vertical axis of this object.
+
+            ping_number: The ping number specifying the first ping to replace
+
+            ping_time: The ping time specifying the first ping to replace
+
+            index_array: A numpy array containing the indices of the pings you
+                want to replace. Unlike when using a ping number or ping time,
+                the pings do not have to be consecutive but the number of "pings"
+                in the obj_to_insert must be the same as the number of elements
+                in your index_array. When this keyword is present, the ping_number
+                and ping_time keywords are ignored.
+
+        You must specify a ping number, ping time or provide an index array.
+
+        Replace only replaces data ping-by-ping. It will never add pings. Any extra
+        data in obj_to_insert will be ignored.
+        """
+
+        #  determine how many pings we're inserting
+        if (index_array):
+            n_inserting = index_array.shape[0]
+        else:
+            idx  = self.get_indices(start_time=ping_time, end_time=ping_time,
+                    start_ping=ping_number, end_ping=ping_number)[0]
+            n_inserting = self.n_pings - idx
+            index_array = np.arange(n_inserting) + idx
+
+        if (obj_to_insert is None):
+            #  when obj_to_insert is None, we create automatically create a matching
+            #  object that contains no data (all NaNs)
+            obj_to_insert = self.empty_like(n_inserting)
+
+            #  when replacing, we copy the ping times
+            obj_to_insert.ping_times = self.ping_times[index_array]
+
+        #  when inserting/replacing data in processed_data objects we have to make sure
+        #  the data are the same type. The parent method will check if the frequencies are the same.
+        if (self.data_type != obj_to_insert.data_type):
+            raise TypeError('You cannot replace data in an object that contains ' +
+                    self.data_type.data_type + ' data using an object that ' +
+                    'contains ' + obj_to_insert.data_type + ' data.')
+
+        #  get our range/depth vector
+        if (hasattr(self, 'range')):
+            this_vaxis = getattr(self, 'range')
+        else:
+            this_vaxis = getattr(self, 'depth')
+
+        #  interppolate the object we're inserting to our vertical axis (if the vertical
+        #  axes are the same interpolate will return w/o doing anything.)
+        obj_to_insert.interpolate(this_vaxis)
+
+        #  we are now coexisting in harmony - call parent's insert
+        super(processed_data, self).replace( obj_to_insert, ping_number=None,
+                ping_time=None, insert_after=True, index_array=None)
+
+
+    def insert(self, obj_to_insert, ping_number=None, ping_time=None,
+               insert_after=True, index_array=None):
+        """
+        insert inserts the data from the provided echolab2 data object into
+        this object. The insertion point is specified by ping number or time. After
+        inserting data, the ping_number property is updated and the ping numbers
+        will be re-numbered accordingly.
+
+        Args:
+            obj_to_insert: an instance of echolab2.processed_data that contains the
+                data you are inserting. The object's sample data will be vertically
+                interpolated to the vertical axis of this object.
+
+            ping_number: The ping number specifying the insertion point
+            ping_time: The ping time specifying the insertion point
+
+            You must specify a ping number or ping time. Existing data from
+            the insertion point on will be shifted after the inserted data.
+
+            insert_after: Set to True to insert *after* the specified ping time
+                or ping number. Set to False to insert *at* the specified time
+                or ping number.
+
+            index_array: A numpy array containing the indices of the pings you
+                want to insert. Unlike when using a ping number or ping time,
+                the pings do not have to be consecutive. When this keyword is
+                present, the ping_number, ping_time and insert_after keywords
+                are ignored.
+
+        """
 
         #  when inserting/replacing data in processed_data objects we have to make sure
         #  the data are the same type and are on the same vertical "grid". (The parent
         #  method will check if the frequencies are the same.)
+
+
+        #  determine how many pings we're inserting
+        if (index_array):
+            n_inserting = index_array.shape[0]
+        else:
+            in_idx  = self.get_indices(start_time=ping_time, end_time=ping_time,
+                    start_ping=ping_number, end_ping=ping_number)[0]
+            n_inserting = self.n_pings - in_idx
+
+        if (obj_to_insert is None):
+            #  when obj_to_insert is None, we create automatically create a matching
+            #  object that contains no data (all NaNs)
+            obj_to_insert = self.empty_like(n_inserting)
 
         #  check that the data types are the same
         if (self.data_type != obj_to_insert.data_type):
@@ -59,86 +170,50 @@ class processed_data(sample_data):
                     obj_to_insert.data_type + ' data into an object that ' +
                     'contains ' + self.data_type + ' data.')
 
-        #  check that the data share the same vertical grid
-        if (self.sample_thickness != obj_to_insert.sample_thickness):
-            raise TypeError('You cannot insert an object into another object ' +
-                    'that has a different sample thickness.')
-
-        #  get the range/depth vectors
+        #  get our range/depth vector
         if (hasattr(self, 'range')):
             this_vaxis = getattr(self, 'range')
         else:
             this_vaxis = getattr(self, 'depth')
-        this_vlen = this_vaxis.shape[0]
-        if (hasattr(obj_to_insert, 'range')):
-            ins_vaxis = getattr(obj_to_insert, 'range')
-        else:
-            ins_vaxis = getattr(obj_to_insert, 'depth')
-        ins_vlen = ins_vaxis.shape[0]
 
-        #  determine the min and max extents of the two vertical axes
-        min_vaxis = np.amin([np.amin(ins_vaxis),np.amin(this_vaxis)])
-        max_vaxis = np.amax([np.amax(ins_vaxis),np.amax(this_vaxis)])
-
-
-
-        #  determine the combined range
-
-        #  check if they are the same length
-        if (ins_vlen == this_vlen):
-            #  they are the same length - check if same values
-            if (not np.all(np.isclose(ins_vaxis - this_vaxis))):
-                #  same length but different values - don't need to resize but interp inserted to this axis
-                old_axis = ins_vaxis.copy()
-                obj_to_interp.interpolate(old_axis, this_vaxis)
-            else:
-
-                pass
-
-
-        elif (this_vlen > ins_vlen):
-            #  this instance's vertical axis vector is longer - need to resize obj_to_insert
-
-            #  first get a copy of the existing axis
-            old_axis = ins_vaxis.copy()
-
-            #  resize the object we're inserting
-            obj_to_insert.resize(obj_to_insert.n_pings, this_vlen)
-
-            #  and initerpolate the sample data in the object we're inserting
-            obj_to_interp.interpolate(old_axis, this_vaxis)
-
-        else:
-            #  the object we're inserting has a longer vertical axis
-            new_samps = ins_vlen
-
-            #  first get a copy of this object's existing vertical axis
-            old_axis = this_vaxis.copy()
-
-            #  resize this object
-            self.resize(self.n_pings, new_samps)
-
-            #  and initerpolate the sample data in the object we're inserting
-            self.interpolate(old_axis, ins_vaxis)
-
-            #  TODO: how to handle inserting range into depth and oppostite???
-
-            #  and set our new vertical axis
-            if (hasattr(self, 'range')):
-                setattr(self, 'range', ins_vaxis.copy())
-            else:
-                setattr(self, 'depth', ins_vaxis.copy())
-
+        #  interppolate the object we're inserting to our vertical axis (if the vertical
+        #  axes are the same interpolate will return w/o doing anything.)
+        obj_to_insert.interpolate(this_vaxis)
 
         #  we are now coexisting in harmony - call parent's insert
-        sample_data.insert(self, obj_to_insert, **kwargs)
+        super(processed_data, self).insert( obj_to_insert, ping_number=None,
+                ping_time=None, insert_after=True, index_array=None)
 
 
+    def empty_like(self, n_pings):
+        """
+        empty_like returns a processed_data object with the same general
+        characteristics
+        """
 
-    def insert(self, obj_to_insert, ping_number=None, ping_time=None,
-               index_array=None):
+        #  create an instance of echolab2.processed_data and set the same
+        #  basic properties as this object.
+        empty_obj = processed_data(self.channel_id, self.frequency,
+                self.data_type)
 
-        pass
+        #  create the dynamic attributes
+        for attr_name in self._data_attributes:
+
+            #  get the attribute
+            attr = getattr(self, attr_name)
+
+            if (attr.shape[0] == self.n_samples):
+                #  copy all vertical axes
+                data = attr.copy()
+            else:
+                #  create an array the same shape filled with Nans
+                data = np.empty_like(attr)
+                data[:] = np.nan
+
+            #  and add the attribute to our empty object
+            empty_obj.add_attribute(attr_name, data)
+
+        return empty_obj
 
 
     def pad_top(self, n_samples):
@@ -171,7 +246,6 @@ class processed_data(sample_data):
                 #  this is a sample data array - shift the data and pad
                 attr[:,n_samples:] = attr[:,0:old_samples]
                 attr[:,0:n_samples] = np.nan
-
 
 
     def shift_pings(self, vert_shift, to_depth=False):
@@ -269,21 +343,47 @@ class processed_data(sample_data):
             self.data_type = 'Sp'
 
 
-    def interpolate(self, old_vaxis, new_vaxis):
+    def interpolate(self, new_vaxis):
+        """
+        interpolate vertically interpolates our sample data to a new vertical axis.
+        If the new vertical axis has more samples than the existing vertical axis the
+        sample data array will be resized.
 
-        #  first convert to linear units if required
+        """
+
+        #  get the existing vertical axis
+        if (hasattr(self, 'range')):
+            old_vaxis = getattr(self, 'range').copy()
+        else:
+            old_vaxis = getattr(self, 'depth').copy()
+
+        #  check if we need to vertically resize our sample data
+        if (new_vaxis.shape[0] <> self.n_samples):
+            self.resize(self.n_pings, new_vaxis.shape[0])
+        else:
+            #  they are the same length - check if they are identical
+            if (np.all(np.isclose(old_vaxis - new_vaxis))):
+                #  they are the same - nothing to do
+                return
+
+        #  update our sample thickness
+        self.sample_thickness = np.mean(np.ediff1d(new_vaxis))
+
+        #  convert to linear units if required
         if (self.data_type[0] == 'S'):
             is_log = True
             self.to_linear()
         else:
             is_log = False
-        #  then pick out the sample data arrays and interpolate
+
+        #  pick out the sample data arrays and interpolate
         for attr_name in self._data_attributes:
             attr = getattr(self, attr_name)
             if (isinstance(attr, np.ndarray) and (attr.ndim == 2)):
                 for ping in range(self.n_pings):
                     attr[ping,:] = np.interp(new_vaxis, old_vaxis,
                             attr[ping,:old_vaxis.shape[0]], left=np.nan, right=np.nan)
+
         #  convert back to log units if required
         if (is_log):
             self.to_log()
