@@ -15,7 +15,55 @@
 
 '''
 
-                      CLASS DESCRIPTION GOES HERE
+The processed_data class stores and manipulates 2d sample data arrays along
+with 1d arrays that define the horizontal and vertical axes of that data.
+The horizontal axis is defined as 'ping_time' and the vertical axis is 'range'
+or 'depth'. Other data associated with the axes may be present. Most will
+be associated with the ping_time axis like vessel GPS position or speed.
+
+    properties:
+        channel_id: a list of channel id's that are linked to this data
+
+        frequency: The frequency, in Hz, of the data contained in the object
+
+        data_type: Data_type is a string defining the type of sample data the
+            object contains. Valid values are:
+                'Sv', 'sv', 'Sp', 'sp', 'angles', 'electrical_angles', 'power'
+
+        sample_thickness: a float defining the vertical extent of the samples
+            in meters. It is calculated as thickness = sample interval(s) *
+            sound speed(m/s) / 2.
+
+        sample_offset: The number of samples this data
+
+        range: An array of floats defining the ranges of the individual samples
+            in the sample data array. Initially this is range relative to the
+            transducer face but you can change this.
+
+        depth: Depth is range relative to the surface.
+
+        *Either* depth or range will be present.
+
+        This class inherits the following attributes from sample_data:
+
+            n_pings: n_pings stores the total number of pings in the object
+
+            n_samples: the number of samples in the 2d sample array
+
+            ping_time: An array of numpy datetime64 objects representing the times
+                of the individual pings.
+
+        The attribute name of the sample data depends on the type of data the object
+        contains. If the data_type is 'Sv', the Sv sample data attribute name is 'Sv'.
+        The sample data array is a numpy array indexed as [n_pings, n_samples]. To
+        access the 100th ping, you would do something like:
+
+            p_data.Sv[100,:]
+
+            or, if the data_type is 'power'
+
+            p_data.power[100,:]
+
 
 '''
 import numpy as np
@@ -24,7 +72,7 @@ from ..sample_data import sample_data
 
 class processed_data(sample_data):
     '''
-    The processed_data class contains
+
     '''
 
     def __init__(self, channel_id, frequency, data_type):
@@ -49,10 +97,8 @@ class processed_data(sample_data):
     def replace(self, obj_to_insert, ping_number=None, ping_time=None,
                insert_after=True, index_array=None):
         """
-        replace, er, replaces the data in this object using the data provided
-        in the obejct to "insert". Another way to think of this is that it
-        inserts data without shifting the existing data resulting in the
-        existing data being overwritten.
+        replace inserts data without shifting the existing data resulting in the
+        existing data being overwritten by the data in "obj_to_insert"
 
         Args:
             obj_to_insert: an instance of echolab2.processed_data that contains the
@@ -118,10 +164,8 @@ class processed_data(sample_data):
     def insert(self, obj_to_insert, ping_number=None, ping_time=None,
                insert_after=True, index_array=None):
         """
-        insert inserts the data from the provided echolab2 data object into
-        this object. The insertion point is specified by ping number or time. After
-        inserting data, the ping_number property is updated and the ping numbers
-        will be re-numbered accordingly.
+        insert inserts the data from the provided echolab2.processed_data object into
+        this object. The insertion point is specified by ping number or time.
 
         Args:
             obj_to_insert: an instance of echolab2.processed_data that contains the
@@ -129,9 +173,10 @@ class processed_data(sample_data):
                 interpolated to the vertical axis of this object.
 
             ping_number: The ping number specifying the insertion point
+
             ping_time: The ping time specifying the insertion point
 
-            You must specify a ping number or ping time. Existing data from
+            If you specify a ping number or ping time, existing data from
             the insertion point on will be shifted after the inserted data.
 
             insert_after: Set to True to insert *after* the specified ping time
@@ -143,14 +188,7 @@ class processed_data(sample_data):
                 the pings do not have to be consecutive. When this keyword is
                 present, the ping_number, ping_time and insert_after keywords
                 are ignored.
-
         """
-
-        #  when inserting/replacing data in processed_data objects we have to make sure
-        #  the data are the same type and are on the same vertical "grid". (The parent
-        #  method will check if the frequencies are the same.)
-
-
         #  determine how many pings we're inserting
         if (index_array):
             n_inserting = index_array.shape[0]
@@ -188,7 +226,14 @@ class processed_data(sample_data):
     def empty_like(self, n_pings):
         """
         empty_like returns a processed_data object with the same general
-        characteristics
+        characteristics of "this" object  but all of the data arrays are
+        filled with NaNs
+
+        Args:
+            n_pings: Set n_pings to an integer specifying the number of pings
+                in the new object. The vertical axis (both number of samples
+                and depth/range values) will be the same as this object.
+
         """
 
         #  create an instance of echolab2.processed_data and set the same
@@ -323,24 +368,30 @@ class processed_data(sample_data):
         """
         to_linear converts sample data from log to linear
         """
+
         if (self.data_type == 'Sv'):
-            self.Sv[:] = np.power(self.Sv / 20.0, 10.0)
+            self.add_attribute('sv', 10.0 ** (self.Sv / 10.0))
             self.data_type = 'sv'
+            self.remove_attribute('Sv')
         elif (self.data_type == 'Sp'):
-            self.Sp[:] = np.power(self.Sp / 20.0, 10.0)
+            self.add_attribute('sp', 10.0 ** (self.Sp / 10.0))
             self.data_type = 'sp'
+            self.remove_attribute('Sp')
 
 
     def to_log(self):
         """
         to_log converts sample data from linear to log
         """
-        if (self.data_type[0] == 'sv'):
-            self.sv[:] = 20.0 * np.log10(self.sv)
+
+        if (self.data_type == 'sv'):
+            self.add_attribute('Sv', 10.0 * np.log10(self.sv))
             self.data_type = 'Sv'
+            self.remove_attribute('sv')
         elif (self.data_type == 'sp'):
-            self.sp[:] = 20.0 * np.log10(self.sp)
+            self.add_attribute('Sp', 10.0 * np.log10(self.sp))
             self.data_type = 'Sp'
+            self.remove_attribute('sp')
 
 
     def interpolate(self, new_vaxis):
@@ -358,7 +409,7 @@ class processed_data(sample_data):
             old_vaxis = getattr(self, 'depth').copy()
 
         #  check if we need to vertically resize our sample data
-        if (new_vaxis.shape[0] <> self.n_samples):
+        if (new_vaxis.shape[0] != self.n_samples):
             self.resize(self.n_pings, new_vaxis.shape[0])
         else:
             #  they are the same length - check if they are identical
@@ -389,26 +440,6 @@ class processed_data(sample_data):
             self.to_log()
 
 
-    def __getitem__(self, key):
-
-        #  create a new processed_data object to return
-        p_data = processed_data(self.channel_id, self.frequency)
-
-        #  copy common attributes
-        p_data.sample_thickness = self.sample_thickness
-        p_data.sample_offset = self.sample_offset
-
-        #  and work thru the attributes, slicing them and adding to the new processed_data object
-        for attr_name in self._data_attributes:
-            attr = getattr(self, attr_name)
-            if (isinstance(attr, np.ndarray) and (attr.ndim == 2)):
-                p_data.add_attribute(attr_name, attr.__getitem__(key))
-            else:
-                p_data.add_attribute(attr_name, attr.__getitem__(key[0]))
-
-        return p_data
-
-
     def resize(self, new_ping_dim, new_sample_dim):
         """
         resize reimplements sample_data.resize adding updating of the vertical axis and
@@ -429,6 +460,26 @@ class processed_data(sample_data):
 
         #  and then update n_pings
         self.n_pings = self.ping_time.shape[0]
+
+
+    def __getitem__(self, key):
+
+        #  create a new processed_data object to return
+        p_data = processed_data(self.channel_id, self.frequency, self.data_type)
+
+        #  copy common attributes
+        p_data.sample_thickness = self.sample_thickness
+        p_data.sample_offset = self.sample_offset
+
+        #  and work thru the attributes, slicing them and adding to the new processed_data object
+        for attr_name in self._data_attributes:
+            attr = getattr(self, attr_name)
+            if (isinstance(attr, np.ndarray) and (attr.ndim == 2)):
+                p_data.add_attribute(attr_name, attr.__getitem__(key))
+            else:
+                p_data.add_attribute(attr_name, attr.__getitem__(key[0]))
+
+        return p_data
 
 
     def __str__(self):

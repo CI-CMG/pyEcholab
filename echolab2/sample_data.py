@@ -99,18 +99,23 @@ class sample_data(object):
         attribute name to our internal list of data attributes and then creates an
         attribute by that name and sets it to the provided reference.
         """
+
+        print(name)
+
+
         #  get the new data's dimensions
         data_samples = -1
         if (isinstance(data, np.ndarray)):
             data_pings = data.shape[0]
             if (data.ndim == 2):
                 data_samples = data.shape[1]
+                print(self.n_samples, data_samples)
                 #  check if n_samples has been set yet. If not, set it. If so, check that dimensions match
                 if (self.n_samples < 0):
                     self.n_samples = data_samples
                 elif (self.n_samples != data_samples):
                     #TODO:  Better error message
-                    raise ValueError('Cannot add attribute as the new attribute has a different' +
+                    raise ValueError('Cannot add attribute. New attribute has a different ' +
                             'number of samples than the other attributes.')
         else:
             #  we only allow numpy arays as data attributes
@@ -232,12 +237,12 @@ class sample_data(object):
                     #  it does - we have to change our new_samples
                     new_samples = self.max_sample_number
                     #  and vertically trim the array we're inserting
-                    obj_to_insert._resize_arrays(new_pings, new_samples)
+                    obj_to_insert.resize(new_pings, new_samples)
             #  because we're not inserting, we can set the new vertical sample size here
-            self._resize_arrays(my_pings, new_samples)
+            self.resize(my_pings, new_samples)
         elif (my_samples > new_samples):
             #  resize the object we're inserting
-            obj_to_insert._resize_arrays(new_pings, my_samples)
+            obj_to_insert.resize(new_pings, my_samples)
 
         #  work thru our data properties inserting the data from obj_to_insert
         for attribute in self._data_attributes:
@@ -348,7 +353,7 @@ class sample_data(object):
 
         #  if we're removing the pings, resize (shrink) the arrays
         if (remove):
-            self._resize_arrays(new_n_pings, self.n_samples)
+            self.resize(new_n_pings, self.n_samples)
 
         #  update the n_pings attribute
         self.n_pings = self.ping_time.shape[0]
@@ -468,17 +473,17 @@ class sample_data(object):
                     #  it does - we have to change our new_samples
                     new_samples = self.max_sample_number
                     #  and vertically trim the array we're inserting
-                    obj_to_insert._resize_arrays(new_pings, new_samples)
+                    obj_to_insert.resize(new_pings, new_samples)
             #  set the new vertical sample size
             my_samples = new_samples
         elif (my_samples > new_samples):
             #  resize the object we're inserting
-            obj_to_insert._resize_arrays(new_pings, my_samples)
+            obj_to_insert.resize(new_pings, my_samples)
 
         # update the number of pings in the object we're inserting into
         #  and then resize it.
         my_pings = my_pings + new_pings
-        self._resize_arrays(my_pings, my_samples)
+        self.resize(my_pings, my_samples)
 
         #  work thru our data properties inserting the data from obj_to_insert
         for attribute in self._data_attributes:
@@ -532,7 +537,77 @@ class sample_data(object):
             n_samples = self.n_samples
 
         #  resize keeping the sample number the same
-        self._resize_arrays(n_pings, n_samples)
+        self.resize(n_pings, n_samples)
+
+
+    def resize(self, new_ping_dim, new_sample_dim):
+        """
+        resize_arrays iterates thru the provided list of attributes and
+        resizes them in the instance of the object provided given the new
+        array dimensions.
+        """
+
+        def _resize2d(data, ping_dim, sample_dim):
+            """
+            _resize2d returns a new array of the specified dimensions with the
+            data from the provided array copied into it. This funciton is
+            used when we need to resize 2d arrays along the minor axis as
+            ndarray.resize and numpy.resize don't maintain the order of the
+            data in these cases.
+            """
+
+            #  if the minor axis is changing we have to either concatenate or
+            #  copy into a new resized array. I'm taking the second approach
+            #  for now as I don't think there are performance differences
+            #  between the two approaches.
+
+            #  create a new array
+            new_array = np.empty((ping_dim, sample_dim))
+            #  fill it with NaNs
+            new_array.fill(np.nan)
+            #  copy the data into our new array
+            new_array[0:data.shape[0], 0:data.shape[1]] = data
+            #  and return it
+            return new_array
+
+        #  store the old sizes
+        old_sample_dim = self.n_samples
+        old_ping_dim = self.ping_time.shape[0]
+
+        #  work thru our list of attributes
+        for attr_name in self._data_attributes:
+
+            #  get a reference to this attribute
+            attr = getattr(self, attr_name)
+
+            #  resize the arrays using technique dependent on the array dimension
+            if (attr.ndim == 1):
+                #  1d arrays can be on the ping axes or sample axes and have to be handeld differently
+                if (attr.shape[0] == old_sample_dim != new_sample_dim):
+                    #  resize this sample axes attribute
+                    attr = np.resize(attr,(new_sample_dim))
+                elif (attr.shape[0] == old_ping_dim != new_ping_dim):
+                    #  resize this ping axes attribute
+                    attr = np.resize(attr,(new_ping_dim))
+            elif (attr.ndim == 2):
+                #  resize this 2d sample data array
+                if (new_sample_dim == old_sample_dim):
+                    #  if the minor axes isn't changing we can use ndarray.resize()
+                    attr = np.resize(attr,(new_ping_dim, new_sample_dim))
+                else:
+                    #  if the minor axes is changing we need to use our resize2d function
+                    attr = _resize2d(attr, new_ping_dim, new_sample_dim)
+
+            #  update the attribute
+            setattr(self, attr_name, attr)
+
+        #  set the new sample count
+        self.n_samples = new_sample_dim
+
+        #  we cannot update the n_pings attribute here since raw_data uses this attribute
+        #  to store the number of pings read, *not* the total number of pings in the array.
+        #  as the processed_data class uses it. Instead we have to set it either in the
+        #  child class or when context permits in other methods of this class.
 
 
     def get_indices(self, start_ping=None, end_ping=None, start_time=None,
@@ -559,16 +634,16 @@ class sample_data(object):
             primary_index = self.ping_time.argsort()
         else:
             #  return indices in ping order
-            primary_index = ping_number
+            primary_index = ping_number - 1
 
         #  generate a boolean mask of the values to return
         if (start_time):
             mask = self.ping_time[primary_index] >= start_time
-        elif (start_ping >= 0):
+        elif (start_ping >= 1):
             mask = ping_number[primary_index] >= start_ping
         if (end_time):
             mask = np.logical_and(mask, self.ping_time[primary_index] <= end_time)
-        elif (end_ping >= 0):
+        elif (end_ping >= 2):
             mask = np.logical_and(mask, ping_number[primary_index] <= end_ping)
 
         #  and return the indices that are included in the specified range
@@ -725,93 +800,3 @@ class sample_data(object):
         return shifted_data
 
 
-    def resize(self, new_ping_dim, new_sample_dim):
-        """
-        resize_arrays iterates thru the provided list of attributes and
-        resizes them in the instance of the object provided given the new
-        array dimensions.
-        """
-
-        def _resize2d(data, ping_dim, sample_dim):
-            """
-            _resize2d returns a new array of the specified dimensions with the
-            data from the provided array copied into it. This funciton is
-            used when we need to resize 2d arrays along the minor axis as
-            ndarray.resize and numpy.resize don't maintain the order of the
-            data in these cases.
-            """
-
-            #  if the minor axis is changing we have to either concatenate or
-            #  copy into a new resized array. I'm taking the second approach
-            #  for now as I don't think there are performance differences
-            #  between the two approaches.
-
-            #  create a new array
-            new_array = np.empty((ping_dim, sample_dim))
-            #  fill it with NaNs
-            new_array.fill(np.nan)
-            #  copy the data into our new array
-            new_array[0:data.shape[0], 0:data.shape[1]] = data
-            #  and return it
-            return new_array
-
-        #  store the old sizes
-        old_sample_dim = self.n_samples
-        old_ping_dim = self.n_pings
-
-        #  work thru our list of attributes
-        for attr_name in self._data_attributes:
-
-            #  get a reference to this attribute
-            attr = getattr(self, attr_name)
-
-            #  resize the arrays using technique dependent on the array dimension
-            if (attr.ndim == 1):
-                #  1d arrays can be on the ping axes or sample axes and have to be handeld differently
-                if (attr.shape[0] == old_sample_dim != new_sample_dim):
-                    #  resize this sample axes attribute
-                    attr = np.resize(attr,(new_sample_dim))
-                elif (attr.shape[0] == old_ping_dim != new_ping_dim):
-                    #  resize this ping axes attribute
-                    attr = np.resize(attr,(new_ping_dim))
-            elif (attr.ndim == 2):
-                #  resize this 2d sample data array
-                if (new_sample_dim == old_sample_dim):
-                    #  if the minor axes isn't changing we can use ndarray.resize()
-                    attr = np.resize(attr,(new_ping_dim, new_sample_dim))
-                else:
-                    #  if the minor axes is changing we need to use our resize2d function
-                    attr = _resize2d(attr, new_ping_dim, new_sample_dim)
-
-            #  update the attribute
-            setattr(self, attr_name, attr)
-
-        #  set the new sample count
-        self.n_samples = new_sample_dim
-
-        #  we cannot update the n_pings attribute here since raw_data uses this attribute
-        #  to store the number of pings read, *not* the total number of pings in the array.
-        #  as the processed_data class uses it. Instead we have to set it either in the
-        #  child class or when context permits in other methods of this class.
-
-
-    def nan_values(self, start_ping, end_ping):
-        """
-        Set values in 2d arrays to Nan. Used in creating Nan filled data
-        object to insert in time aligning by padding
-
-        :param start_ping: 1st ping in sequence to Nan
-        :param end_ping: last ping in sequence to Nan
-        :return: None
-        """
-
-        #TODO Add ability to NaN a list of pings?
-
-
-        nan_start = np.where(self.ping_number == start_ping)[0][0]
-        nan_end = np.where(self.ping_number == end_ping)[0][0]+1
-
-        for attr_name in self._data_attributes:
-            attr = getattr(self, attr_name)
-            if isinstance(attr, np.ndarray) and (attr.ndim == 2):
-                attr[nan_start: nan_end, :] = np.nan
