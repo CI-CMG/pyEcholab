@@ -190,7 +190,7 @@ class processed_data(sample_data):
                 are ignored.
         """
         #  determine how many pings we're inserting
-        if (index_array):
+        if (index_array.any()):
             n_inserting = index_array.shape[0]
         else:
             in_idx  = self.get_indices(start_time=ping_time, end_time=ping_time,
@@ -198,8 +198,8 @@ class processed_data(sample_data):
             n_inserting = self.n_pings - in_idx
 
         if (obj_to_insert is None):
-            #  when obj_to_insert is None, we create automatically create a matching
-            #  object that contains no data (all NaNs)
+            #  when obj_to_insert is None, we create automatically create a
+            # matching object that contains no data (all NaNs)
             obj_to_insert = self.empty_like(n_inserting)
 
         #  check that the data types are the same
@@ -214,14 +214,17 @@ class processed_data(sample_data):
         else:
             this_vaxis = getattr(self, 'depth')
 
-        #  interppolate the object we're inserting to our vertical axis (if the vertical
-        #  axes are the same interpolate will return w/o doing anything.)
+        #  interpolate the object we're inserting to our vertical axis (if
+        # the vertical axes are the same interpolate will return w/o doing
+        # anything.)
         obj_to_insert.interpolate(this_vaxis)
 
         #  we are now coexisting in harmony - call parent's insert
-        super(processed_data, self).insert( obj_to_insert, ping_number=None,
-                ping_time=None, insert_after=True, index_array=None)
-
+        super(processed_data, self).insert(obj_to_insert,
+                                           ping_number=ping_number,
+                                           ping_time=ping_time,
+                                           insert_after=insert_after,
+                                           index_array=index_array)
 
     def empty_like(self, n_pings):
         """
@@ -239,7 +242,9 @@ class processed_data(sample_data):
         #  create an instance of echolab2.processed_data and set the same
         #  basic properties as this object.
         empty_obj = processed_data(self.channel_id, self.frequency,
-                self.data_type)
+                                   self.data_type)
+        empty_obj.n_samples = self.n_samples
+        empty_obj.n_pings = n_pings
 
         #  create the dynamic attributes
         for attr_name in self._data_attributes:
@@ -248,12 +253,20 @@ class processed_data(sample_data):
             attr = getattr(self, attr_name)
 
             if (attr.shape[0] == self.n_samples):
-                #  copy all vertical axes
+                #  copy all vertical axes w/o changing them
                 data = attr.copy()
             else:
-                #  create an array the same shape filled with Nans
-                data = np.empty_like(attr)
-                data[:] = np.nan
+                #  create an array the appropriate shape filled with Nans
+                if (attr.ndim == 1):
+                    #  create an array the same shape filled with Nans
+                    data = np.empty((n_pings), dtype=attr.dtype)
+                    if data.dtype == 'datetime64[ms]':
+                        data[:] = np.datetime64('NaT')
+                    else:
+                        data[:] = np.nan
+                else:
+                    data = np.empty((n_pings, self.n_samples), dtype=attr.dtype)
+                    data[:, :] = np.nan
 
             #  and add the attribute to our empty object
             empty_obj.add_attribute(attr_name, data)
@@ -396,24 +409,27 @@ class processed_data(sample_data):
 
     def interpolate(self, new_vaxis):
         """
-        interpolate vertically interpolates our sample data to a new vertical axis.
-        If the new vertical axis has more samples than the existing vertical axis the
-        sample data array will be resized.
+        interpolate vertically interpolates our sample data to a new vertical
+        axis. If the new vertical axis has more samples than the existing
+        vertical axis the sample data array will be resized.
 
         """
 
         #  get the existing vertical axis
         if (hasattr(self, 'range')):
             old_vaxis = getattr(self, 'range').copy()
-        else:
+        elif (hasattr(self, 'depth')):
             old_vaxis = getattr(self, 'depth').copy()
+        else:
+            raise AttributeError('The data object has neither'
+                                 ' a range nor depth attribute.')
 
         #  check if we need to vertically resize our sample data
         if (new_vaxis.shape[0] != self.n_samples):
             self.resize(self.n_pings, new_vaxis.shape[0])
         else:
             #  they are the same length - check if they are identical
-            if (np.all(np.isclose(old_vaxis - new_vaxis))):
+            if (np.all(np.isclose(old_vaxis, new_vaxis))):
                 #  they are the same - nothing to do
                 return
 

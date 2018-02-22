@@ -9,7 +9,6 @@ in short object.
 
 """
 import numpy as np
-from copy import deepcopy
 
 
 class AlignPings(object):
@@ -43,7 +42,7 @@ class AlignPings(object):
         if mode == 'pad':
             # find pings missing in shorter objects and pad shorter objects
             self.missing = self._find_missing(channels, self.longest)
-            self._pad_pings(channels, self.missing, self.longest)
+            self._pad_pings(channels, self.missing)
         elif mode == 'delete':
             # find extra pings in longer objects and delete pings
             self.extras = self._find_extra(channels, self.shortest)
@@ -69,10 +68,7 @@ class AlignPings(object):
                                       channel.ping_time)
             this_missing = (np.delete(np.arange(np.alen(channels[longest].
                                                         ping_time)), matched))
-
-            pings = np.take(channel.ping_number, this_missing)
-            missing.append(pings)
-
+            missing.append(this_missing)
         return missing
     
     @staticmethod
@@ -93,10 +89,7 @@ class AlignPings(object):
 
             this_extras = np.delete(np.arange(np.alen(channel.ping_time)),
                                     matched)
-
-            pings = np.take(channel.ping_number, this_extras)
-            extras.append(pings)
-
+            extras.append(this_extras)
         return extras
 
     @staticmethod
@@ -112,11 +105,10 @@ class AlignPings(object):
         """
 
         for index, channel in enumerate(channels):
-            for ping in extras[index]:
-                channel.delete(ping, ping)
+            channel.delete(index_array=extras[index])
 
     @staticmethod
-    def _pad_pings(channels, missing, longest):
+    def _pad_pings(channels, missing):
         """
         Iterate through list of channels. If channel is short and needs to be
         padded. Create a 1-ping long object to use as a pad and use
@@ -125,18 +117,12 @@ class AlignPings(object):
         :param channels: list of sample data objects=, one for each channel
         :param missing: array of arrays containing missing pings to be padded
         into shorter channels
-        :param longest: channel sample data object from longest channel. Used
-         to set ping time for padding ping
         :return: None
         """
 
         for index, channel in enumerate(channels):
             if len(missing[index]) > 0:
-                fill = deepcopy(channel)
-                fill.delete(2, )
-                fill.nan_values(1, 1)
-                for ping in missing[index]:
-                    fill.ping_time[0] = channels[longest].ping_time[ping-1]
-                    channel.insert(fill, ping_number=ping, insert_after=False)
+                channel.insert(None, index_array=missing[index])
+
 
 
