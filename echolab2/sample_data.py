@@ -100,6 +100,7 @@ class sample_data(object):
         attribute by that name and sets it to the provided reference.
         """
 
+
         # print(name)
 
         #  get the new data's dimensions
@@ -131,7 +132,7 @@ class sample_data(object):
             self.n_pings = data_pings
         elif (self.n_pings != data_pings and self.n_samples != data_pings):
             #TODO:  Better error message
-            raise ValueError('Cannot add attribute as the new attribute has a different' +
+            raise ValueError('Cannot add attribute as the new attribute has a different ' +
                     'number of pings (or samples) than the other attributes.')
 
         #  add the name to our list of attributes if it doesn't already exist

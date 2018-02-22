@@ -242,7 +242,7 @@ class processed_data(sample_data):
         #  create an instance of echolab2.processed_data and set the same
         #  basic properties as this object.
         empty_obj = processed_data(self.channel_id, self.frequency,
-                                   self.data_type)
+                self.data_type)
         empty_obj.n_samples = self.n_samples
         empty_obj.n_pings = n_pings
 
