@@ -100,16 +100,19 @@ class sample_data(object):
         attribute by that name and sets it to the provided reference.
         """
 
-        print(name)
-
+        # print(name)
 
         #  get the new data's dimensions
         data_samples = -1
         if (isinstance(data, np.ndarray)):
+            if data.ndim == 1 and data.shape[0] == self.n_samples:
+                setattr(self, name, data)
+                return
+
             data_pings = data.shape[0]
             if (data.ndim == 2):
                 data_samples = data.shape[1]
-                print(self.n_samples, data_samples)
+                # print(self.n_samples, data_samples)
                 #  check if n_samples has been set yet. If not, set it. If so, check that dimensions match
                 if (self.n_samples < 0):
                     self.n_samples = data_samples
@@ -373,9 +376,9 @@ class sample_data(object):
                insert_after=True, index_array=None):
         """
         insert inserts the data from the provided echolab2 data object into
-        this object. The insertion point is specified by ping number or time. After
-        inserting data, the ping_number property is updated and the ping numbers
-        will be re-numbered accordingly.
+        this object. The insertion point is specified by ping number or time.
+        After inserting data, the ping_number property is updated and the
+        ping numbers will be re-numbered accordingly.
 
         Args:
             ping_number: The ping number specifying the insertion point
@@ -398,15 +401,17 @@ class sample_data(object):
 
         #  check that we have been given an insetion point or index array
         if ping_number is None and ping_time is None and index_array is None:
-            raise ValueError('Either ping_number or ping_time needs to be defined ' +
-                    'or an index array needs to be provided to specify an insertion point.')
+            raise ValueError('Either ping_number or ping_time needs to be ' +
+                             'defined or an index array needs to be provided ' +
+                             'to specify an insertion point.')
 
         #  make sure that obj_to_insert class matches "this" class
         if (not isinstance(self, obj_to_insert.__class__)):
-            raise TypeError('The object you are inserting/appending must be an instance of ' +
-                str(self.__class__))
+            raise TypeError('The object you are inserting/appending must ' +
+                            'be an instance of ' + str(self.__class__))
 
-        #  make sure that the frequencies match - don't allow inserting/appending of different freqs
+        #  make sure that the frequencies match - don't allow
+        # inserting/appending of different freqs
         freq_match = False
         if isinstance(self.frequency, np.float32):
             freq_match = self.frequency == obj_to_insert.frequency
@@ -424,13 +429,17 @@ class sample_data(object):
         my_samples = self.n_samples
         new_samples = obj_to_insert.n_samples
 
-        #  determine the index of the insertion point or indices of the pings we're inserting.
+        #  determine the index of the insertion point or indices of the pings
+        #  we're inserting.
         if (index_array is None):
             #  determine the index of the insertion point
-            insert_index  = self.get_indices(start_time=ping_time, end_time=ping_time,
-                    start_ping=ping_number, end_ping=ping_number)[0]
+            insert_index = self.get_indices(start_time=ping_time,
+                                            end_time=ping_time,
+                                            start_ping=ping_number,
+                                            end_ping=ping_number)[0]
 
-            #  check if we're inserting before or after the provided insert point and adjust as necessary
+            # check if we're inserting before or after the provided insert
+            # point and adjust as necessary
             if (insert_after):
                 #  we're inserting *after* - increment the index by 1
                 insert_index += 1
@@ -444,31 +453,37 @@ class sample_data(object):
             move_index[idx] = move_index[idx] + new_pings
 
         else:
-            #  explicit array provided - these will be a vector of locations to insert
-            insert_index  = index_array
+            # explicit array provided - these will be a vector of locations
+            # to insert
+            insert_index = index_array
 
             #  make sure the index array is a numpy array
             if (not isinstance(insert_index, np.ndarray)):
                 raise TypeError('index_array must be a numpy.ndarray.')
 
-            #  If we inserting with a user provided index, make sure the dimensions of the
-            #  index and the object to insert agree
+            # If we are inserting with a user provided index, make sure the
+            # dimensions of the index and the object to insert agre
             if (insert_index.shape[0] != new_pings):
-                raise IndexError('The length of the index_array does not match the ' +
-                        'number of pings in the object you are inserting.')
+                raise IndexError('The length of the index_array does not ' +
+                                 'match the number of pings in the object' +
+                                 ' you are inserting.')
 
             #  generate the index used to move the existing pings
             move_index = np.arange(my_pings)
+            print(my_pings, move_index)
             for i in insert_index:
                 idx = move_index >= i
                 move_index[idx] = move_index[idx] + 1
 
-        #  check if we need to vertically resize one of the arrays - we resize the smaller to
-        #  the size of the larger array. It will automatically be padded with NaNs
+        #  check if we need to vertically resize one of the arrays - we
+        # resize the smaller to the size of the larger array. It will
+        # automatically be padded with NaNs
         if (my_samples < new_samples):
-            #  resize our data arrays - check if we have a limit on the max number of samples
+            #  resize our data arrays - check if we have a limit on the
+            #  max number of samples
             if (hasattr(self, 'max_sample_number') and (self.max_sample_number)):
-                #  we have the attribute and a value is set - check if the new array exceeds our max_sample_count
+                #  we have the attribute and a value is set - check if the
+                # new array exceeds our max_sample_count
                 if (new_samples > self.max_sample_number):
                     #  it does - we have to change our new_samples
                     new_samples = self.max_sample_number
@@ -502,9 +517,9 @@ class sample_data(object):
                 data_to_insert = getattr(obj_to_insert, attribute)
 
                 #  we have to handle the 2d and 1d differently
-                if (data.ndim == 1):
-                    #  concatenate the 1d data
-                    #  move the existing data
+                if (data.ndim == 1 and data.shape[0] != my_samples):
+                    #  skip vertical axis attributes but concatenate the 1d data
+                    #  and move the existing data for all others
                     data[move_index] = data[0:move_index.shape[0]]
                     #  and insert the new data
                     data[insert_index] = data_to_insert[:]
