@@ -240,6 +240,8 @@ class processed_data(sample_data):
         #  basic properties as this object.
         empty_obj = processed_data(self.channel_id, self.frequency,
                 self.data_type)
+        empty_obj.n_samples = self.n_samples
+        empty_obj.n_pings = n_pings
 
         #  create the dynamic attributes
         for attr_name in self._data_attributes:
@@ -248,12 +250,17 @@ class processed_data(sample_data):
             attr = getattr(self, attr_name)
 
             if (attr.shape[0] == self.n_samples):
-                #  copy all vertical axes
+                #  copy all vertical axes w/o changing them
                 data = attr.copy()
             else:
-                #  create an array the same shape filled with Nans
-                data = np.empty_like(attr)
-                data[:] = np.nan
+                #  create an array the appropriate shape filled with Nans
+                if (attr.ndim == 1):
+                    #  create an array the same shape filled with Nans
+                    data = np.empty((n_pings), dtype=attr.dtype)
+                    data[:] = np.nan
+                else:
+                    data = np.empty((n_pings,self.n_samples), dtype=attr.dtype)
+                    data[:,:] = np.nan
 
             #  and add the attribute to our empty object
             empty_obj.add_attribute(attr_name, data)
