@@ -100,9 +100,6 @@ class sample_data(object):
         attribute by that name and sets it to the provided reference.
         """
 
-
-        # print(name)
-
         #  get the new data's dimensions
         data_samples = -1
         if (isinstance(data, np.ndarray)):
@@ -411,13 +408,21 @@ class sample_data(object):
             raise TypeError('The object you are inserting/appending must ' +
                             'be an instance of ' + str(self.__class__))
 
-        #  make sure that the frequencies match - don't allow
-        # inserting/appending of different freqs
+        #  make sure that the frequencies match - don't allow inserting/appending of
+        #  different freqs. We allow NaNs because we allow empty data to be inserted.
         freq_match = False
         if isinstance(self.frequency, np.float32):
-            freq_match = self.frequency == obj_to_insert.frequency
+            if (obj_to_insert.frequency == np.nan):
+                freq_match = True
+            else:
+                freq_match = self.frequency == obj_to_insert.frequency
         else:
-            freq_match = self.frequency[0] == obj_to_insert.frequency[0]
+            #  we get lazy with vectors of frequency since there isn't a simple
+            #  solution.
+            if (np.isnan(obj_to_insert.frequency[0])):
+                freq_match = True
+            else:
+                freq_match = self.frequency[0] == obj_to_insert.frequency[0]
         if (not freq_match):
             raise TypeError('The frequency of the object you are inserting' +
                             '/appending does not match the frequency of this ' +
@@ -519,14 +524,15 @@ class sample_data(object):
 
                 #  we have to handle the 2d and 1d differently
                 if (data.ndim == 1 and data.shape[0] != my_samples):
-                    #  skip vertical axis attributes but concatenate the 1d data
-                    #  and move the existing data for all others
-                    data[move_index] = data[0:move_index.shape[0]]
+                    #  skip vertical axis attributes but move the other 1d data
+                    old_data = data[0:move_index.shape[0]].copy()
+                    data[move_index] = old_data
                     #  and insert the new data
                     data[insert_index] = data_to_insert[:]
                 elif (data.ndim == 2):
                     #  move the existing data
-                    data[move_index, :] = data[0:move_index.shape[0],:]
+                    old_data = data[0:move_index.shape[0],:].copy()
+                    data[move_index, :] = old_data
                     #  and insert the new data
                     data[insert_index, :] = data_to_insert[:,:]
 
@@ -815,4 +821,33 @@ class sample_data(object):
 
         return shifted_data
 
+
+    def _empty_like(self, obj, n_pings):
+
+        #  create the dynamic attributes
+        for attr_name in self._data_attributes:
+
+            #  get the attribute
+            attr = getattr(self, attr_name)
+
+            if (attr.shape[0] == self.n_samples):
+                #  copy all vertical axes w/o changing them
+                data = attr.copy()
+            else:
+                #  create an array the appropriate shape filled with Nans
+                if (attr.ndim == 1):
+                    #  create an array the same shape filled with Nans
+                    data = np.empty((n_pings), dtype=attr.dtype)
+                    if data.dtype == 'datetime64[ms]':
+                        data[:] = np.datetime64('NaT')
+                    else:
+                        data[:] = np.nan
+                else:
+                    data = np.empty((n_pings, self.n_samples), dtype=attr.dtype)
+                    data[:, :] = np.nan
+
+            #  and add the attribute to our empty object
+            obj.add_attribute(attr_name, data)
+
+        return obj
 

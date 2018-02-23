@@ -190,12 +190,12 @@ class processed_data(sample_data):
                 are ignored.
         """
         #  determine how many pings we're inserting
-        if (index_array.any()):
-            n_inserting = index_array.shape[0]
-        else:
+        if (index_array is None):
             in_idx  = self.get_indices(start_time=ping_time, end_time=ping_time,
                     start_ping=ping_number, end_ping=ping_number)[0]
             n_inserting = self.n_pings - in_idx
+        else:
+            n_inserting = index_array.shape[0]
 
         if (obj_to_insert is None):
             #  when obj_to_insert is None, we create automatically create a
@@ -226,6 +226,7 @@ class processed_data(sample_data):
                                            insert_after=insert_after,
                                            index_array=index_array)
 
+
     def empty_like(self, n_pings):
         """
         empty_like returns a processed_data object with the same general
@@ -246,32 +247,8 @@ class processed_data(sample_data):
         empty_obj.n_samples = self.n_samples
         empty_obj.n_pings = n_pings
 
-        #  create the dynamic attributes
-        for attr_name in self._data_attributes:
-
-            #  get the attribute
-            attr = getattr(self, attr_name)
-
-            if (attr.shape[0] == self.n_samples):
-                #  copy all vertical axes w/o changing them
-                data = attr.copy()
-            else:
-                #  create an array the appropriate shape filled with Nans
-                if (attr.ndim == 1):
-                    #  create an array the same shape filled with Nans
-                    data = np.empty((n_pings), dtype=attr.dtype)
-                    if data.dtype == 'datetime64[ms]':
-                        data[:] = np.datetime64('NaT')
-                    else:
-                        data[:] = np.nan
-                else:
-                    data = np.empty((n_pings, self.n_samples), dtype=attr.dtype)
-                    data[:, :] = np.nan
-
-            #  and add the attribute to our empty object
-            empty_obj.add_attribute(attr_name, data)
-
-        return empty_obj
+        #  and return the empty processed_data object
+        return self._empty_like(empty_obj, n_pings)
 
 
     def pad_top(self, n_samples):
