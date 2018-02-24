@@ -101,20 +101,18 @@ class sample_data(object):
         """
 
         #  get the new data's dimensions
-        data_samples = -1
+        data_height = -1
         if (isinstance(data, np.ndarray)):
-            if data.ndim == 1 and data.shape[0] == self.n_samples:
-                setattr(self, name, data)
-                return
-
-            data_pings = data.shape[0]
+            if (data.ndim == 1):
+                data_width = data.shape[0]
             if (data.ndim == 2):
-                data_samples = data.shape[1]
-                # print(self.n_samples, data_samples)
+                data_width = data.shape[0]
+                data_height = data.shape[1]
+                # print(self.n_samples, data_height)
                 #  check if n_samples has been set yet. If not, set it. If so, check that dimensions match
                 if (self.n_samples < 0):
-                    self.n_samples = data_samples
-                elif (self.n_samples != data_samples):
+                    self.n_samples = data_height
+                elif (self.n_samples != data_height):
                     #TODO:  Better error message
                     raise ValueError('Cannot add attribute. New attribute has a different ' +
                             'number of samples than the other attributes.')
@@ -126,8 +124,8 @@ class sample_data(object):
         #  when checking if dimensions match we allow a match on the number of pings OR the number
         #  of the samples since a 1d data attribute can be on either axis.
         if (self.n_pings < 0):
-            self.n_pings = data_pings
-        elif (self.n_pings != data_pings and self.n_samples != data_pings):
+            self.n_pings = data_width
+        elif (self.n_pings != data_width and self.n_samples != data_width):
             #TODO:  Better error message
             raise ValueError('Cannot add attribute as the new attribute has a different ' +
                     'number of pings (or samples) than the other attributes.')
@@ -517,6 +515,9 @@ class sample_data(object):
             #  get a reference to our data_obj's attribute
             data = getattr(self, attribute)
 
+            #  generate the move index
+            move_idx = np.arange(move_index.shape[0])
+
             #  check if the obj_to_insert shares this attribute
             if (hasattr(obj_to_insert, attribute)):
                 #  get a reference to our obj_to_insert's attribute
@@ -525,14 +526,14 @@ class sample_data(object):
                 #  we have to handle the 2d and 1d differently
                 if (data.ndim == 1 and data.shape[0] != my_samples):
                     #  skip vertical axis attributes but move the other 1d data
-                    old_data = data[0:move_index.shape[0]].copy()
-                    data[move_index] = old_data
+                    #  move right to left to avoid overwriting data before moving
+                    data[move_index[::-1],] = data[move_idx[::-1]]
                     #  and insert the new data
                     data[insert_index] = data_to_insert[:]
                 elif (data.ndim == 2):
-                    #  move the existing data
-                    old_data = data[0:move_index.shape[0],:].copy()
-                    data[move_index, :] = old_data
+                    #  move the existing data - need to move from right to left
+                    #  to avoid overwriting data yet to be moved
+                    data[move_index[::-1], :] = data[move_idx[::-1],:]
                     #  and insert the new data
                     data[insert_index, :] = data_to_insert[:,:]
 
