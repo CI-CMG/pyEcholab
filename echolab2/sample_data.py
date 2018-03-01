@@ -415,8 +415,7 @@ class sample_data(object):
             else:
                 freq_match = self.frequency == obj_to_insert.frequency
         else:
-            #  we get lazy with vectors of frequency since there isn't a simple
-            #  solution.
+            #  we get lazy with vectors of frequency since there isn't a simple solution.
             if (np.isnan(obj_to_insert.frequency[0])):
                 freq_match = True
             else:
@@ -457,16 +456,15 @@ class sample_data(object):
             move_index[idx] = move_index[idx] + new_pings
 
         else:
-            # explicit array provided - these will be a vector of locations
-            # to insert
+            #  explicit array provided - these will be a vector of locations to insert
             insert_index = index_array
 
             #  make sure the index array is a numpy array
             if (not isinstance(insert_index, np.ndarray)):
                 raise TypeError('index_array must be a numpy.ndarray.')
 
-            # If we are inserting with a user provided index, make sure the
-            # dimensions of the index and the object to insert agre
+            #  If we are inserting with a user provided index, make sure the
+            #  dimensions of the index and the object to insert agree
             if (insert_index.shape[0] != new_pings):
                 raise IndexError('The length of the index_array does not ' +
                                  'match the number of pings in the object' +
@@ -480,14 +478,14 @@ class sample_data(object):
                 move_index[idx] = move_index[idx] + 1
 
         #  check if we need to vertically resize one of the arrays - we
-        # resize the smaller to the size of the larger array. It will
-        # automatically be padded with NaNs
+        #  resize the smaller to the size of the larger array. It will
+        #  automatically be padded with NaNs
         if (my_samples < new_samples):
             #  resize our data arrays - check if we have a limit on the
             #  max number of samples
             if (hasattr(self, 'max_sample_number') and (self.max_sample_number)):
                 #  we have the attribute and a value is set - check if the
-                # new array exceeds our max_sample_count
+                #  new array exceeds our max_sample_count
                 if (new_samples > self.max_sample_number):
                     #  it does - we have to change our new_samples
                     new_samples = self.max_sample_number
@@ -499,7 +497,7 @@ class sample_data(object):
             #  resize the object we're inserting
             obj_to_insert.resize(new_pings, my_samples)
 
-        # update the number of pings in the object we're inserting into
+        #  update the number of pings in the object we're inserting into
         #  and then resize it.
         my_pings = my_pings + new_pings
         self.resize(my_pings, my_samples)
@@ -536,7 +534,6 @@ class sample_data(object):
                     data[move_index[::-1], :] = data[move_idx[::-1],:]
                     #  and insert the new data
                     data[insert_index, :] = data_to_insert[:,:]
-
                 else:
                     #  at some point do we handle 3d arrays?
                     pass
@@ -640,6 +637,9 @@ class sample_data(object):
         defined by the times and/or ping numbers provided. By default the indexes are in time
         order. If time_order is set to False, the data will be returned in the
         order they occur in the data arrays.
+
+        Note that pings with "empty" times (ping time == NaT) will be sorted to the
+        beginning of the index array.
         """
 
         #  generate the ping number vector - we start counting pings at 1
@@ -653,7 +653,8 @@ class sample_data(object):
 
         #  get the primary index
         if (time_order):
-            #  return indices in time order
+            #  return indices in time order - note that empty ping times will be
+            #  sorted to the front
             primary_index = self.ping_time.argsort()
         else:
             #  return indices in ping order
