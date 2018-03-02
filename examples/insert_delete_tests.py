@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-
+This example demonstrates manipulating the raw_data and processed_data
+objects using the insert and delete methods. The primary purpose of
+this example is to verify basic operation of the insert and delete methods
+but it also provides some simple and somewhat contrived examples of using
+index arrays with these methods.
 """
 
-import time
 import numpy as np
 from matplotlib.pyplot import figure, show, subplots_adjust
 from echolab2.instruments import EK60
 from echolab2.plotting.matplotlib import echogram
-
-
 
 
 #  read in some data
@@ -33,9 +34,8 @@ for i in range(raw_data_38.n_pings):
         j = 0
 
 
-
 fig = figure()
-subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.93, wspace=None, hspace=0.5)
+subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.90, wspace=None, hspace=0.5)
 
 #  plot up the synthetic power data
 ax = fig.add_subplot(3,1,1)
@@ -49,7 +49,7 @@ print(raw_data_38)
 #  and plot the resized data
 ax2 = fig.add_subplot(3,1,2)
 eg = echogram.echogram(ax2, raw_data_38, 'power')
-ax2.set_title("Synthetic power resized to 160 pings")
+ax2.set_title("Synthetic power resized to 160 pings (notice data is replicated)")
 
 
 #  now insert empty data. first create an index array containing the indices
@@ -68,15 +68,51 @@ ax3.set_title("Synthetic power resized to 160 pings with empty data inserted")
 #  show the results
 show()
 
-#  THIS SCRIPT DOES NOT WORK BEYOND THIS POINT
 
-
-Sv = raw_data_38.get_sv()
+#  now convert this data to Sv in both ping order and time order and plot
+#  to show how "empty" pings will be moved to the beginning when data is
+#  displayed in time order. If you need to avoid this, you must explicitly
+#  set appropriate pings times for your empty pings
 
 fig = figure()
-ax = fig.add_subplot(1,1,1)
+subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.90, wspace=None, hspace=0.5)
+
+#  get the data in ping order and plot
+Sv = raw_data_38.get_sv(time_order=False)
+ax = fig.add_subplot(2,1,1)
 eg = echogram.echogram(ax, Sv, 'Sv')
-ax.set_title("Sv")
+ax.set_title('Sythetic power converted to Sv shown in ping order.')
+
+#  get the Sv data in time order and plot
+Sv = raw_data_38.get_sv()
+ax = fig.add_subplot(2,1,2)
+eg = echogram.echogram(ax, Sv, 'Sv')
+ax.set_title('Sythetic power converted to Sv shown in time order.')
+
+#  show the results
+show()
+
+
+#  now delete the empty pings we inserted
+delete_idx = np.arange(raw_data_38.n_pings)[raw_data_38.ping_time == np.datetime64('NaT')]
+raw_data_38.delete(index_array=delete_idx)
+
+#  and display the results
+fig = figure()
+subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.90, wspace=None, hspace=0.5)
+
+#  plot up the synthetic power data
+ax = fig.add_subplot(2,1,1)
+eg = echogram.echogram(ax, raw_data_38, 'power')
+ax.set_title("Synthetic power after delete - should be 136 pings")
+
+#  get the Sv data in time order and plot
+Sv = raw_data_38.get_sv()
+ax = fig.add_subplot(2,1,2)
+eg = echogram.echogram(ax, Sv, 'Sv')
+ax.set_title('Sythetic power after delete converted to Sv shown in time order.')
+
+#  show the results
 show()
 
 pass
