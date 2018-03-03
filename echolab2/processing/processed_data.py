@@ -475,6 +475,30 @@ class processed_data(sample_data):
         return p_data
 
 
+
+    def __gt__(self, other):
+        pass
+
+
+    def __lt__(self, other):
+        pass
+
+
+    def __ge__(self, other):
+        pass
+
+    def __le__(self, other):
+        pass
+
+
+    def __eq__(self, other):
+        pass
+
+    def __ne__(self, other):
+        pass
+
+
+
     def __str__(self):
         '''
         reimplemented string method that provides some basic info about the processed_data object

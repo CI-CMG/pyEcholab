@@ -108,7 +108,6 @@ class sample_data(object):
             if (data.ndim == 2):
                 data_width = data.shape[0]
                 data_height = data.shape[1]
-                # print(self.n_samples, data_height)
                 #  check if n_samples has been set yet. If not, set it. If so, check that dimensions match
                 if (self.n_samples < 0):
                     self.n_samples = data_height
