@@ -68,6 +68,7 @@ be associated with the ping_time axis like vessel GPS position or speed.
 '''
 import numpy as np
 from ..sample_data import sample_data
+from echolab2.processing import mask
 
 
 class processed_data(sample_data):
@@ -456,24 +457,50 @@ class processed_data(sample_data):
 
 
     def __getitem__(self, key):
+        '''
+        processed_data objects can be sliced with standard index based slicing as
+        well as mask objects. Mask objects slice differently depending on if they
+        are ping or sample masks. Ping masks return a view of the processed_data
+        object comprised of pings where the mask is True. Sample masks return a
+        numpy array containing the sample data where the mask is True. It DOES
+        NOT return a processed data object.
+        '''
 
-        #  create a new processed_data object to return
-        p_data = processed_data(self.channel_id, self.frequency, self.data_type)
-
-        #  copy common attributes
-        p_data.sample_thickness = self.sample_thickness
-        p_data.sample_offset = self.sample_offset
-
-        #  and work thru the attributes, slicing them and adding to the new processed_data object
-        for attr_name in self._data_attributes:
-            attr = getattr(self, attr_name)
-            if (isinstance(attr, np.ndarray) and (attr.ndim == 2)):
-                p_data.add_attribute(attr_name, attr.__getitem__(key))
+        #  determine if we're returing sample data or a processed_data object
+        return_samples = False
+        if (isinstance(key, mask.mask)):
+            if (key.type.lower() == 'sample'):
+                return_samples = True
             else:
-                p_data.add_attribute(attr_name, attr.__getitem__(key[0]))
+                #  build a key containing ping indexes where the ping mask is True
+                #  create an empty slice for the vertical axis to return all samples
+                key = (np.arange(self.n_pings)[key.mask], slice(None, None, None))
+
+        if (return_samples):
+            #  return sample data only as a numpy array
+            for attr_name in self._data_attributes:
+                attr = getattr(self, attr_name)
+                if (isinstance(attr, np.ndarray) and (attr.ndim == 2)):
+                    p_data = attr[key.mask]
+
+        else:
+            #  we're returning a processed_data object - create a new one object to return
+            p_data = processed_data(self.channel_id, self.frequency, self.data_type)
+
+            #  copy common attributes
+            p_data.sample_thickness = self.sample_thickness
+            p_data.sample_offset = self.sample_offset
+
+            #  and work thru the data attributes, slicing them and adding to the new
+            #  processed_data object
+            for attr_name in self._data_attributes:
+                attr = getattr(self, attr_name)
+                if (isinstance(attr, np.ndarray) and (attr.ndim == 2)):
+                    p_data.add_attribute(attr_name, attr.__getitem__(key))
+                else:
+                    p_data.add_attribute(attr_name, attr.__getitem__(key[0]))
 
         return p_data
-
 
 
     def __gt__(self, other):
