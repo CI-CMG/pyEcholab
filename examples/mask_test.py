@@ -30,6 +30,7 @@ Sv = raw_data_38.get_sv()
 #  to the
 
 m = mask.mask(like=Sv)
+Sva=Sv[0:10,:]
 m.mask[100:110, 20:30] = True
 x = Sv[m]
 

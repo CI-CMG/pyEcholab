@@ -70,6 +70,7 @@ class mask(object):
             self.range = np.full(size[1], np.nan)
         elif (type.lower() == 'ping'):
             self.mask = np.full(size, value, dtype=bool)
+            self.n_samples = 0
         else:
             raise TypeError('Unknown mask type: ' + type)
 
@@ -117,12 +118,40 @@ class mask(object):
             #  set the type
             self.type = 'ping'
 
+            #  ping masks don't have a sample dimension
+            self.n_samples = 0
+
             #  create a 1D mask n_pings long
             self.mask = np.full((like_obj.n_pings), value, dtype=bool)
 
         else:
             raise TypeError('Unknown mask type: ' + type)
 
+
+    def copy(self):
+        '''
+        copy returns a deep copy of this mask.
+        '''
+
+        #  modify the name to indicate it is a copy
+        copy_name = self.name + '-copy'
+
+        #  create a new empty mask
+        mask_copy = mask.mask(type=self.type, color=self.color, name=copy_name,
+            sample_offset=self.sample_offset)
+
+        #  copy common attributes
+        mask_copy.n_pings = self.n_pings
+        mask_copy.n_samples = self.n_samples
+        mask_copy.mask = self.mask.copy()
+        mask_copy.ping_time = self.ping_time.copy()
+
+        #  copy the vertical axis for sample masks
+        if (self.type.lower() == 'sample'):
+            if (hasattr(self, 'range')):
+                mask_copy.range = self.range.copy()
+            else:
+                mask_copy.depth = self.depth.copy()
 
 
     def __eq__(self, other):
@@ -148,6 +177,9 @@ class mask(object):
 
 
     def any(self):
+        '''
+        any returns True if any elements of the mask are True
+        '''
 
         try:
             return np.any(self.mask)
@@ -156,6 +188,9 @@ class mask(object):
 
 
     def all(self):
+        '''
+        all returns True if all elements of the mask are True
+        '''
 
         try:
             return np.all(self.mask)
@@ -163,8 +198,124 @@ class mask(object):
             return False
 
 
-    def logical_and(self, other, in_place=True):
-        pass
+    def logical_and(self, other, in_place=True, where=True):
+        '''
+        logical_and performs an element by element ANDing of our mask and the
+        mask provided in the "other" argument.
+
+        If in_place is True, "this" mask's data is modified. If in_place
+        is False, a copy of "this" mask is returned containing the results
+        of the AND.
+
+        Where is the same as the numpy.logical_* keyword.
+        '''
+
+        #  check that the two masks are the same shape and share common axes
+        self._check_mask(other)
+
+        #  check if we are operating on our data or a copy
+        if (in_place):
+            #  operating on our data
+            np.logical_and(self.mask, other.mask, out=self.mask, where=where)
+            #  return a reference to ourself
+            return self
+        else:
+            #  returning a copy - create a copy to return
+            mask_copy = self.copy()
+            #  and it
+            np.logical_and(self.mask, other.mask, out=mask_copy.mask, where=where)
+            #  and return the copy
+            return mask_copy
+
+
+    def logical_or(self, other, in_place=True, where=True):
+        '''
+        logical_or performs an element by element ORing of our mask and the
+        mask provided in the "other" argument.
+
+        If in_place is True, "this" mask's data is modified. If in_place
+        is False, a copy of "this" mask is returned containing the results
+        of the OR.
+
+        Where is the same as the numpy.logical_* keyword.
+        '''
+
+        #  check that the two masks are the same shape and share common axes
+        self._check_mask(other)
+
+        #  check if we are operating on our data or a copy
+        if (in_place):
+            #  operating on our data
+            np.logical_or(self.mask, other.mask, out=self.mask, where=where)
+            #  return a reference to ourself
+            return self
+        else:
+            #  returning a copy - create a copy to return
+            mask_copy = self.copy()
+            #  and it
+            np.logical_or(self.mask, other.mask, out=mask_copy.mask, where=where)
+            #  and return the copy
+            return mask_copy
+
+
+    def logical_not(self, other, in_place=True, where=True):
+        '''
+        logical_not performs an element by element NOTing of our mask and the
+        mask provided in the "other" argument.
+
+        If in_place is True, "this" mask's data is modified. If in_place
+        is False, a copy of "this" mask is returned containing the results
+        of the NOT.
+
+        Where is the same as the numpy.logical_* keyword.
+        '''
+
+        #  check that the two masks are the same shape and share common axes
+        self._check_mask(other)
+
+        #  check if we are operating on our data or a copy
+        if (in_place):
+            #  operating on our data
+            np.logical_not(self.mask, other.mask, out=self.mask, where=where)
+            #  return a reference to ourself
+            return self
+        else:
+            #  returning a copy - create a copy to return
+            mask_copy = self.copy()
+            #  and it
+            np.logical_not(self.mask, other.mask, out=mask_copy.mask, where=where)
+            #  and return the copy
+            return mask_copy
+
+
+    def logical_xor(self, other, in_place=True, where=True):
+        '''
+        logical_xor performs an element by element XORing of our mask and the
+        mask provided in the "other" argument.
+
+        If in_place is True, "this" mask's data is modified. If in_place
+        is False, a copy of "this" mask is returned containing the results
+        of the XOR.
+
+        Where is the same as the numpy.logical_* keyword.
+        '''
+
+        #  check that the two masks are the same shape and share common axes
+        self._check_mask(other)
+
+        #  check if we are operating on our data or a copy
+        if (in_place):
+            #  operating on our data
+            np.logical_xor(self.mask, other.mask, out=self.mask, where=where)
+            #  return a reference to ourself
+            return self
+        else:
+            #  returning a copy - create a copy to return
+            mask_copy = self.copy()
+            #  and it
+            np.logical_xor(self.mask, other.mask, out=mask_copy.mask, where=where)
+            #  and return the copy
+            return mask_copy
 
 
     def _check_mask(self, other, ignore_axes=False):
@@ -195,39 +346,21 @@ class mask(object):
 
     def __str__(self):
         '''
-        reimplemented string method that provides some basic info about the processed_data object
+        reimplemented string method that provides some basic info about the mask object
         '''
 
         #  print the class and address
         msg = str(self.__class__) + " at " + str(hex(id(self))) + "\n"
 
-        #  print some more info about the processed_data instance
-        n_pings = len(self.ping_time)
-        if (n_pings > 0):
-            msg = msg + "                channel(s): ["
-            for channel in self.channel_id:
-                msg = msg + channel + ", "
-            msg = msg[0:-2] + "]\n"
-            msg = msg + "                 frequency: " + str(self.frequency)+ "\n"
-            msg = msg + "           data start time: " + str(self.ping_time[0])+ "\n"
-            msg = msg + "             data end time: " + str(self.ping_time[n_pings-1])+ "\n"
-            msg = msg + "           number of pings: " + str(n_pings)+ "\n"
-            msg = msg + "          data attributes:"
-            n_attr = 0
-            padding = " "
-            for attr_name in self._data_attributes:
-                attr = getattr(self, attr_name)
-                if (n_attr > 0):
-                    padding = "                           "
-                if (isinstance(attr, np.ndarray)):
-                    if (attr.ndim == 1):
-                        msg = msg + padding + attr_name + " (%u)\n" % (attr.shape[0])
-                    else:
-                        msg = msg + padding + attr_name + " (%u,%u)\n" % (attr.shape[0], attr.shape[1])
-                elif (isinstance(attr, list)):
-                        msg = msg + padding + attr_name + " (%u)\n" % (len(attr))
-                n_attr += 1
+        #  and some other basic info
+        msg = msg + "                 mask name: " + self.name + "\n"
+        msg = msg + "                      type: " + self.type + "\n"
+        msg = msg + "                     color: " + str(self.color) + "\n"
+        if (self.type.lower() == 'ping'):
+            msg = msg + "                dimensions: (" + str(self.n_pings) + ")\n"
         else:
-            msg = msg + ("  processed_data object contains no data\n")
+            msg = msg + "                dimensions: (" + str(self.n_pings) + "," + \
+                    str(self.n_samples) + ")\n"
+            msg = msg + "             sample offset: " + str(self.sample_offset) + "\n"
 
         return msg

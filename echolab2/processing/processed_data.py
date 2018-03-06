@@ -81,7 +81,7 @@ class processed_data(sample_data):
         super(processed_data, self).__init__()
 
         #  set the frequency, channel_id, and data type
-        self.channel_id = channel_id
+        self.channel_id = list(channel_id)
         self.frequency = frequency
         self.data_type = data_type
 
@@ -241,15 +241,36 @@ class processed_data(sample_data):
 
         """
 
+        #  if we haven'tbeen told how many pings, assume same size as this object
+        if (n_pings == None):
+            n_pings = self.n_pings
+
         #  create an instance of echolab2.processed_data and set the same
         #  basic properties as this object.
         empty_obj = processed_data(self.channel_id, self.frequency,
                 self.data_type)
-        empty_obj.n_samples = self.n_samples
-        empty_obj.n_pings = n_pings
+        empty_obj.sample_thickness = self.sample_thickness
+        empty_obj.sample_offset = self.sample_offset
 
-        #  and return the empty processed_data object
+        #  call the parent _empty_like helper method and return the result
         return self._empty_like(empty_obj, n_pings)
+
+
+    def copy(self):
+        """
+        copy creates a deep copy of this object.
+        """
+
+        #  create an empty processed_data object with the same basic props as ourself
+        pd_copy = processed_data(self.channel_id,
+                self.frequency, self.data_type)
+
+        #  copy the other base attributes of our class
+        pd_copy.sample_thickness = self.sample_thickness
+        pd_copy.sample_offset = self.sample_offset
+
+        #  call the parent _copy helper method and return the result
+        return self._copy(pd_copy)
 
 
     def pad_top(self, n_samples):
@@ -466,22 +487,27 @@ class processed_data(sample_data):
         NOT return a processed data object.
         '''
 
-        #  determine if we're returing sample data or a processed_data object
-        return_samples = False
+### LEFT OFF HERE - NEED TO MAKE ALL MASK INDEXING RETURN SAMPLES ONLY
+
+        #  determine if we're "slicing" with a mask or slicing with slice ob
         if (isinstance(key, mask.mask)):
             if (key.type.lower() == 'sample'):
-                return_samples = True
+                sample_mask = key.mask
             else:
+
                 #  build a key containing ping indexes where the ping mask is True
                 #  create an empty slice for the vertical axis to return all samples
                 key = (np.arange(self.n_pings)[key.mask], slice(None, None, None))
 
-        if (return_samples):
+
+
+
+
             #  return sample data only as a numpy array
             for attr_name in self._data_attributes:
                 attr = getattr(self, attr_name)
-                if (isinstance(attr, np.ndarray) and (attr.ndim == 2)):
-                    p_data = attr[key.mask]
+                if (attr.ndim == 2):
+                    p_data = attr[mask]
 
         else:
             #  we're returning a processed_data object - create a new one object to return
@@ -489,16 +515,35 @@ class processed_data(sample_data):
 
             #  copy common attributes
             p_data.sample_thickness = self.sample_thickness
-            p_data.sample_offset = self.sample_offset
+            p_data.sample_dtype = self.sample_dtype
+            p_data.frequency = self.frequency
+            p_data._data_attributes = list(self._data_attributes)
 
             #  and work thru the data attributes, slicing them and adding to the new
-            #  processed_data object
+            #  processed_data object.
             for attr_name in self._data_attributes:
                 attr = getattr(self, attr_name)
-                if (isinstance(attr, np.ndarray) and (attr.ndim == 2)):
-                    p_data.add_attribute(attr_name, attr.__getitem__(key))
+                if (attr.ndim == 2):
+                    #  2d arrays can just be sliced as usual
+                    setattr(p_data, attr_name, attr.__getitem__(key))
                 else:
-                    p_data.add_attribute(attr_name, attr.__getitem__(key[0]))
+                    #  for 1d arrays we need to make sure we pick up the correct slice
+                    if (attr.shape[0] == self.n_pings):
+                        #  this is a ping axis value - slice and set the new object's attribute
+                        sliced_attr = attr.__getitem__(key[0])
+                        setattr(p_data, attr_name, sliced_attr)
+                        #  update the n_pings attribute
+                        p_data.n_pings = sliced_attr.shape[0]
+                    else:
+                        #  we'll assume this is a sample axis value - slice and set
+                        sliced_attr = attr.__getitem__(key[1])
+                        setattr(p_data, attr_name, sliced_attr)
+                        #  update the n_samples attribute
+                        p_data.n_samples = sliced_attr.shape[0]
+
+            #  update the sample_offset if we're slicing on the sample axis
+            if (key[1].start):
+                p_data.sample_offset += key[1].start
 
         return p_data
 
@@ -545,7 +590,7 @@ class processed_data(sample_data):
             msg = msg + "           data start time: " + str(self.ping_time[0])+ "\n"
             msg = msg + "             data end time: " + str(self.ping_time[n_pings-1])+ "\n"
             msg = msg + "           number of pings: " + str(n_pings)+ "\n"
-            msg = msg + "          data attributes:"
+            msg = msg + "           data attributes:"
             n_attr = 0
             padding = " "
             for attr_name in self._data_attributes:

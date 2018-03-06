@@ -823,7 +823,49 @@ class sample_data(object):
         return shifted_data
 
 
+    def _copy(self, obj):
+        """
+        _copy is an internal helper method that is called by child "copy"
+        methods to copy the sample_data attributes as well as the
+        data_attributes.
+        """
+
+        #  copy the common attributes
+        obj.channel_id = list(self.channel_id)
+        obj.sample_dtype = self.sample_dtype
+        obj.n_samples = self.n_samples
+        obj.n_pings = self.n_pings
+        obj.frequency = self.frequency
+        obj._data_attributes = list(self._data_attributes)
+
+        #  work through the data attributes list copying the values
+        for attr_name in obj._data_attributes:
+            attr = getattr(self, attr_name)
+            setattr(obj, attr_name, attr.copy())
+
+        #  return the copy
+        return obj
+
+
     def _empty_like(self, obj, n_pings):
+        """
+        _empty_like is an internal helper method that is called by "empty_like"
+        methods of child classes which copies the sample_data attributes
+        into the provided sample_data based object as well as creating empty
+        "data" arrays. Note that it will copy existing vertical axis values without
+        modification.
+
+        The result should be a new object where all horizontal axes and data arrays
+        are empty (NaN or NaT). The new object's shape will be (n_pings, self.n_samples)
+        """
+
+        #  copy the common attributes
+        obj.channel_id = list(self.channel_id)
+        obj.sample_dtype = self.sample_dtype
+        obj.n_samples = self.n_samples
+        obj.n_pings = n_pings
+        obj.frequency = self.frequency
+        obj._data_attributes = list(self._data_attributes)
 
         #  create the dynamic attributes
         for attr_name in self._data_attributes:
@@ -847,8 +889,10 @@ class sample_data(object):
                     data = np.empty((n_pings, self.n_samples), dtype=attr.dtype)
                     data[:, :] = np.nan
 
-            #  and add the attribute to our empty object
-            obj.add_attribute(attr_name, data)
+            #  add the attribute to our empty object - we can skip using add_attribute
+            #  here because we shouldn't need to check dimensions and we've already handled
+            #  the low level stuff like copying the _data_sttributes list, etc.
+            setattr(obj, attr_name, data)
 
         return obj
 
