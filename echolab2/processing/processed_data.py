@@ -477,40 +477,75 @@ class processed_data(sample_data):
         self.n_pings = self.ping_time.shape[0]
 
 
+    def __setitem__(self, key, value):
+        """
+        we can assign to sample elements in processed_data objects using python
+        array slicing and assignment with mask objects.
+
+        When assigning with a mask, the assigment is to the sample data only.
+        Currently echolab2 only supports assigning sample data that share the exact
+        shape of the mask or data that can be broadcasted into this shape. Scalars
+        always work and if using a sample mask, arrays that are the same size as the
+        mask work. You'll need to think about how this applies to ping masks
+        if you want to assign using these.
+
+        When assigning with a slice, the assigment is the same as replacement and
+        the value passed must be a processed_data object containing the data to
+        assign.
+        """
+
+        #  determine if we're assigning with a mask or assigning with slice object
+        if (isinstance(key, mask.mask)):
+
+            #  make sure the mask applies to this object
+            self._check_mask(key)
+
+            if (key.type.lower() == 'sample'):
+                #  this is a 2d mask array which we can directly apply to the data
+                sample_mask = key.mask
+            else:
+                #  this is a ping based mask - create a 2d array based on the mask
+                #  to apply to the data.
+                sample_mask = np.full((self.n_pings,self.n_samples), False, dtype=bool)
+
+
+        pass
+
     def __getitem__(self, key):
-        '''
+        """
         processed_data objects can be sliced with standard index based slicing as
         well as mask objects. Mask objects slice differently depending on if they
         are ping or sample masks. Ping masks return a view of the processed_data
         object comprised of pings where the mask is True. Sample masks return a
         numpy array containing the sample data where the mask is True. It DOES
         NOT return a processed data object.
-        '''
+        """
 
-### LEFT OFF HERE - NEED TO MAKE ALL MASK INDEXING RETURN SAMPLES ONLY
-
-        #  determine if we're "slicing" with a mask or slicing with slice ob
+        #  determine if we're "slicing" with a mask or slicing with slice object
         if (isinstance(key, mask.mask)):
+
+            #  make sure the mask applies to this object
+            self._check_mask(key)
+
             if (key.type.lower() == 'sample'):
+                #  this is a 2d mask array which we can directly apply to the data
                 sample_mask = key.mask
             else:
+                #  this is a ping based mask - create a 2d array based on the mask
+                #  to apply to the data.
+                sample_mask = np.full((self.n_pings,self.n_samples), False, dtype=bool)
 
-                #  build a key containing ping indexes where the ping mask is True
-                #  create an empty slice for the vertical axis to return all samples
-                key = (np.arange(self.n_pings)[key.mask], slice(None, None, None))
-
-
-
-
+                #  set all samples to true for each ping set true in the ping mask
+                sample_mask[key.mask,:] = True
 
             #  return sample data only as a numpy array
             for attr_name in self._data_attributes:
                 attr = getattr(self, attr_name)
                 if (attr.ndim == 2):
-                    p_data = attr[mask]
+                    p_data = attr[sample_mask]
 
         else:
-            #  we're returning a processed_data object - create a new one object to return
+            #  we're returning a sliced processed_data object - create a new object to return
             p_data = processed_data(self.channel_id, self.frequency, self.data_type)
 
             #  copy common attributes
@@ -546,6 +581,31 @@ class processed_data(sample_data):
                 p_data.sample_offset += key[1].start
 
         return p_data
+
+
+    def _check_mask(self, mask):
+        '''
+        _check_mask ensures that the mask dimensions and axes values match
+        our data's dimensions and values.
+        '''
+
+        if (not np.array_equal(self.ping_time, mask.ping_time)):
+            raise ValueError('Mask ping times do not match the data ping times.')
+
+        #  make sure the vertical axis is the same
+        if (hasattr(mask, 'range')):
+            if (hasattr(self, 'range')):
+                if (not np.array_equal(self.range, mask.range)):
+                    raise ValueError("The mask's ranges do not match the data ranges.")
+            else:
+                raise AttributeError('You cannot compare a depth based mask with range based data.')
+        elif (hasattr(mask, 'depth')):
+            if (hasattr(mask, 'depth')):
+                if (not np.array_equal(self.depth, mask.depth)):
+                    raise ValueError("The mask's depths do not match the data depths.")
+            else:
+                raise AttributeError('You cannot compare a depth based mask with range based data.')
+
 
 
     def __gt__(self, other):

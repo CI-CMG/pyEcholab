@@ -318,7 +318,7 @@ class mask(object):
             return mask_copy
 
 
-    def _check_mask(self, other, ignore_axes=False):
+    def _check_mask(self, other):
         '''
         _check_mask ensures that the dimensions and axes values match
         '''
@@ -326,7 +326,7 @@ class mask(object):
         if (not self.type == other.type):
             raise ValueError('Cannot operate on masks that are different types.')
 
-        if (not np.array_equal(self.ping_times, other.ping_times)):
+        if (not np.array_equal(self.ping_time, other.ping_time)):
             raise ValueError('Mask ping times do not match.')
 
         #  make sure the vertical axis is the same
@@ -334,14 +334,14 @@ class mask(object):
             if (hasattr(other, 'range')):
                 if (not np.array_equal(self.range, other.range)):
                     raise ValueError('Mask ranges do not match.')
-                else:
-                    raise AttributeError('You cannot compare a range based mask with a depth based mask.')
+            else:
+                raise AttributeError('You cannot compare a range based mask with a depth based mask.')
         else:
             if (hasattr(other, 'depth')):
                 if (not np.array_equal(self.depth, other.depth)):
                     raise ValueError('Mask depths do not match.')
-                else:
-                    raise AttributeError('You cannot compare a depth based mask with a range based mask.')
+            else:
+                raise AttributeError('You cannot compare a depth based mask with a range based mask.')
 
 
     def __str__(self):
