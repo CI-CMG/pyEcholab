@@ -87,7 +87,6 @@ class processed_data(sample_data):
 
         #  sample thickness is the vertical extent of the samples in meters
         #  it is calculated as thickness = sample interval(s) * sound speed(m/s) / 2
-        #  you should not insert/append processed data arrays with different sample thicknesses
         self.sample_thickness = 0
 
         #  sample offset is the number of samples the first row of data are offset away from
@@ -96,7 +95,7 @@ class processed_data(sample_data):
 
 
     def replace(self, obj_to_insert, ping_number=None, ping_time=None,
-               insert_after=True, index_array=None):
+               index_array=None):
         """
         replace inserts data without shifting the existing data resulting in the
         existing data being overwritten by the data in "obj_to_insert"
@@ -135,7 +134,7 @@ class processed_data(sample_data):
         if (obj_to_insert is None):
             #  when obj_to_insert is None, we create automatically create a matching
             #  object that contains no data (all NaNs)
-            obj_to_insert = self.empty_like(n_inserting)
+            obj_to_insert = self.empty_like(n_inserting, empty_times=True)
 
             #  when replacing, we copy the ping times
             obj_to_insert.ping_times = self.ping_times[index_array]
@@ -201,7 +200,7 @@ class processed_data(sample_data):
         if (obj_to_insert is None):
             #  when obj_to_insert is None, we create automatically create a
             # matching object that contains no data (all NaNs)
-            obj_to_insert = self.empty_like(n_inserting)
+            obj_to_insert = self.empty_like(n_inserting, empty_times=True)
 
         #  check that the data types are the same
         if (self.data_type != obj_to_insert.data_type):
@@ -228,32 +227,69 @@ class processed_data(sample_data):
                                            index_array=index_array)
 
 
-    def empty_like(self, n_pings):
+    def empty_like(self, n_pings=None, empty_times=False, channel_id=None):
         """
         empty_like returns a processed_data object with the same general
-        characteristics of "this" object  but all of the data arrays are
+        characteristics of "this" object with all of the data arrays
         filled with NaNs
 
         Args:
             n_pings: Set n_pings to an integer specifying the number of pings
-                in the new object. The vertical axis (both number of samples
-                and depth/range values) will be the same as this object.
+                in the new object. By default the number of pings will match
+                this object's ping count. The vertical axis (both number of
+                samples and depth/range values) will be the same as this object.
+
+            empty_times: Set empty_times to True to return an object with
+                an "empty" ping_time attribute (all values set to NaT).
+                If n_pings is set and it does not equal this object's n_pings
+                value this keyword is forced to True since there isn't a
+                1:1 mapping of times between the existing and new object.
+
+            channel_id: Set channel_id to a string specifying the channel_id
+                for the new object. If this value is None, the channel_id is
+                copied from this object's id.
 
         """
 
-        #  if we haven'tbeen told how many pings, assume same size as this object
-        if (n_pings == None):
-            n_pings = self.n_pings
+        #  get an empty processed_data object "like" this object
+        empty_obj = self._like(n_pings)
 
-        #  create an instance of echolab2.processed_data and set the same
-        #  basic properties as this object.
-        empty_obj = processed_data(self.channel_id, self.frequency,
-                self.data_type)
-        empty_obj.sample_thickness = self.sample_thickness
-        empty_obj.sample_offset = self.sample_offset
+        #  call the parent _like helper method and return the result
+        return self._like(empty_obj, n_pings, np.nan, empty_times=False,
+                channel_id=None)
 
-        #  call the parent _empty_like helper method and return the result
-        return self._empty_like(empty_obj, n_pings)
+
+    def zeros_like(self, n_pings=None, empty_times=False, channel_id=None):
+        """
+        zeros_like returns a processed_data object with the same general
+        characteristics of "this" object with all of the data arrays
+        filled with zeros
+
+        This method is commonly used to create synthetic channels.
+
+        Args:
+            n_pings: Set n_pings to an integer specifying the number of pings
+                in the new object. By default the number of pings will match
+                this object's ping count. The vertical axis (both number of
+                samples and depth/range values) will be the same as this object.
+
+            empty_times: Set empty_times to True to return an object with
+                an "empty" ping_time attribute (all values set to NaT).
+                If n_pings is set and it does not equal this object's n_pings
+                value this keyword is forced to True since there isn't a
+                1:1 mapping of times between the existing and new object.
+
+            channel_id: Set channel_id to a string specifying the channel_id
+                for the new object. If this value is None, the channel_id is
+                copied from this object's id.
+        """
+
+        #  get an empty processed_data object "like" this object
+        empty_obj = self._like(n_pings)
+
+        #  call the parent _like helper method and return the result
+        return self._like(empty_obj, n_pings, 0.0, empty_times=False,
+                channel_id=None)
 
 
     def copy(self):
@@ -479,8 +515,9 @@ class processed_data(sample_data):
 
     def __setitem__(self, key, value):
         """
-        we can assign to sample elements in processed_data objects using python
-        array slicing and assignment with mask objects.
+        we can assign to sample data elements in processed_data objects using
+        assignment with mask objects or we can use python array slicing and
+        assign data from one processed_data object to this object (i.e. replace)
 
         When assigning with a mask, the assigment is to the sample data only.
         Currently echolab2 only supports assigning sample data that share the exact
@@ -496,8 +533,7 @@ class processed_data(sample_data):
 
         #  determine if we're assigning with a mask or assigning with slice object
         if (isinstance(key, mask.mask)):
-
-            #  make sure the mask applies to this object
+            #  it's a mask - make sure the mask applies to this object
             self._check_mask(key)
 
             if (key.type.lower() == 'sample'):
@@ -508,8 +544,24 @@ class processed_data(sample_data):
                 #  to apply to the data.
                 sample_mask = np.full((self.n_pings,self.n_samples), False, dtype=bool)
 
+                #  set all samples to true for each ping set true in the ping mask
+                sample_mask[key.mask,:] = True
 
-        pass
+            #  set the sample data
+            for attr_name in self._data_attributes:
+                attr = getattr(self, attr_name)
+                if (attr.ndim == 2):
+                    attr[sample_mask] = value
+
+        else:
+            #  we're dealing with a slice object - generate an index array based
+            #  defining the pings to replace
+            replace_idx = (np.arange(int(round((key.stop - key.start) /
+                    float(key.step)))) * key.step) + key.start
+
+            #  and call the replace method using this index array
+            self.replace(value, index_array=replace_idx)
+
 
     def __getitem__(self, key):
         """
@@ -588,27 +640,96 @@ class processed_data(sample_data):
         _check_mask ensures that the mask dimensions and axes values match
         our data's dimensions and values.
         '''
-
+        #  check the ping times and make sure they match
         if (not np.array_equal(self.ping_time, mask.ping_time)):
             raise ValueError('Mask ping times do not match the data ping times.')
 
-        #  make sure the vertical axis is the same
+        #  make sure the mask's vertical axis (if it exists - ping masks will not have one) is the same
         if (hasattr(mask, 'range')):
+            #  mask has range - check if we have range
             if (hasattr(self, 'range')):
+                #  we have range - make sure they are the same
                 if (not np.array_equal(self.range, mask.range)):
                     raise ValueError("The mask's ranges do not match the data ranges.")
             else:
-                raise AttributeError('You cannot compare a depth based mask with range based data.')
+                #  we don't have range so we must have depth and we can't do that
+                raise AttributeError('You cannot compare a range based mask with depth based data.')
         elif (hasattr(mask, 'depth')):
-            if (hasattr(mask, 'depth')):
+            #  mask has depth - check if we have depth
+            if (hasattr(self, 'depth')):
+                #  we have depth - make sure they are the same
                 if (not np.array_equal(self.depth, mask.depth)):
                     raise ValueError("The mask's depths do not match the data depths.")
             else:
+                #  we don't have depth so we must have range and we can't do that
                 raise AttributeError('You cannot compare a depth based mask with range based data.')
 
 
+    def _is_like_me(self, pd_object):
+        '''
+        _is_like_me ensures that the processed_data object's dimensions and axes
+        values match our data's dimensions and values.
+        '''
+
+        #  check the ping times and make sure they match
+        if (not np.array_equal(self.ping_time, pd_object.ping_time)):
+            raise ValueError("The processed_data object's ping times do not match our ping times.")
+
+        #  make sure the vertical axis is the same
+        if (hasattr(pd_object, 'range')):
+            if (hasattr(self, 'range')):
+                if (not np.array_equal(self.range, pd_object.range)):
+                    raise ValueError("The processed_data object's ranges do not match our ranges.")
+            else:
+                raise AttributeError('You cannot compare a range based object with a depth based object.')
+        else:
+            if (hasattr(self, 'depth')):
+                if (not np.array_equal(self.depth, mask.depth)):
+                    raise ValueError("The processed_data object's depths do not match our depths.")
+            else:
+                raise AttributeError('You cannot compare a depth based object with a range based object.')
+
+
+    def _like(self, n_pings):
+        """
+        _like is an internal method which creates an empty processed_data object
+        that is "like" this object. It is used by the empty_like and zeros_like
+        methods.
+        """
+        #  if we haven'tbeen told how many pings, assume same size as this object
+        if (n_pings == None):
+            n_pings = self.n_pings
+
+        #  create an instance of echolab2.processed_data and set the same
+        #  basic properties as this object.
+        empty_obj = processed_data(self.channel_id, self.frequency,
+                self.data_type)
+        empty_obj.sample_thickness = self.sample_thickness
+        empty_obj.sample_offset = self.sample_offset
+
+        return empty_obj
+
 
     def __gt__(self, other):
+        """
+        __gt__ implements the "greater than"  operator. We accept either a like sized
+        processed_data object where we will perform an element by element comparison or
+        a scalar value.
+
+        The comparison operators always do a element-by-element comparison and return
+        the results in a sample mask.
+        """
+
+        #  create the mask we will return
+        compare_mask = mask.mask(like=self)
+
+        #  determine what we're comparing ourself to
+        if (isinstance(other, processed_data.processed_data)):
+            #  we've been passed a processed_data object - make sure it's kosher
+            self._is_like_me(other)
+
+            compare_mask.mask[:] = self.
+
         pass
 
 

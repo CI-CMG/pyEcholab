@@ -15,7 +15,7 @@ class echogram(object):
     '''
 
 
-    def __init__(self, axes, data_object=None, attribute='Sv', threshold=None,
+    def __init__(self, axes, data_object=None, attribute=None, threshold=None,
             cmap=None, x_label_attribute='ping_time', y_label_attribute='range'):
 
         self.axes = axes
@@ -49,13 +49,15 @@ class echogram(object):
         self.set_data(data_object, attribute=attribute)
 
 
-    def set_data(self, data_object, attribute='Sv', update=True):
-        if (hasattr(data_object, attribute)):
-            self.data_object = data_object
+    def set_data(self, data_object, attribute=None, update=True):
+        if (attribute):
             self.attribute = attribute
+        else:
+            self.attribute = data_object.data_type
+        self.data_object = data_object
 
-            if update:
-                self.update()
+        if update:
+            self.update()
 
 
     def set_colormap(self, colormap, bad_data='grey', update=True):

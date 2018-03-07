@@ -154,6 +154,28 @@ class mask(object):
                 mask_copy.depth = self.depth.copy()
 
 
+    def apply_line(self, line_obj, above=True, below=False):
+        """
+        apply_line (working name) sets mask elements above the line object to
+        the value specified by the above keyword and mask elements below the
+        line to the value specified by the below keyword.
+
+        This is a place holder. A method similar to this should be implemented.
+        """
+        pass
+
+
+    def apply_polygon(self, poly_obj, inside=True, outside=False):
+        """
+        apply_polygon (working name) sets mask elements inside the polygon object to
+        the value specified by the inside keyword and mask elements outside the
+        polygon to the value specified by the outside keyword.
+
+        This is a place holder. A method similar to this should be implemented.
+        """
+        pass
+
+
     def __eq__(self, other):
 
         try:
