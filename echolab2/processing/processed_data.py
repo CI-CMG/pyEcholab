@@ -252,7 +252,10 @@ class processed_data(sample_data):
         """
 
         #  get an empty processed_data object "like" this object
-        empty_obj = self._like(n_pings)
+        empty_obj = processed_data(self.channel_id, self.frequency,
+                self.data_type)
+        empty_obj.sample_thickness = self.sample_thickness
+        empty_obj.sample_offset = self.sample_offset
 
         #  call the parent _like helper method and return the result
         return self._like(empty_obj, n_pings, np.nan, empty_times=False,
@@ -285,7 +288,10 @@ class processed_data(sample_data):
         """
 
         #  get an empty processed_data object "like" this object
-        empty_obj = self._like(n_pings)
+        empty_obj = processed_data(self.channel_id, self.frequency,
+                self.data_type)
+        empty_obj.sample_thickness = self.sample_thickness
+        empty_obj.sample_offset = self.sample_offset
 
         #  call the parent _like helper method and return the result
         return self._like(empty_obj, n_pings, 0.0, empty_times=False,
@@ -330,15 +336,10 @@ class processed_data(sample_data):
             attr = getattr(self, 'depth')
         attr[:] = (np.arange(self.n_samples) - n_samples) * self.sample_thickness + attr[0]
 
-        #  shift the sample data atrributes
-        for attr_name in self._data_attributes:
-            #  get the attribute
-            attr = getattr(self, attr_name)
-            #  check if it is a 2d array (which is a sample data array)
-            if (attr.ndim == 2):
-                #  this is a sample data array - shift the data and pad
-                attr[:,n_samples:] = attr[:,0:old_samples]
-                attr[:,0:n_samples] = np.nan
+        #  get a reference to our sample data and shift and pad
+        my_data = self.get_sample_data_ref()
+        my_data[:,n_samples:] = attr[:,0:old_samples]
+        my_data[:,0:n_samples] = np.nan
 
 
     def shift_pings(self, vert_shift, to_depth=False):
@@ -391,13 +392,13 @@ class processed_data(sample_data):
                 self.to_linear()
             else:
                 is_log = False
-            #  then pick out the sample data arrays and interpolate
-            for attr_name in self._data_attributes:
-                attr = getattr(self, attr_name)
-                if (isinstance(attr, np.ndarray) and (attr.ndim == 2)):
-                    for ping in range(self.n_pings):
-                        attr[ping,:] = np.interp(new_axis, vert_axis + vert_shift[ping],
-                                attr[ping,:old_samps], left=np.nan, right=np.nan)
+
+            #  get a reference to the sample data arrays and interpolate
+            my_data = self.get_sample_data_ref()
+            for ping in range(self.n_pings):
+                my_data[ping,:] = np.interp(new_axis, vert_axis + vert_shift[ping],
+                        my_data[ping,:old_samps], left=np.nan, right=np.nan)
+
             #  convert back to log units if required
             if (is_log):
                 self.to_log()
@@ -478,13 +479,11 @@ class processed_data(sample_data):
         else:
             is_log = False
 
-        #  pick out the sample data arrays and interpolate
-        for attr_name in self._data_attributes:
-            attr = getattr(self, attr_name)
-            if (isinstance(attr, np.ndarray) and (attr.ndim == 2)):
-                for ping in range(self.n_pings):
-                    attr[ping,:] = np.interp(new_vaxis, old_vaxis,
-                            attr[ping,:old_vaxis.shape[0]], left=np.nan, right=np.nan)
+        #  get a reference to the sample data array and interpolate
+        my_data = self.get_sample_data_ref()
+        for ping in range(self.n_pings):
+            my_data[ping,:] = np.interp(new_vaxis, old_vaxis,
+                    my_data[ping,:old_vaxis.shape[0]], left=np.nan, right=np.nan)
 
         #  convert back to log units if required
         if (is_log):
@@ -511,6 +510,25 @@ class processed_data(sample_data):
 
         #  and then update n_pings
         self.n_pings = self.ping_time.shape[0]
+
+
+    def get_sample_data_ref(self):
+        """
+        get_sample_data_ref returns a reference to the 2d sample data array
+        for this object. For the processed_data object we assume there will be
+        a single 2d "sample data" array so we simply fish out the 2d attribute
+        and return the reference. This is primarily intended for developers
+        writing code that interacts with processed_data objects who need access
+        to the sample data and may not know the data type.
+        """
+
+        sd_ref = None
+        for attr_name in self._data_attributes:
+            attr = getattr(self, attr_name)
+            if (attr.ndim == 2):
+                sd_ref = attr
+
+        return sd_ref
 
 
     def __setitem__(self, key, value):
@@ -547,11 +565,12 @@ class processed_data(sample_data):
                 #  set all samples to true for each ping set true in the ping mask
                 sample_mask[key.mask,:] = True
 
-            #  set the sample data
-            for attr_name in self._data_attributes:
-                attr = getattr(self, attr_name)
-                if (attr.ndim == 2):
-                    attr[sample_mask] = value
+
+            #  get a reference to our sample data array
+            my_data = self.get_sample_data_ref()
+
+            #  and set the sample data
+            my_data[sample_mask] = value
 
         else:
             #  we're dealing with a slice object - generate an index array based
@@ -590,11 +609,11 @@ class processed_data(sample_data):
                 #  set all samples to true for each ping set true in the ping mask
                 sample_mask[key.mask,:] = True
 
-            #  return sample data only as a numpy array
-            for attr_name in self._data_attributes:
-                attr = getattr(self, attr_name)
-                if (attr.ndim == 2):
-                    p_data = attr[sample_mask]
+            #  get a reference to our sample data array
+            my_data = self.get_sample_data_ref()
+
+            #  extract sample data only as a numpy array
+            p_data = my_data[sample_mask]
 
         else:
             #  we're returning a sliced processed_data object - create a new object to return
@@ -690,65 +709,146 @@ class processed_data(sample_data):
                 raise AttributeError('You cannot compare a depth based object with a range based object.')
 
 
-    def _like(self, n_pings):
+    def _setup_compare(self, other):
         """
-        _like is an internal method which creates an empty processed_data object
-        that is "like" this object. It is used by the empty_like and zeros_like
-        methods.
-        """
-        #  if we haven'tbeen told how many pings, assume same size as this object
-        if (n_pings == None):
-            n_pings = self.n_pings
-
-        #  create an instance of echolab2.processed_data and set the same
-        #  basic properties as this object.
-        empty_obj = processed_data(self.channel_id, self.frequency,
-                self.data_type)
-        empty_obj.sample_thickness = self.sample_thickness
-        empty_obj.sample_offset = self.sample_offset
-
-        return empty_obj
-
-
-    def __gt__(self, other):
-        """
-        __gt__ implements the "greater than"  operator. We accept either a like sized
-        processed_data object where we will perform an element by element comparison or
-        a scalar value.
-
-        The comparison operators always do a element-by-element comparison and return
-        the results in a sample mask.
+        _setup_compare is an internal method that contains generalized code for
+        the comparison operators.
         """
 
         #  create the mask we will return
         compare_mask = mask.mask(like=self)
+
+        #  get the references to our sample data array
+        my_data = self.get_sample_data_ref()
 
         #  determine what we're comparing ourself to
         if (isinstance(other, processed_data.processed_data)):
             #  we've been passed a processed_data object - make sure it's kosher
             self._is_like_me(other)
 
-            compare_mask.mask[:] = self.
+            #  get the references to the other sample data array
+            other_data = self.get_sample_data_ref()
 
-        pass
+        elif (isinstance(other, np.ndarray)):
+            #  the comparison data is a numpy array - check its shape
+            if (other.shape != my_data.shape):
+                raise ValueError("The numpy array you are comparing to this object is " +
+                        "the wrong shape. this obj:" + str(my_data.shape) + ", array:" +
+                        str(other.shape))
+            #  the array is the same shape as our data array
+            other_data = other
+
+        else:
+
+            #  assume we've been given a scalar value or something that can
+            #  be broadcast into our sample data's shape
+            other_data = other
+
+        return (compare_mask, my_data, other_data)
+
+
+    def __gt__(self, other):
+        """
+        __gt__ implements the "greater than" operator. We accept either a like sized
+        processed_data object, a like sized numpy array or a scalar value.
+
+        The comparison operators always do a element-by-element comparison and return
+        the results in a sample mask.
+        """
+        #  get the new mask and data references
+        compare_mask, my_data, other_data = self._setup_compare(other)
+
+        #  and set the mask
+        compare_mask.mask[:] = my_data > other_data
+
+        return compare_mask
 
 
     def __lt__(self, other):
-        pass
+        """
+        __lt__ implements the "less than" operator. We accept either a like
+        sized processed_data object, a like sized numpy array or a scalar value.
+
+        The comparison operators always do a element-by-element comparison
+        and return the results in a sample mask.
+        """
+        #  get the new mask and data references
+        compare_mask, my_data, other_data = self._setup_compare(other)
+
+        #  and set the mask
+        compare_mask.mask[:] = my_data > other_data
+
+        return compare_mask
 
 
     def __ge__(self, other):
-        pass
+        """
+        __ge__ implements the "greater than or equal to" operator. We accept
+        either a like sized processed_data object, a like sized numpy array
+        or a scalar value.
+
+        The comparison operators always do a element-by-element comparison
+        and return the results in a sample mask.
+        """
+        #  get the new mask and data references
+        compare_mask, my_data, other_data = self._setup_compare(other)
+
+        #  and set the mask
+        compare_mask.mask[:] = my_data > other_data
+
+        return compare_mask
+
 
     def __le__(self, other):
-        pass
+        """
+        __le__ implements the "less than or equal to" operator. We accept
+        either a like sized processed_data object, a like sized numpy array
+        or a scalar value.
+
+        The comparison operators always do a element-by-element comparison
+        and return the results in a sample mask.
+        """
+        #  get the new mask and data references
+        compare_mask, my_data, other_data = self._setup_compare(other)
+
+        #  and set the mask
+        compare_mask.mask[:] = my_data > other_data
+
+        return compare_mask
 
 
     def __eq__(self, other):
-        pass
+        """
+        __eq__ implements the "equal" operator. We accept either a like sized
+        processed_data object, a like sized numpy array or a scalar value.
+
+        The comparison operators always do a element-by-element comparison and return
+        the results in a sample mask.
+        """
+        #  get the new mask and data references
+        compare_mask, my_data, other_data = self._setup_compare(other)
+
+        #  and set the mask
+        compare_mask.mask[:] = my_data == other_data
+
+        return compare_mask
+
 
     def __ne__(self, other):
-        pass
+        """
+        __ne__ implements the "not equal" operator. We accept either a like sized
+        processed_data object, a like sized numpy array or a scalar value.
+
+        The comparison operators always do a element-by-element comparison and return
+        the results in a sample mask.
+        """
+        #  get the new mask and data references
+        compare_mask, my_data, other_data = self._setup_compare(other)
+
+        #  and set the mask
+        compare_mask.mask[:] = my_data != other_data
+
+        return compare_mask
 
 
 

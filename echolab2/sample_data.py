@@ -868,6 +868,9 @@ class sample_data(object):
         vector will depend on the state of the empty_times keyword. The new object's
         shape will be (n_pings, self.n_samples)
         """
+        #  if n_pings is None, we create an empty array with the same number of pings
+        if (n_pings == None):
+            n_pings = self.n_pings
 
         #  copy the common attributes
         if (channel_id):
