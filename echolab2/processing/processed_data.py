@@ -315,8 +315,69 @@ class processed_data(sample_data):
         return self._copy(pd_copy)
 
 
-    def view(self, slice):
-        print(slice)
+    def view(self, ping_slice, sample_slice):
+        """
+        view returns a processed_data object who's data attributes are views
+        into this instance's data. This is intended to be a convienient method
+        for displaying or processing rectangular sections of your data.
+
+        args:
+            ping_slice: Set this to a tuple that defines the slicing parameters
+                (start, stop, stride) for the ping axis.
+            sample_slice: Set this to a tuple that defines the slicing parameters
+                (start, stop, stride) for the sample axis.
+
+        Views are not a method for reducing memory usage since as long as the view
+        object exists, the original full sized numpy arrays that the new object
+        references will exist.
+
+        """
+
+        #  check if we've been passed tuples instead of slice objs. Convert
+        #  to slices if needed.
+        if (not isinstance(ping_slice, slice)):
+            ping_slice = slice(ping_slice[0], ping_slice[1], ping_slice[2])
+        if (not isinstance(sample_slice, slice)):
+            sample_slice = slice(sample_slice[0], sample_slice[1], sample_slice[2])
+
+        #  create a new object to return - the data attributes of the new instance will
+        #  be views into this instance's data.
+        p_data = processed_data(self.channel_id, self.frequency, self.data_type)
+
+        #  copy common attributes
+        p_data.sample_thickness = self.sample_thickness
+        p_data.sample_dtype = self.sample_dtype
+        p_data.frequency = self.frequency
+        p_data._data_attributes = list(self._data_attributes)
+
+        #  and work thru the data attributes, slicing them and adding to the new
+        #  processed_data object.
+        for attr_name in self._data_attributes:
+            attr = getattr(self, attr_name)
+            if (attr.ndim == 2):
+                #  2d arrays can just be sliced as usual
+                setattr(p_data, attr_name, attr.__getitem__((ping_slice, sample_slice)))
+            else:
+                #  for 1d arrays we need to make sure we pick up the correct slice
+                if (attr.shape[0] == self.n_pings):
+                    #  this is a ping axis value - slice and set the new object's attribute
+                    sliced_attr = attr.__getitem__(ping_slice)
+                    setattr(p_data, attr_name, sliced_attr)
+                    #  update the n_pings attribute
+                    p_data.n_pings = sliced_attr.shape[0]
+                else:
+                    #  we'll assume this is a sample axis value - slice and set
+                    sliced_attr = attr.__getitem__(sample_slice)
+                    setattr(p_data, attr_name, sliced_attr)
+                    #  update the n_samples attribute
+                    p_data.n_samples = sliced_attr.shape[0]
+
+        #  update the sample_offset if we're slicing on the sample axis
+        if (sample_slice.start):
+            p_data.sample_offset += sample_slice.start
+
+        return p_data
+
 
     def pad_top(self, n_samples):
         """
