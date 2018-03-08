@@ -55,7 +55,7 @@ ping_mask = mask.mask(like=Sv, type='ping', value=True)
 print(ping_mask)
 
 #  masks can be used on their own to present data (though mask plotting isn't
-#  implemented yet) or more commonly used as logical index array to operate on
+#  implemented yet) or more commonly used as a logical index array to operate on
 #  specific samples in a processed_data object. Since mask plotting isn't
 #  implemented we'll focus on the second, more common use.
 
@@ -92,29 +92,6 @@ ax2.set_title('Modified Sv data')
 #  show the results
 show()
 
-Sva=Sv[0:10,:]
-
-
-Sv[m] = -999
-x = Sv[m]
-
-
-##  and display the results
-#fig = figure()
-#subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.90, wspace=None, hspace=0.5)
-#
-##  plot up the synthetic power data
-#ax = fig.add_subplot(2,1,1)
-#eg = echogram.echogram(ax, raw_data_38, 'power')
-#ax.set_title("Synthetic power after delete - should be 136 pings")
-#
-##  get the Sv data in time order and plot
-#Sv = raw_data_38.get_sv()
-#ax = fig.add_subplot(2,1,2)
-#eg = echogram.echogram(ax, Sv, 'Sv')
-#ax.set_title('Sythetic power after delete converted to Sv shown in time order.')
-#
-##  show the results
-#show()
+#  THIS EXAMPLE IS INCOMPLETE - I'M WORKING ON IT.
 
 pass

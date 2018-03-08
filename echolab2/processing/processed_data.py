@@ -315,6 +315,9 @@ class processed_data(sample_data):
         return self._copy(pd_copy)
 
 
+    def view(self, slice):
+        print(slice)
+
     def pad_top(self, n_samples):
         """
         pad_top shifts the data array vertically the specified number of samples
@@ -534,20 +537,18 @@ class processed_data(sample_data):
     def __setitem__(self, key, value):
         """
         we can assign to sample data elements in processed_data objects using
-        assignment with mask objects or we can use python array slicing and
-        assign data from one processed_data object to this object (i.e. replace)
+        assignment with mask objects or we can use python array slicing.
 
-        When assigning with a mask, the assigment is to the sample data only.
-        Currently echolab2 only supports assigning sample data that share the exact
+        When assigning data, the assigment is to the sample data only. Currently
+        echolab2 only supports assigning sample data that share the exact
         shape of the mask or data that can be broadcasted into this shape. Scalars
         always work and if using a sample mask, arrays that are the same size as the
         mask work. You'll need to think about how this applies to ping masks
         if you want to assign using these.
-
-        When assigning with a slice, the assigment is the same as replacement and
-        the value passed must be a processed_data object containing the data to
-        assign.
         """
+
+        #  get a reference to our sample data array
+        my_data = self.get_sample_data_ref()
 
         #  determine if we're assigning with a mask or assigning with slice object
         if (isinstance(key, mask.mask)):
@@ -564,33 +565,36 @@ class processed_data(sample_data):
 
                 #  set all samples to true for each ping set true in the ping mask
                 sample_mask[key.mask,:] = True
+        else:
+            #  assume we've been passed slice objects - just pass them along
+            sample_mask = key
 
+        #  check what value we've been given
+        if (isinstance(value, processed_data)):
+            #  it is a processed_data object - check if it's compatible
+            self._is_like_me(value)
 
-            #  get a reference to our sample data array
-            my_data = self.get_sample_data_ref()
-
-            #  and set the sample data
-            my_data[sample_mask] = value
+            # and get a view of the sliced sample data
+            other_data = value.get_sample_data_ref()[sample_mask]
 
         else:
-            #  we're dealing with a slice object - generate an index array based
-            #  defining the pings to replace
-            replace_idx = (np.arange(int(round((key.stop - key.start) /
-                    float(key.step)))) * key.step) + key.start
+            #  assume that this is a scalar or numpy array - we'll let
+            #  numpy raise the error if the value cannot be broadcast into
+            #  our sample data array.
+            other_data = value
 
-            #  and call the replace method using this index array
-            self.replace(value, index_array=replace_idx)
+        #  set the sample data to the provided value(s)
+        my_data[sample_mask] = other_data
 
 
     def __getitem__(self, key):
         """
         processed_data objects can be sliced with standard index based slicing as
-        well as mask objects. Mask objects slice differently depending on if they
-        are ping or sample masks. Ping masks return a view of the processed_data
-        object comprised of pings where the mask is True. Sample masks return a
-        numpy array containing the sample data where the mask is True. It DOES
-        NOT return a processed data object.
+        well as mask objects.
         """
+
+        #  get a reference to our sample data array
+        my_data = self.get_sample_data_ref()
 
         #  determine if we're "slicing" with a mask or slicing with slice object
         if (isinstance(key, mask.mask)):
@@ -609,49 +613,12 @@ class processed_data(sample_data):
                 #  set all samples to true for each ping set true in the ping mask
                 sample_mask[key.mask,:] = True
 
-            #  get a reference to our sample data array
-            my_data = self.get_sample_data_ref()
-
-            #  extract sample data only as a numpy array
-            p_data = my_data[sample_mask]
-
         else:
-            #  we're returning a sliced processed_data object - create a new object to return
-            p_data = processed_data(self.channel_id, self.frequency, self.data_type)
+            #  assume we've been passed slice objects - just pass them along
+            sample_mask = key
 
-            #  copy common attributes
-            p_data.sample_thickness = self.sample_thickness
-            p_data.sample_dtype = self.sample_dtype
-            p_data.frequency = self.frequency
-            p_data._data_attributes = list(self._data_attributes)
-
-            #  and work thru the data attributes, slicing them and adding to the new
-            #  processed_data object.
-            for attr_name in self._data_attributes:
-                attr = getattr(self, attr_name)
-                if (attr.ndim == 2):
-                    #  2d arrays can just be sliced as usual
-                    setattr(p_data, attr_name, attr.__getitem__(key))
-                else:
-                    #  for 1d arrays we need to make sure we pick up the correct slice
-                    if (attr.shape[0] == self.n_pings):
-                        #  this is a ping axis value - slice and set the new object's attribute
-                        sliced_attr = attr.__getitem__(key[0])
-                        setattr(p_data, attr_name, sliced_attr)
-                        #  update the n_pings attribute
-                        p_data.n_pings = sliced_attr.shape[0]
-                    else:
-                        #  we'll assume this is a sample axis value - slice and set
-                        sliced_attr = attr.__getitem__(key[1])
-                        setattr(p_data, attr_name, sliced_attr)
-                        #  update the n_samples attribute
-                        p_data.n_samples = sliced_attr.shape[0]
-
-            #  update the sample_offset if we're slicing on the sample axis
-            if (key[1].start):
-                p_data.sample_offset += key[1].start
-
-        return p_data
+        #  return the sliced/masked sample data
+        return my_data[sample_mask]
 
 
     def _check_mask(self, mask):
@@ -700,51 +667,13 @@ class processed_data(sample_data):
                 if (not np.array_equal(self.range, pd_object.range)):
                     raise ValueError("The processed_data object's ranges do not match our ranges.")
             else:
-                raise AttributeError('You cannot compare a range based object with a depth based object.')
+                raise AttributeError('You cannot operate on a range based object with a depth based object.')
         else:
             if (hasattr(self, 'depth')):
                 if (not np.array_equal(self.depth, mask.depth)):
                     raise ValueError("The processed_data object's depths do not match our depths.")
             else:
-                raise AttributeError('You cannot compare a depth based object with a range based object.')
-
-
-    def _setup_compare(self, other):
-        """
-        _setup_compare is an internal method that contains generalized code for
-        the comparison operators.
-        """
-
-        #  create the mask we will return
-        compare_mask = mask.mask(like=self)
-
-        #  get the references to our sample data array
-        my_data = self.get_sample_data_ref()
-
-        #  determine what we're comparing ourself to
-        if (isinstance(other, processed_data.processed_data)):
-            #  we've been passed a processed_data object - make sure it's kosher
-            self._is_like_me(other)
-
-            #  get the references to the other sample data array
-            other_data = self.get_sample_data_ref()
-
-        elif (isinstance(other, np.ndarray)):
-            #  the comparison data is a numpy array - check its shape
-            if (other.shape != my_data.shape):
-                raise ValueError("The numpy array you are comparing to this object is " +
-                        "the wrong shape. this obj:" + str(my_data.shape) + ", array:" +
-                        str(other.shape))
-            #  the array is the same shape as our data array
-            other_data = other
-
-        else:
-
-            #  assume we've been given a scalar value or something that can
-            #  be broadcast into our sample data's shape
-            other_data = other
-
-        return (compare_mask, my_data, other_data)
+                raise AttributeError('You cannot operate on a depth based object with a range based object.')
 
 
     def __gt__(self, other):
@@ -849,6 +778,109 @@ class processed_data(sample_data):
         compare_mask.mask[:] = my_data != other_data
 
         return compare_mask
+
+
+    def _setup_operators(self, other):
+        """
+        _setup_operators is an internal method that contains generalized code for
+        all of the operators. It determines the type of "other" and gets references
+        to the sample data and performs some basic checks to ensure that we can
+        *probably* successfully apply the operator.
+        """
+
+        #  get the references to our sample data array
+        my_data = self.get_sample_data_ref()
+
+        #  determine what we're comparing ourself to
+        if (isinstance(other, processed_data)):
+            #  we've been passed a processed_data object - make sure it's kosher
+            self._is_like_me(other)
+
+            #  get the references to the other sample data array
+            other_data = self.get_sample_data_ref()
+
+        elif (isinstance(other, np.ndarray)):
+            #  the comparison data is a numpy array - check its shape
+            if (other.shape != my_data.shape):
+                raise ValueError("The numpy array provided for this operation/comparison is " +
+                        "the wrong shape. this obj:" + str(my_data.shape) + ", array:" +
+                        str(other.shape))
+            #  the array is the same shape as our data array - set the reference
+            other_data = other
+
+        else:
+            #  assume we've been given a scalar value or something that can
+            #  be broadcast into our sample data's shape.
+            other_data = other
+
+        return (my_data, other_data)
+
+
+    def _setup_compare(self, other):
+        """
+        _setup_compare is an internal method that contains generalized code for
+        the comparison operators.
+        """
+        #  do some checks and get references to the data
+        my_data, other_data = self._setup_operators(other)
+
+        #  create the mask we will return
+        compare_mask = mask.mask(like=self)
+
+        return (compare_mask, my_data, other_data)
+
+
+    def _setup_numeric(self, other, inplace=False):
+        """
+        _setup_numeric is an internal method that contains generalized code for
+        the numeric operators.
+        """
+        #  do some checks and get references to the data
+        my_data, other_data = self._setup_operators(other)
+
+        #  if we're not operating in-place, create a processed_data object to return
+        if (not inplace):
+            #  return refs to a new pd object
+            op_result = self.empty_like()
+            op_data = op_result.get_sample_data_ref()
+        else:
+            #  we're operating in-place - return refs to ourself
+            op_result = self
+            op_data = my_data
+
+        return (op_result, op_data, my_data, other_data)
+
+
+    def __add__(self, other):
+        """
+
+        """
+        #  do some checks and get the data references
+        op_result, op_data, my_data, other_data = self._setup_numeric(other)
+
+        #  do the math
+        op_data[:] = my_data + other_data
+
+        #  and return the result
+        return op_result
+
+
+    def __radd__(self, other):
+        pass
+
+
+    def __iadd__(self, other):
+        """
+        __iadd__
+        """
+        #  do some checks and get the data references
+        op_result, op_data, my_data, other_data = self._setup_numeric(other, inplace=True)
+
+        #  do the math
+        op_data[:] = my_data + other_data
+
+        #  and return the result
+        return op_result
 
 
 
