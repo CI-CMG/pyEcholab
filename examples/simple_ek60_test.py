@@ -67,7 +67,7 @@ ek60.read_raw(rawfiles)
 print(ek60)
 
 #  now get a reference to the RawData object that contains data from the first 38 kHz channel.
-raw_data_38_1 = ek60.get_rawdata(channel_number=2)
+raw_data_38_1 = ek60.get_raw_data(channel_number=2)
 '''
 the sample data from channel 2 is contained in a 136x994 array. The data was recorded
 with a 1024us transmit pulse length which on the EK60 and related hardware results
@@ -77,7 +77,7 @@ recorded in 2012.
 print(raw_data_38_1)
 
 #  and get a reference to the RawData object that contains data from the second 38 kHz channel.
-raw_data_38_2 = ek60.get_rawdata(channel_number=7)
+raw_data_38_2 = ek60.get_raw_data(channel_number=7)
 '''
 Channel 7's sample data is a 763x1059 array recoded with a 512us pulse length
 resulting in a sample interval of 128us. These data were recorded in 2017.

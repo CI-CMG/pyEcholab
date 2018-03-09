@@ -846,7 +846,7 @@ class processed_data(sample_data):
         compare_mask, other_data = self._setup_compare(other)
 
         #  and set the mask
-        compare_mask.mask[:] = self.data > other_data
+        compare_mask.mask[:] = self.data < other_data
 
         return compare_mask
 
@@ -864,7 +864,7 @@ class processed_data(sample_data):
         compare_mask, other_data = self._setup_compare(other)
 
         #  and set the mask
-        compare_mask.mask[:] = self.data > other_data
+        compare_mask.mask[:] = self.data >= other_data
 
         return compare_mask
 
@@ -882,7 +882,7 @@ class processed_data(sample_data):
         compare_mask, other_data = self._setup_compare(other)
 
         #  and set the mask
-        compare_mask.mask[:] = self.data > other_data
+        compare_mask.mask[:] = self.data <= other_data
 
         return compare_mask
 

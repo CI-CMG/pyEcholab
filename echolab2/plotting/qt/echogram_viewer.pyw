@@ -76,10 +76,8 @@ class echogram_viewer(QMainWindow, ui_echogram_viewer.Ui_echogram_viewer):
         else:
             y_axis = p_data.depth
 
-        echogram_data = getattr(p_data, plot_attribute)
-
         #  set the Echogram data
-        self.QEchogramViewer.setEchogramFromArray(echogram_data, yaxis=y_axis,
+        self.QEchogramViewer.setEchogramFromArray(p_data.data, yaxis=y_axis,
                 xaxis=p_data.ping_time)
 
         #  add the echogram HUD text

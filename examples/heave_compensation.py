@@ -25,7 +25,7 @@ ek60 = EK60.EK60()
 ek60.read_raw(rawfiles)
 
 #  get the 38 kHz raw data
-raw_data_38 = ek60.get_rawdata(channel_number=2)
+raw_data_38 = ek60.get_raw_data(channel_number=2)
 
 #  get a processed_data object containing the heave corrected Sv on a depth grid
 heave_corrected_Sv = raw_data_38.get_sv(heave_correct=True)

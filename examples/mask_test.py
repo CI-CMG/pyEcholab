@@ -1,13 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-This example demonstrates manipulating the raw_data and processed_data
-objects using the insert and delete methods. The primary purpose of
-this example is to verify basic operation of the insert and delete methods
-but it also provides some simple and somewhat contrived examples of using
-index arrays with these methods.
+
 """
 
-import numpy as np
 from matplotlib.pyplot import figure, show, subplots_adjust
 from echolab2.instruments import EK60
 from echolab2.plotting.matplotlib import echogram
@@ -15,12 +10,14 @@ from echolab2.processing import mask
 
 
 #  read in some data
-rawfiles = ['./data/EK60/DY1201_EK60-D20120214-T231011.raw']
+rawfiles = ['./data/EK60/PC1106-D20110830-T052815.raw',
+            './data/EK60/PC1106-D20110830-T053815.raw']
+
 ek60 = EK60.EK60()
 ek60.read_raw(rawfiles)
 
 #  get a reference to the raw_data object
-raw_data_38 = ek60.get_rawdata(channel_number=2)
+raw_data_38 = ek60.get_raw_data(channel_number=2)
 print(raw_data_38)
 
 #  get a processed_data object containing Sv
@@ -101,13 +98,13 @@ Sv = orig_Sv.copy()
 
 #  The comparison operators work on scalars - create 3 masks each
 #  with a different threshold
-mask_1 = Sv < -45
-mask_2 = Sv > -25
+mask_1 = Sv < -70
+mask_3 = Sv > -25
 
 #  you can apply boolean operators to masks as well which also
 #  returns a mask. Just make sure you group the operations
 #  properly.
-mask_3 = (Sv >= -35) & (Sv <= -70)
+mask_2 = (Sv >= -50) & (Sv <= -25)
 
 #  instead of using the masks to set values in the original Sv
 #  object let's create a processed_data object that is a copy
@@ -115,9 +112,9 @@ mask_3 = (Sv >= -35) & (Sv <= -70)
 synth_data = Sv.zeros_like()
 
 #  now set the values in our new processed_data object
-synth_data[mask_1] = 5
-synth_data[mask_2] += 5
-synth_data[mask_3] += 5
+synth_data[mask_1] = 0
+synth_data[mask_2] = 10
+synth_data[mask_3] = 15
 
 #  and display the results
 fig = figure()
@@ -138,11 +135,5 @@ ax2.set_title('Synthetic yhreshold results')
 #  show the results
 show()
 
-
-
-
-#  THIS EXAMPLE IS INCOMPLETE - I'M WORKING ON IT.
-
-e = 0 + Sv
 
 pass

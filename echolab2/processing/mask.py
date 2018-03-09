@@ -28,13 +28,9 @@
 
 """
 
-'''
-
-
-'''
 import numpy as np
 import matplotlib
-import processed_data
+from . import processed_data
 
 class mask(object):
     '''

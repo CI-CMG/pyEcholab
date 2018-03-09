@@ -19,7 +19,7 @@ ek60 = EK60.EK60()
 ek60.read_raw(rawfiles)
 
 #  get a reference to the raw_data object
-raw_data_38 = ek60.get_rawdata(channel_number=2)
+raw_data_38 = ek60.get_raw_data(channel_number=2)
 print(raw_data_38)
 
 #  insert synthetic data - create data where each ping is a constant value and the
