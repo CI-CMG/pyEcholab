@@ -44,13 +44,13 @@ print(subset_Sv)
 #  create an axes
 ax_1 = fig.add_subplot(2,1,1)
 #  create an echogram which will display on our heave corrected data
-echogram_1 = echogram.echogram(ax_1, heave_corrected_Sv, 'Sv', threshold=[-70,-34],y_label_attribute='depth')
+echogram_1 = echogram.echogram(ax_1, heave_corrected_Sv, threshold=[-70,-34])
 ax_1.set_title("heave compensated Sv on depth grid")
 
 #  create another axes
 ax_2 = fig.add_subplot(2,1,2)
 #  create an echogram which will display the Sv data on a range grid
-echogram_2 = echogram.echogram(ax_2, subset_Sv, 'Sv', threshold=[-70,-34],y_label_attribute='depth')
+echogram_2 = echogram.echogram(ax_2, subset_Sv, threshold=[-70,-34])
 ax_2.set_title("zoomed view of heave compensated Sv on depth grid")
 
 

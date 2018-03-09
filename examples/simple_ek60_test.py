@@ -110,7 +110,7 @@ print(raw_data_38_1)
 ax_1 = fig.add_subplot(3,1,1)
 #  create an echogram to plot up the raw sample data
 echogram_2 = echogram.echogram(ax_1, raw_data_38_1, 'power')
-ax_1.set_title("Raw power as stored in RawData object")
+ax_1.set_title("Raw power as stored in raw_data object")
 
 
 '''
@@ -148,7 +148,7 @@ print(processed_power_1)
 #  create an axes
 ax_2 = fig.add_subplot(3,1,2)
 #  create an echogram which will display on our newly created axes
-echogram_2 = echogram.echogram(ax_2, processed_power_1, 'power')
+echogram_2 = echogram.echogram(ax_2, processed_power_1)
 ax_2.set_title("Power data in time order")
 
 #  now request Sv data in time order
@@ -161,7 +161,7 @@ print(Sv)
 #  create another axes
 ax_3 = fig.add_subplot(3,1,3)
 #  create an echogram which will display on our newly created axes
-echogram_3 = echogram.echogram(ax_3, Sv, 'Sv', threshold=[-70,-34])
+echogram_3 = echogram.echogram(ax_3, Sv, threshold=[-70,-34])
 ax_3.set_title("Sv data in time order")
 
 #  show our figure
@@ -176,20 +176,21 @@ angle_cmap = get_cmap('plasma')
 
 #  now request angles data in time order
 t = time.clock()
-angles = raw_data_38_1.get_physical_angles()
+angles_along, angles_athwart = raw_data_38_1.get_physical_angles()
 print("get_physical_angles - time ordered: " + str(time.clock() - t))
-print(angles)
+print(angles_along)
+print(angles_athwart)
 
 #  create another axes
 ax_1 = fig.add_subplot(2,1,1)
 #  create an echogram which will display on our newly created axes
-echogram_3 = echogram.echogram(ax_1, angles, 'angles_alongship', cmap=angle_cmap)
+echogram_3 = echogram.echogram(ax_1, angles_along, cmap=angle_cmap)
 ax_1.set_title("angles_alongship data in time order")
 
 #  create another axes
 ax_2 = fig.add_subplot(2,1,2)
 #  create an echogram which will display on our newly created axes
-echogram_3 = echogram.echogram(ax_2, angles, 'angles_athwartship', cmap=angle_cmap)
+echogram_3 = echogram.echogram(ax_2, angles_athwart, cmap=angle_cmap)
 ax_2.set_title("angles_athwartship data in time order")
 
 #  show our figure

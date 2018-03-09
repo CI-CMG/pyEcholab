@@ -39,7 +39,7 @@ subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.90, wspace=None, hspace
 
 #  plot up the synthetic power data
 ax = fig.add_subplot(3,1,1)
-eg = echogram.echogram(ax, raw_data_38, 'power')
+eg = echogram.echogram(ax, raw_data_38, data_attribute='power')
 ax.set_title("Synthetic power - 136 pings")
 
 #  now resize the data - "new" pings will be filled with existing data
@@ -48,7 +48,7 @@ print(raw_data_38)
 
 #  and plot the resized data
 ax2 = fig.add_subplot(3,1,2)
-eg = echogram.echogram(ax2, raw_data_38, 'power')
+eg = echogram.echogram(ax2, raw_data_38, data_attribute='power')
 ax2.set_title("Synthetic power resized to 160 pings (notice data is replicated)")
 
 
@@ -62,7 +62,7 @@ raw_data_38.insert(None, index_array=insert_idx)
 
 #  and plot the power with empty data
 ax3 = fig.add_subplot(3,1,3)
-eg = echogram.echogram(ax3, raw_data_38, 'power')
+eg = echogram.echogram(ax3, raw_data_38, data_attribute='power')
 ax3.set_title("Synthetic power resized to 160 pings with empty data inserted")
 
 #  show the results
@@ -80,13 +80,13 @@ subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.90, wspace=None, hspace
 #  get the data in ping order and plot
 Sv = raw_data_38.get_sv(time_order=False)
 ax = fig.add_subplot(2,1,1)
-eg = echogram.echogram(ax, Sv, 'Sv')
+eg = echogram.echogram(ax, Sv)
 ax.set_title('Sythetic power converted to Sv shown in ping order.')
 
 #  get the Sv data in time order and plot
 Sv = raw_data_38.get_sv()
 ax = fig.add_subplot(2,1,2)
-eg = echogram.echogram(ax, Sv, 'Sv')
+eg = echogram.echogram(ax, Sv)
 ax.set_title('Sythetic power converted to Sv shown in time order.')
 
 #  show the results
@@ -103,13 +103,13 @@ subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.90, wspace=None, hspace
 
 #  plot up the synthetic power data
 ax = fig.add_subplot(2,1,1)
-eg = echogram.echogram(ax, raw_data_38, 'power')
+eg = echogram.echogram(ax, raw_data_38, data_attribute='power')
 ax.set_title("Synthetic power after delete - should be 136 pings")
 
 #  get the Sv data in time order and plot
 Sv = raw_data_38.get_sv()
 ax = fig.add_subplot(2,1,2)
-eg = echogram.echogram(ax, Sv, 'Sv')
+eg = echogram.echogram(ax, Sv)
 ax.set_title('Sythetic power after delete converted to Sv shown in time order.')
 
 #  show the results

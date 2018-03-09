@@ -1,4 +1,5 @@
 # coding=utf-8
+# coding=utf-8
 
 #     National Oceanic and Atmospheric Administration (NOAA)
 #     Alaskan Fisheries Science Center (AFSC)

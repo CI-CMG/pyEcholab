@@ -94,4 +94,6 @@ show()
 
 #  THIS EXAMPLE IS INCOMPLETE - I'M WORKING ON IT.
 
+e = 0 + Sv
+
 pass

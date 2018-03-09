@@ -13,13 +13,28 @@
 #  (1) FOR THE USE OF THE SOFTWARE AND DOCUMENTATION; OR (2) TO PROVIDE TECHNICAL
 #  SUPPORT TO USERS.
 
+"""
+
+
+| Developed by:  Rick Towler   <rick.towler@noaa.gov>
+| National Oceanic and Atmospheric Administration (NOAA)
+| Alaska Fisheries Science Center (AFSC)
+| Midwater Assesment and Conservation Engineering Group (MACE)
+|
+| Author:
+|       Rick Towler   <rick.towler@noaa.gov>
+| Maintained by:
+|       Rick Towler   <rick.towler@noaa.gov>
+
+"""
+
+
 '''
 
-The processed_data class stores and manipulates 2d sample data arrays along
+The processed_data class stores and manipulates a 2d sample data array along
 with 1d arrays that define the horizontal and vertical axes of that data.
 The horizontal axis is defined as 'ping_time' and the vertical axis is 'range'
-or 'depth'. Other data associated with the axes may be present. Most will
-be associated with the ping_time axis like vessel GPS position or speed.
+or 'depth'.
 
     properties:
         channel_id: a list of channel id's that are linked to this data
@@ -27,8 +42,18 @@ be associated with the ping_time axis like vessel GPS position or speed.
         frequency: The frequency, in Hz, of the data contained in the object
 
         data_type: Data_type is a string defining the type of sample data the
-            object contains. Valid values are:
-                'Sv', 'sv', 'Sp', 'sp', 'angles', 'electrical_angles', 'power'
+            object contains. Built-in values are:
+                'Sv', 'sv', 'Sp', 'sp', 'angles_alongship', 'angles_athwartship',
+                'angles_alongship_e', 'angles_athwartship_e', 'power'
+
+            User specified data types are allowed and can be used to identify
+            "synthetic" channels.
+
+        is_log: a boolean which is set True when the data is in log form and
+            False when it is in linear form. This is handled automatically
+            when using the to_log and to_linear methods but if the data is
+            converted outside those methods by the user they will need to
+            update this attribute appropriately.
 
         sample_thickness: a float defining the vertical extent of the samples
             in meters. It is calculated as thickness = sample interval(s) *
@@ -53,16 +78,38 @@ be associated with the ping_time axis like vessel GPS position or speed.
             ping_time: An array of numpy datetime64 objects representing the times
                 of the individual pings.
 
-        The attribute name of the sample data depends on the type of data the object
-        contains. If the data_type is 'Sv', the Sv sample data attribute name is 'Sv'.
-        The sample data array is a numpy array indexed as [n_pings, n_samples]. To
-        access the 100th ping, you would do something like:
+        The attribute name of the sample data is "data". The sample data array
+        is a 2d numpy array indexed as [n_pings, n_samples]. To access the 100th
+        ping, you would do something like:
 
-            p_data.Sv[100,:]
+            p_data.data[100,:]
 
-            or, if the data_type is 'power'
+        Note that you can access the data directly without specifying the data
+        attribute when you slice the object. To access the same 100th ping
+        you would do this:
 
-            p_data.power[100,:]
+            p_data[100,:]
+
+
+        NEED TO ADD A SECTION REGARDING SLICING
+
+
+        NEED TO ADD A SECTION REGARDING OPERATORS
+
+
+
+        IMPORTANT NOTE!
+            This software is under heavy development and while the API is fairly
+            stable, it may still change. Further, while reviewing the code you may
+            wonder why certain things are done a certain way. Understanting that
+            this class initially was written to have an arbitrary number of
+            "sample data" arrays will shed some light on this. This was changed
+            later in development so that processed_data objects only contain
+            a single sample data array but much of the mechanics of dealing with
+            multiple 2d arrays are in place in part because the sample_data class
+            still operates this way and in part because the code hasn't been
+            changed yet.
+
 
 
 '''
@@ -81,9 +128,25 @@ class processed_data(sample_data):
         super(processed_data, self).__init__()
 
         #  set the frequency, channel_id, and data type
-        self.channel_id = list(channel_id)
+        if (channel_id):
+            if (isinstance(channel_id, list)):
+                #  if we've been passed a list as a channel id, copy the list
+                self.channel_id = list(channel_id)
+            else:
+                #  we've been given not a list - just set the id
+                self.channel_id = channel_id
+        else:
+            self.channel_id = None
         self.frequency = frequency
         self.data_type = data_type
+
+        #  data contains the 2d sample data
+        self.data = None
+
+        #  is_log should be set to True if the data contained within is in log
+        #  form and False otherwise. This is handled internally if you use the
+        #  to_log and to_linear methods, but if you are manipulating th
+        self.is_log = False
 
         #  sample thickness is the vertical extent of the samples in meters
         #  it is calculated as thickness = sample interval(s) * sound speed(m/s) / 2
@@ -227,7 +290,8 @@ class processed_data(sample_data):
                                            index_array=index_array)
 
 
-    def empty_like(self, n_pings=None, empty_times=False, channel_id=None):
+    def empty_like(self, n_pings=None, empty_times=False, channel_id=None,
+            data_type=None, is_log=False):
         """
         empty_like returns a processed_data object with the same general
         characteristics of "this" object with all of the data arrays
@@ -249,20 +313,34 @@ class processed_data(sample_data):
                 for the new object. If this value is None, the channel_id is
                 copied from this object's id.
 
-        """
+            data_type: Set data_type to a string defining the type of data
+                the new processed_data object will eventually contain. This
+                can be used to identify derived or synthetic data types.
 
-        #  get an empty processed_data object "like" this object
-        empty_obj = processed_data(self.channel_id, self.frequency,
-                self.data_type)
+            is_log: Set this to True if the new processed_data object will
+                contain data in log form. Set it to False if not.
+
+        """
+        #  if no data_type is provided, copy this data_type
+        if (data_type is None):
+            data_type = self.data_type
+            is_log = self.is_log
+
+        #  get an empty processed_data object "like" this object (if channel_id
+        #  is not provided, it will be set in the parent's _like method.)
+        empty_obj = processed_data(channel_id, self.frequency,
+                data_type)
         empty_obj.sample_thickness = self.sample_thickness
         empty_obj.sample_offset = self.sample_offset
+        empty_obj.is_log = is_log
 
-        #  call the parent _like helper method and return the result
-        return self._like(empty_obj, n_pings, np.nan, empty_times=False,
-                channel_id=None)
+         #  call the parent _like helper method and return the result
+        return self._like(empty_obj, n_pings, np.nan,
+                empty_times=empty_times, channel_id=None)
 
 
-    def zeros_like(self, n_pings=None, empty_times=False, channel_id=None):
+    def zeros_like(self, n_pings=None, empty_times=False, channel_id=None,
+            data_type=None, is_log=False):
         """
         zeros_like returns a processed_data object with the same general
         characteristics of "this" object with all of the data arrays
@@ -285,17 +363,29 @@ class processed_data(sample_data):
             channel_id: Set channel_id to a string specifying the channel_id
                 for the new object. If this value is None, the channel_id is
                 copied from this object's id.
+
+            data_type: Set data_type to a string defining the type of data
+                the new processed_data object will eventually contain. This
+                can be used to identify derived or synthetic data types.
+
+            is_log: Set this to True if the new processed_data object will
+                contain data in log form. Set it to False if not.
         """
+        #  if no data_type is provided, copy this data_type
+        if (data_type is None):
+            data_type = self.data_type
+            is_log = self.is_log
 
         #  get an empty processed_data object "like" this object
-        empty_obj = processed_data(self.channel_id, self.frequency,
+        empty_obj = processed_data(channel_id, self.frequency,
                 self.data_type)
         empty_obj.sample_thickness = self.sample_thickness
         empty_obj.sample_offset = self.sample_offset
+        empty_obj.is_log = is_log
 
         #  call the parent _like helper method and return the result
-        return self._like(empty_obj, n_pings, 0.0, empty_times=False,
-                channel_id=None)
+        return self._like(empty_obj, n_pings, 0.0,
+                empty_times=empty_times, channel_id=None)
 
 
     def copy(self):
@@ -310,6 +400,7 @@ class processed_data(sample_data):
         #  copy the other base attributes of our class
         pd_copy.sample_thickness = self.sample_thickness
         pd_copy.sample_offset = self.sample_offset
+        pd_copy.is_log = self.is_log
 
         #  call the parent _copy helper method and return the result
         return self._copy(pd_copy)
@@ -344,13 +435,15 @@ class processed_data(sample_data):
         #  be views into this instance's data.
         p_data = processed_data(self.channel_id, self.frequency, self.data_type)
 
-        #  copy common attributes
+        #  copy common attributes (include parent class attributes since
+        #  we don't call a parent method to do this.)
         p_data.sample_thickness = self.sample_thickness
         p_data.sample_dtype = self.sample_dtype
         p_data.frequency = self.frequency
         p_data._data_attributes = list(self._data_attributes)
+        p_data.is_log = self.is_log
 
-        #  and work thru the data attributes, slicing them and adding to the new
+        #  work thru the data attributes, slicing them and adding to the new
         #  processed_data object.
         for attr_name in self._data_attributes:
             attr = getattr(self, attr_name)
@@ -400,10 +493,9 @@ class processed_data(sample_data):
             attr = getattr(self, 'depth')
         attr[:] = (np.arange(self.n_samples) - n_samples) * self.sample_thickness + attr[0]
 
-        #  get a reference to our sample data and shift and pad
-        my_data = self.get_sample_data_ref()
-        my_data[:,n_samples:] = attr[:,0:old_samples]
-        my_data[:,0:n_samples] = np.nan
+        #  shift and pad
+        self.data[:,n_samples:] = attr[:,0:old_samples]
+        self.data[:,0:n_samples] = np.nan
 
 
     def shift_pings(self, vert_shift, to_depth=False):
@@ -419,7 +511,6 @@ class processed_data(sample_data):
             the depth attribute.
 
         """
-
         #  determine the vertical extent of the shift
         min_shift = np.min(vert_shift)
         max_shift = np.max(vert_shift)
@@ -436,32 +527,33 @@ class processed_data(sample_data):
         #  if there is a new vertical extent resize our arrays
         if (vert_ext != 0):
             #  determine the number of new samples as a result of the shift
-            new_samps = (np.ceil(vert_ext.astype('float32') / self.sample_thickness)).astype('uint')
+            new_samps = (np.ceil(vert_ext.astype('float32') /
+                    self.sample_thickness)).astype('uint')
             # calculate new sample dimension
-            new_sample_dim = (self.n_samples+new_samps).astype('uint')
+            new_sample_dim = (self.n_samples + new_samps).astype('uint')
             #  and resize (n_samples will be updated in the _resize method)
             old_samps = self.n_samples
             self.resize(self.n_pings, new_sample_dim)
 
         # create the new vertical axis
-        new_axis = (np.arange(self.n_samples) * self.sample_thickness) + np.min(vert_axis) + min_shift
+        new_axis = (np.arange(self.n_samples) * self.sample_thickness) + \
+                np.min(vert_axis) + min_shift
 
         #  check if this is not a constant shift
         if (vert_ext != 0):
             #  not constant, work thru the 2d attributes and interpolate the sample data
 
             #  first convert to linear units if required
-            if (self.data_type[0] == 'S'):
+            if (self.is_log):
                 is_log = True
                 self.to_linear()
             else:
                 is_log = False
 
-            #  get a reference to the sample data arrays and interpolate
-            my_data = self.get_sample_data_ref()
+            #  iterate thru the pings and interpolate
             for ping in range(self.n_pings):
-                my_data[ping,:] = np.interp(new_axis, vert_axis + vert_shift[ping],
-                        my_data[ping,:old_samps], left=np.nan, right=np.nan)
+                self.data[ping,:] = np.interp(new_axis, vert_axis + vert_shift[ping],
+                        self.data[ping,:old_samps], left=np.nan, right=np.nan)
 
             #  convert back to log units if required
             if (is_log):
@@ -481,30 +573,46 @@ class processed_data(sample_data):
         """
         to_linear converts sample data from log to linear
         """
+        #  check if we're already in linear form
+        if (not self.is_log):
+            return
 
+        #  convert the "known" types
         if (self.data_type == 'Sv'):
-            self.add_attribute('sv', 10.0 ** (self.Sv / 10.0))
+            self.data[:] = 10.0 ** (self.data / 10.0)
             self.data_type = 'sv'
-            self.remove_attribute('Sv')
         elif (self.data_type == 'Sp'):
-            self.add_attribute('sp', 10.0 ** (self.Sp / 10.0))
+            self.data[:] = 10.0 ** (self.data / 10.0)
             self.data_type = 'sp'
-            self.remove_attribute('Sp')
+        else:
+            #  we're going to assume you know what you're doing
+            self.data[:] = 10.0 ** (self.data / 10.0)
+
+        #  set the is_log flag
+        self.is_log = False
 
 
     def to_log(self):
         """
         to_log converts sample data from linear to log
         """
+        #  check if we're already in log form
+        if (self.is_log):
+            return
 
+        #  convert the "known" types
         if (self.data_type == 'sv'):
-            self.add_attribute('Sv', 10.0 * np.log10(self.sv))
+            self.data[:] = 10.0 * np.log10(self.data)
             self.data_type = 'Sv'
-            self.remove_attribute('sv')
         elif (self.data_type == 'sp'):
-            self.add_attribute('Sp', 10.0 * np.log10(self.sp))
+            self.data[:] = 10.0 * np.log10(self.data)
             self.data_type = 'Sp'
-            self.remove_attribute('sp')
+        else:
+            #  we're going to assume you know what you're doing
+            self.data[:] = 10.0 * np.log10(self.data)
+
+        #  set the is_log flag
+        self.is_log = True
 
 
     def interpolate(self, new_vaxis):
@@ -537,17 +645,16 @@ class processed_data(sample_data):
         self.sample_thickness = np.mean(np.ediff1d(new_vaxis))
 
         #  convert to linear units if required
-        if (self.data_type[0] == 'S'):
+        if (self.is_log):
             is_log = True
             self.to_linear()
         else:
             is_log = False
 
-        #  get a reference to the sample data array and interpolate
-        my_data = self.get_sample_data_ref()
+        #  interpolate
         for ping in range(self.n_pings):
-            my_data[ping,:] = np.interp(new_vaxis, old_vaxis,
-                    my_data[ping,:old_vaxis.shape[0]], left=np.nan, right=np.nan)
+            self.data[ping,:] = np.interp(new_vaxis, old_vaxis,
+                    self.data[ping,:old_vaxis.shape[0]], left=np.nan, right=np.nan)
 
         #  convert back to log units if required
         if (is_log):
@@ -576,25 +683,6 @@ class processed_data(sample_data):
         self.n_pings = self.ping_time.shape[0]
 
 
-    def get_sample_data_ref(self):
-        """
-        get_sample_data_ref returns a reference to the 2d sample data array
-        for this object. For the processed_data object we assume there will be
-        a single 2d "sample data" array so we simply fish out the 2d attribute
-        and return the reference. This is primarily intended for developers
-        writing code that interacts with processed_data objects who need access
-        to the sample data and may not know the data type.
-        """
-
-        sd_ref = None
-        for attr_name in self._data_attributes:
-            attr = getattr(self, attr_name)
-            if (attr.ndim == 2):
-                sd_ref = attr
-
-        return sd_ref
-
-
     def __setitem__(self, key, value):
         """
         we can assign to sample data elements in processed_data objects using
@@ -607,10 +695,6 @@ class processed_data(sample_data):
         mask work. You'll need to think about how this applies to ping masks
         if you want to assign using these.
         """
-
-        #  get a reference to our sample data array
-        my_data = self.get_sample_data_ref()
-
         #  determine if we're assigning with a mask or assigning with slice object
         if (isinstance(key, mask.mask)):
             #  it's a mask - make sure the mask applies to this object
@@ -636,8 +720,7 @@ class processed_data(sample_data):
             self._is_like_me(value)
 
             # and get a view of the sliced sample data
-            other_data = value.get_sample_data_ref()[sample_mask]
-
+            other_data = value.data[sample_mask]
         else:
             #  assume that this is a scalar or numpy array - we'll let
             #  numpy raise the error if the value cannot be broadcast into
@@ -645,7 +728,7 @@ class processed_data(sample_data):
             other_data = value
 
         #  set the sample data to the provided value(s)
-        my_data[sample_mask] = other_data
+        self.data[sample_mask] = other_data
 
 
     def __getitem__(self, key):
@@ -653,9 +736,6 @@ class processed_data(sample_data):
         processed_data objects can be sliced with standard index based slicing as
         well as mask objects.
         """
-
-        #  get a reference to our sample data array
-        my_data = self.get_sample_data_ref()
 
         #  determine if we're "slicing" with a mask or slicing with slice object
         if (isinstance(key, mask.mask)):
@@ -679,7 +759,7 @@ class processed_data(sample_data):
             sample_mask = key
 
         #  return the sliced/masked sample data
-        return my_data[sample_mask]
+        return self.data[sample_mask]
 
 
     def _check_mask(self, mask):
@@ -746,10 +826,10 @@ class processed_data(sample_data):
         the results in a sample mask.
         """
         #  get the new mask and data references
-        compare_mask, my_data, other_data = self._setup_compare(other)
+        compare_mask, other_data = self._setup_compare(other)
 
         #  and set the mask
-        compare_mask.mask[:] = my_data > other_data
+        compare_mask.mask[:] = self.data > other_data
 
         return compare_mask
 
@@ -763,10 +843,10 @@ class processed_data(sample_data):
         and return the results in a sample mask.
         """
         #  get the new mask and data references
-        compare_mask, my_data, other_data = self._setup_compare(other)
+        compare_mask, other_data = self._setup_compare(other)
 
         #  and set the mask
-        compare_mask.mask[:] = my_data > other_data
+        compare_mask.mask[:] = self.data > other_data
 
         return compare_mask
 
@@ -781,10 +861,10 @@ class processed_data(sample_data):
         and return the results in a sample mask.
         """
         #  get the new mask and data references
-        compare_mask, my_data, other_data = self._setup_compare(other)
+        compare_mask, other_data = self._setup_compare(other)
 
         #  and set the mask
-        compare_mask.mask[:] = my_data > other_data
+        compare_mask.mask[:] = self.data > other_data
 
         return compare_mask
 
@@ -799,10 +879,10 @@ class processed_data(sample_data):
         and return the results in a sample mask.
         """
         #  get the new mask and data references
-        compare_mask, my_data, other_data = self._setup_compare(other)
+        compare_mask, other_data = self._setup_compare(other)
 
         #  and set the mask
-        compare_mask.mask[:] = my_data > other_data
+        compare_mask.mask[:] = self.data > other_data
 
         return compare_mask
 
@@ -816,10 +896,10 @@ class processed_data(sample_data):
         the results in a sample mask.
         """
         #  get the new mask and data references
-        compare_mask, my_data, other_data = self._setup_compare(other)
+        compare_mask, other_data = self._setup_compare(other)
 
         #  and set the mask
-        compare_mask.mask[:] = my_data == other_data
+        compare_mask.mask[:] = self.data == other_data
 
         return compare_mask
 
@@ -833,10 +913,10 @@ class processed_data(sample_data):
         the results in a sample mask.
         """
         #  get the new mask and data references
-        compare_mask, my_data, other_data = self._setup_compare(other)
+        compare_mask, other_data = self._setup_compare(other)
 
         #  and set the mask
-        compare_mask.mask[:] = my_data != other_data
+        compare_mask.mask[:] = self.data != other_data
 
         return compare_mask
 
@@ -849,22 +929,19 @@ class processed_data(sample_data):
         *probably* successfully apply the operator.
         """
 
-        #  get the references to our sample data array
-        my_data = self.get_sample_data_ref()
-
         #  determine what we're comparing ourself to
         if (isinstance(other, processed_data)):
             #  we've been passed a processed_data object - make sure it's kosher
             self._is_like_me(other)
 
             #  get the references to the other sample data array
-            other_data = self.get_sample_data_ref()
+            other_data = other.data
 
         elif (isinstance(other, np.ndarray)):
             #  the comparison data is a numpy array - check its shape
-            if (other.shape != my_data.shape):
+            if (other.shape != self.data.shape):
                 raise ValueError("The numpy array provided for this operation/comparison is " +
-                        "the wrong shape. this obj:" + str(my_data.shape) + ", array:" +
+                        "the wrong shape. this obj:" + str(self.data.shape) + ", array:" +
                         str(other.shape))
             #  the array is the same shape as our data array - set the reference
             other_data = other
@@ -874,7 +951,7 @@ class processed_data(sample_data):
             #  be broadcast into our sample data's shape.
             other_data = other
 
-        return (my_data, other_data)
+        return other_data
 
 
     def _setup_compare(self, other):
@@ -883,12 +960,12 @@ class processed_data(sample_data):
         the comparison operators.
         """
         #  do some checks and get references to the data
-        my_data, other_data = self._setup_operators(other)
+        other_data = self._setup_operators(other)
 
         #  create the mask we will return
         compare_mask = mask.mask(like=self)
 
-        return (compare_mask, my_data, other_data)
+        return (compare_mask, other_data)
 
 
     def _setup_numeric(self, other, inplace=False):
@@ -897,52 +974,197 @@ class processed_data(sample_data):
         the numeric operators.
         """
         #  do some checks and get references to the data
-        my_data, other_data = self._setup_operators(other)
+        other_data = self._setup_operators(other)
 
         #  if we're not operating in-place, create a processed_data object to return
         if (not inplace):
             #  return refs to a new pd object
             op_result = self.empty_like()
-            op_data = op_result.get_sample_data_ref()
         else:
             #  we're operating in-place - return refs to ourself
             op_result = self
-            op_data = my_data
 
-        return (op_result, op_data, my_data, other_data)
+        return (op_result, other_data)
 
 
     def __add__(self, other):
         """
-
+        __add__ implements the binary addition operator
         """
         #  do some checks and get the data references
-        op_result, op_data, my_data, other_data = self._setup_numeric(other)
+        op_result, other_data = self._setup_numeric(other)
 
         #  do the math
-        op_data[:] = my_data + other_data
+        op_result.data[:] = self.data + other_data
 
         #  and return the result
         return op_result
 
 
     def __radd__(self, other):
-        pass
+        """
+        __radd__ implements the reflected binary addition operator
+        """
+
+        return self.__add__(other)
 
 
     def __iadd__(self, other):
         """
-        __iadd__
+        __iadd__ implements the in-place binary addition operator
         """
         #  do some checks and get the data references
-        op_result, op_data, my_data, other_data = self._setup_numeric(other, inplace=True)
+        op_result, other_data = self._setup_numeric(other, inplace=True)
 
         #  do the math
-        op_data[:] = my_data + other_data
+        op_result.data[:] = self.data + other_data
 
         #  and return the result
         return op_result
 
+
+    def __sub__(self, other):
+        """
+        __sub__ implements the binary subtraction operator
+        """
+        #  do some checks and get the data references
+        op_result, other_data = self._setup_numeric(other)
+
+        #  do the math
+        op_result.data[:] = self.data - other_data
+
+        #  and return the result
+        return op_result
+
+
+    def __rsub__(self, other):
+        """
+        __rsub__ implements the reflected binary subtraction operator
+        """
+
+        return self.__sub__(other)
+
+
+    def __isub__(self, other):
+        """
+        __isub__ implements the in-place binary subtraction operator
+        """
+        #  do some checks and get the data references
+        op_result, other_data = self._setup_numeric(other, inplace=True)
+
+        #  do the math
+        op_result.data[:] = self.data - other_data
+
+        #  and return the result
+        return op_result
+
+
+    def __mul__(self, other):
+        """
+        __add__ implements the binary multiplication operator
+        """
+        #  do some checks and get the data references
+        op_result, other_data = self._setup_numeric(other)
+
+        #  do the math
+        op_result.data[:] = self.data * other_data
+
+        #  and return the result
+        return op_result
+
+
+    def __rmul__(self, other):
+        """
+        __radd__ implements the reflected binary multiplication operator
+        """
+
+        return self.__mul__(other)
+
+
+    def __imul__(self, other):
+        """
+        __iadd__ implements the in-place binary multiplication operator
+        """
+        #  do some checks and get the data references
+        op_result, other_data = self._setup_numeric(other, inplace=True)
+
+        #  do the math
+        op_result.data[:] = self.data / other_data
+
+        #  and return the result
+        return op_result
+
+
+    def __truediv__(self, other):
+        """
+        __truediv__ implements the binary fp division operator
+        """
+        #  do some checks and get the data references
+        op_result, other_data = self._setup_numeric(other)
+
+        #  do the math
+        op_result.data[:] = self.data / other_data
+
+        #  and return the result
+        return op_result
+
+
+    def __rtruediv__(self, other):
+        """
+        __rtruediv__ implements the reflected binary fp division operator
+        """
+
+        return self.__truediv__(other)
+
+
+    def __itruediv__(self, other):
+        """
+        __itruediv__ implements the in-place binary fp division operator
+        """
+        #  do some checks and get the data references
+        op_result, other_data = self._setup_numeric(other, inplace=True)
+
+        #  do the math
+        op_result.data[:] = self.data / other_data
+
+        #  and return the result
+        return op_result
+
+
+    def __pow__(self, other):
+        """
+        __pow__ implements the binary power operator
+        """
+        #  do some checks and get the data references
+        op_result, other_data = self._setup_numeric(other)
+
+        #  do the math
+        op_result.data[:] = self.data ** other_data
+
+        #  and return the result
+        return op_result
+
+
+    def __rpow__(self, other):
+        """
+        __rpow__ implements the reflected binary power operator
+        """
+
+        return self.__pow__(other)
+
+
+    def __ipow__(self, other):
+        """
+        __ipow__ implements the in-place binary power operator
+        """
+        #  do some checks and get the data references
+        op_result, other_data = self._setup_numeric(other, inplace=True)
+
+        #  do the math
+        op_result.data[:] = self.data ** other_data
+
+        #  and return the result
+        return op_result
 
 
     def __str__(self):

@@ -13,6 +13,21 @@
 #  (1) FOR THE USE OF THE SOFTWARE AND DOCUMENTATION; OR (2) TO PROVIDE TECHNICAL
 #  SUPPORT TO USERS.
 
+"""
+
+
+| Developed by:  Rick Towler   <rick.towler@noaa.gov>
+| National Oceanic and Atmospheric Administration (NOAA)
+| Alaska Fisheries Science Center (AFSC)
+| Midwater Assesment and Conservation Engineering Group (MACE)
+|
+| Author:
+|       Rick Towler   <rick.towler@noaa.gov>
+| Maintained by:
+|       Rick Towler   <rick.towler@noaa.gov>
+
+"""
+
 '''
 
 
@@ -75,19 +90,16 @@ class mask(object):
             raise TypeError('Unknown mask type: ' + type)
 
         self.n_pings = size[0]
-        self.ping_time = np.full(size[0], np.datetime64('NaT'), dtype='datetime64[ms]')
+        self.ping_time = np.full(size[0], np.datetime64('NaT'),
+                dtype='datetime64[ms]')
         self.sample_offset = sample_offset
 
 
-    def like(self, like_obj, value, type='sample'):
+    def like(self, like_obj, value=False, type='sample'):
         '''
         like creates a mask with shape and axes properties that match an existing
         processed_data object.
         '''
-
-        #  masks must be based on processed_data objects
-        if (not isinstance(like_obj, processed_data.processed_data)):
-            raise TypeError('"like_obj" argument must be an instance of echolab2 procesed_data class' )
 
         #  ensure the value arg is a bool
         if (value):
@@ -100,44 +112,62 @@ class mask(object):
         self.ping_time = like_obj.ping_time.copy()
         self.sample_offset = like_obj.sample_offset
 
-        #  create the type specific attributes
-        if (type.lower() == 'sample'):
-            #  set the type
-            self.type = 'sample'
+        #  masks must be based on processed_data objects or other masks
+        if (isinstance(like_obj, processed_data.processed_data)):
+            #  base this mask off of a processed_data object
 
-            #  create a 2d mask array
-            self.mask = np.full((like_obj.n_pings,like_obj.n_samples), value, dtype=bool)
+            #  create the type specific attributes
+            if (type.lower() == 'sample'):
+                #  set the type
+                self.type = 'sample'
+
+                #  create a 2d mask array
+                self.mask = np.full((like_obj.n_pings,like_obj.n_samples),
+                        value, dtype=bool)
+                self.n_samples = like_obj.n_samples
+
+                #  get the range or depth vector
+                if (hasattr(like_obj, 'range')):
+                    self.range = like_obj.range.copy()
+                else:
+                    self.depth = like_obj.depth.copy()
+            elif (type.lower() == 'ping'):
+                #  set the type
+                self.type = 'ping'
+
+                #  ping masks don't have a sample dimension
+                self.n_samples = 0
+
+                #  create a 1D mask n_pings long
+                self.mask = np.full((like_obj.n_pings), value, dtype=bool)
+
+            else:
+                raise TypeError('Unknown mask type: ' + type)
+
+        elif (isinstance(like_obj, mask)):
+            #  base this mask off of another mask - copy the rest of the attributes
+            self.type = like_obj.type
             self.n_samples = like_obj.n_samples
-
-            #  get the range or depth vector
             if (hasattr(like_obj, 'range')):
                 self.range = like_obj.range.copy()
             else:
                 self.depth = like_obj.depth.copy()
-        elif (type.lower() == 'ping'):
-            #  set the type
-            self.type = 'ping'
 
-            #  ping masks don't have a sample dimension
-            self.n_samples = 0
-
-            #  create a 1D mask n_pings long
-            self.mask = np.full((like_obj.n_pings), value, dtype=bool)
+            #  and set the mask data
+            self.mask = np.full(like_obj.shape, value, dtype=bool)
 
         else:
-            raise TypeError('Unknown mask type: ' + type)
+            #  we only can base masks on processed_data or mask objects
+            raise TypeError('"like_obj" argument must be an instance of echolab2 ' +
+                    'procesed_data or mask classes' )
 
 
     def copy(self):
         '''
         copy returns a deep copy of this mask.
         '''
-
-        #  modify the name to indicate it is a copy
-        copy_name = self.name + '-copy'
-
         #  create a new empty mask
-        mask_copy = mask.mask(type=self.type, color=self.color, name=copy_name,
+        mask_copy = mask.mask(type=self.type, color=self.color, name=self.name,
             sample_offset=self.sample_offset)
 
         #  copy common attributes
@@ -180,9 +210,9 @@ class mask(object):
 
         try:
             #  check that the two masks are the same shape and share common axes
-            self._check_mask(other)
+            other_mask, ret_mask = self._check_mask(other)
 
-            return np.all(self.mask == other.mask)
+            return np.all(ret_mask.mask == other.mask)
         except:
             return False
 
@@ -191,9 +221,9 @@ class mask(object):
 
         try:
             #  check that the two masks are the same shape and share common axes
-            self._check_mask(other)
+            other_mask, ret_mask = self._check_mask(other)
 
-            return np.any(self.mask != other.mask)
+            return np.any(ret_mask.mask != other.mask)
         except:
             return False
 
@@ -220,150 +250,197 @@ class mask(object):
             return False
 
 
-    def logical_and(self, other, in_place=True, where=True):
-        '''
-        logical_and performs an element by element ANDing of our mask and the
-        mask provided in the "other" argument.
-
-        If in_place is True, "this" mask's data is modified. If in_place
-        is False, a copy of "this" mask is returned containing the results
-        of the AND.
-
-        Where is the same as the numpy.logical_* keyword.
-        '''
-
+    def __and__(self, other):
+        """
+        __and__ implements the logical AND operator (&)
+        """
         #  check that the two masks are the same shape and share common axes
-        self._check_mask(other)
+        other_mask, ret_mask = self._check_mask(other)
 
-        #  check if we are operating on our data or a copy
-        if (in_place):
-            #  operating on our data
-            np.logical_and(self.mask, other.mask, out=self.mask, where=where)
-            #  return a reference to ourself
-            return self
-        else:
-            #  returning a copy - create a copy to return
-            mask_copy = self.copy()
-            #  and it
-            np.logical_and(self.mask, other.mask, out=mask_copy.mask, where=where)
-            #  and return the copy
-            return mask_copy
+        #  set the mask
+        ret_mask.mask[:] = self.mask & other_mask.mask
+
+        #  and return the result
+        return ret_mask
 
 
-    def logical_or(self, other, in_place=True, where=True):
-        '''
-        logical_or performs an element by element ORing of our mask and the
-        mask provided in the "other" argument.
+    def __rand__(self, other):
+        """
+        __rand__ implements the reflected logical AND operator (&)
+        """
 
-        If in_place is True, "this" mask's data is modified. If in_place
-        is False, a copy of "this" mask is returned containing the results
-        of the OR.
+        return self.__and__(other)
 
-        Where is the same as the numpy.logical_* keyword.
-        '''
 
+    def __iand__(self, other):
+        """
+        __iand__ implements the in-place logical AND operator (&)
+        """
         #  check that the two masks are the same shape and share common axes
-        self._check_mask(other)
+        other_mask, ret_mask = self._check_mask(other, inplace=True)
 
-        #  check if we are operating on our data or a copy
-        if (in_place):
-            #  operating on our data
-            np.logical_or(self.mask, other.mask, out=self.mask, where=where)
-            #  return a reference to ourself
-            return self
-        else:
-            #  returning a copy - create a copy to return
-            mask_copy = self.copy()
-            #  and it
-            np.logical_or(self.mask, other.mask, out=mask_copy.mask, where=where)
-            #  and return the copy
-            return mask_copy
+        #  set the mask
+        ret_mask.mask[:] = self.mask & other_mask.mask
+
+        #  and return the result
+        return ret_mask
 
 
-    def logical_not(self, other, in_place=True, where=True):
-        '''
-        logical_not performs an element by element NOTing of our mask and the
-        mask provided in the "other" argument.
-
-        If in_place is True, "this" mask's data is modified. If in_place
-        is False, a copy of "this" mask is returned containing the results
-        of the NOT.
-
-        Where is the same as the numpy.logical_* keyword.
-        '''
-
+    def __or__(self, other):
+        """
+        __or__ implements the logical OR operator (|)
+        """
         #  check that the two masks are the same shape and share common axes
-        self._check_mask(other)
+        other_mask, ret_mask = self._check_mask(other)
 
-        #  check if we are operating on our data or a copy
-        if (in_place):
-            #  operating on our data
-            np.logical_not(self.mask, other.mask, out=self.mask, where=where)
-            #  return a reference to ourself
-            return self
-        else:
-            #  returning a copy - create a copy to return
-            mask_copy = self.copy()
-            #  and it
-            np.logical_not(self.mask, other.mask, out=mask_copy.mask, where=where)
-            #  and return the copy
-            return mask_copy
+        #  set the mask
+        ret_mask.mask[:] = self.mask | other_mask.mask
+
+        #  and return the result
+        return ret_mask
 
 
-    def logical_xor(self, other, in_place=True, where=True):
-        '''
-        logical_xor performs an element by element XORing of our mask and the
-        mask provided in the "other" argument.
+    def __ror__(self, other):
+        """
+        __rand__ implements the reflected logical OR operator (|)
+        """
 
-        If in_place is True, "this" mask's data is modified. If in_place
-        is False, a copy of "this" mask is returned containing the results
-        of the XOR.
+        return self.__or__(other)
 
-        Where is the same as the numpy.logical_* keyword.
-        '''
 
+    def __ior__(self, other):
+        """
+        __iand__ implements the in-place logical OR operator (|)
+        """
         #  check that the two masks are the same shape and share common axes
-        self._check_mask(other)
+        other_mask, ret_mask = self._check_mask(other, inplace=True)
 
-        #  check if we are operating on our data or a copy
-        if (in_place):
-            #  operating on our data
-            np.logical_xor(self.mask, other.mask, out=self.mask, where=where)
-            #  return a reference to ourself
-            return self
-        else:
-            #  returning a copy - create a copy to return
-            mask_copy = self.copy()
-            #  and it
-            np.logical_xor(self.mask, other.mask, out=mask_copy.mask, where=where)
-            #  and return the copy
-            return mask_copy
+        #  set the mask
+        ret_mask.mask[:] = self.mask | other_mask.mask
+
+        #  and return the result
+        return ret_mask
 
 
-    def _check_mask(self, other):
+    def __xor__(self, other):
+        """
+        __rand__ implements the logical exclusive or XOR operator (^)
+        """
+        #  check that the two masks are the same shape and share common axes
+        other_mask, ret_mask = self._check_mask(other)
+
+        #  set the mask
+        ret_mask.mask[:] = self.mask ^ other_mask.mask
+
+        #  and return the result
+        return ret_mask
+
+
+    def __rxor__(self, other):
+        """
+        __rand__ implements the reflected logical exclusive or XOR operator (^)
+        """
+
+        return self.__xor__(other)
+
+
+    def __ixor__(self, other):
+        """
+        __iand__ implements the in-place logical exclusive or XOR operator (^)
+        """
+        #  check that the two masks are the same shape and share common axes
+        other_mask, ret_mask = self._check_mask(other, inplace=True)
+
+        #  set the mask
+        ret_mask.mask[:] = self.mask ^ other_mask.mask
+
+        #  and return the result
+        return ret_mask
+
+
+    def __invert__(self):
+        """
+        __invert__ implements the unary arithmetic operatior ~ which when applied
+        to logical arrays will invert the values. There is no in-place version of
+        this operator in Python.
+        """
+
+        #  create the mask to return
+        ret_mask = self.copy()
+
+        #  set the return mask elements to the inverted state of this mask
+        ret_mask.mask[:] = ~self.mask
+
+        return ret_mask
+
+
+    def to_sample_mask(self, like_obj):
+        """
+        to_sample_mask returns a new 2d sample based mask created when called
+        by a ping based mask and provided with another sample mask or
+        processed_data object to obtain the sample count from.
+        """
+        pass
+
+
+    def _check_mask(self, other, inplace=False):
         '''
-        _check_mask ensures that the dimensions and axes values match
+        _check_mask ensures that the dimensions and axes values match. If possible,
+        it will coerce a ping mask to a sample mask by vertically expanding the
+        ping mask.
         '''
-
-        if (not self.type == other.type):
-            raise ValueError('Cannot operate on masks that are different types.')
-
+        #  make sure we share the same ping_time axis
         if (not np.array_equal(self.ping_time, other.ping_time)):
             raise ValueError('Mask ping times do not match.')
 
-        #  make sure the vertical axis is the same
+        #  make sure the vertical axes are the same (if present)
         if (hasattr(self, 'range')):
             if (hasattr(other, 'range')):
                 if (not np.array_equal(self.range, other.range)):
                     raise ValueError('Mask ranges do not match.')
             else:
-                raise AttributeError('You cannot compare a range based mask with a depth based mask.')
+                raise AttributeError('You cannot apply a range based mask ' +
+                        'to a depth based mask.')
         else:
             if (hasattr(other, 'depth')):
                 if (not np.array_equal(self.depth, other.depth)):
                     raise ValueError('Mask depths do not match.')
             else:
-                raise AttributeError('You cannot compare a depth based mask with a range based mask.')
+                raise AttributeError('You cannot apply a depth based mask ' +
+                        'to a range based mask.')
+
+        #  check if we need to do any coercion - we can convert ping masks to sample
+        #  masks in most cases. The only time we cannot is when someone is trying
+        #  to do an in-place operation applying a sample mask to a ping mask because
+        #  this requires that a new mask array be created which violates in-place
+        ret_mask = None
+        if (self.type == 'ping' and other.type == 'sample'):
+            if (inplace):
+                raise AttributeError('You cannot apply a sample based mask ' +
+                        'to a ping based mask in-place')
+            else:
+                #  create a new 2d mask based on the "other" sample mask
+                ret_mask = mask(like=other)
+
+                #  set all samples to true for each ping set true in the this mask
+                ret_mask[self.mask,:] = True
+        elif (self.type == 'sample' and other.type == 'ping'):
+            #  coerce the other mask to a sample mask
+            other_mask = mask(like=self)
+
+            #  set all samples to true for each ping set true in the other mask
+            other_mask[other.mask,:] = True
+
+        if (ret_mask is None):
+            #  we didn't have to coerce the return mask so set the return mask now
+            if (inplace):
+                #  if we're operating in-place - return self
+                ret_mask = self
+            else:
+                #  we're returning a new mask - create it
+                ret_mask = mask(like=self)
+
+        return (other_mask, ret_mask)
 
 
     def __str__(self):
