@@ -33,6 +33,7 @@
 
 '''
 import numpy as np
+import matplotlib
 import processed_data
 
 class mask(object):
@@ -154,7 +155,7 @@ class mask(object):
                 self.depth = like_obj.depth.copy()
 
             #  and set the mask data
-            self.mask = np.full(like_obj.shape, value, dtype=bool)
+            self.mask = np.full(like_obj.mask.shape, value, dtype=bool)
 
         else:
             #  we only can base masks on processed_data or mask objects
@@ -201,9 +202,33 @@ class mask(object):
         the value specified by the inside keyword and mask elements outside the
         polygon to the value specified by the outside keyword.
 
-        This is a place holder. A method similar to this should be implemented.
+        This code is based on code posted to Stack Overflow by Yusuke N.:
+        https://stackoverflow.com/questions/3654289/scipy-create-2d-polygon-mask
         """
-        pass
+
+        if (self.type == 'ping'):
+            raise TypeError('You cannot apply a polygon to a ping mask. ' +
+                    'You must convert it to a sample mask first.')
+
+        #  get a reference to the vertical axis
+        if (hasattr(self, 'range')):
+            v_axis = self.range
+        else:
+            v_axis = self.depth
+
+        #  create a matplotlib path
+        path = matplotlib.path.Path(poly_obj)
+
+        #  generate the vertices for the mask
+        x = np.resize(self.ping_time.copy(), self.n_samples)
+        y = np.repeat(v_axis, self.n_pings)
+        points = np.vstack((x,y)).T
+
+        #  determine which samples fall within the polygon
+        mask = path.contains_points(points)
+
+        #  and reshape the results back into our 2d
+        self.mask = mask.reshape((self.n_pings,self.n_samples))
 
 
     def __eq__(self, other):
@@ -374,13 +399,24 @@ class mask(object):
         return ret_mask
 
 
-    def to_sample_mask(self, like_obj):
+    def to_sample_mask(self, other):
         """
         to_sample_mask returns a new 2d sample based mask created when called
         by a ping based mask and provided with another sample mask or
         processed_data object to obtain the sample count from.
         """
-        pass
+        if (self.type == 'sample'):
+            return
+
+        #  create a new 2d mask based on the "other" sample mask
+        new_mask = mask(like=other)
+
+        #  set all samples to true for each ping set true in the this mask
+        new_mask.mask[self.mask,:] = True
+
+        #  and update the type and data
+        self.type = 'sample'
+        self.mask = new_mask.mask
 
 
     def _check_mask(self, other, inplace=False):
@@ -423,13 +459,17 @@ class mask(object):
                 ret_mask = mask(like=other)
 
                 #  set all samples to true for each ping set true in the this mask
-                ret_mask[self.mask,:] = True
+                ret_mask.mask[self.mask,:] = True
         elif (self.type == 'sample' and other.type == 'ping'):
             #  coerce the other mask to a sample mask
             other_mask = mask(like=self)
 
             #  set all samples to true for each ping set true in the other mask
-            other_mask[other.mask,:] = True
+            other_mask.mask[other.mask,:] = True
+
+        else:
+            #  mask types match, nothing to do
+            other_mask = other
 
         if (ret_mask is None):
             #  we didn't have to coerce the return mask so set the return mask now

@@ -28,7 +28,7 @@ Sv = raw_data_38.get_sv()
 print(Sv)
 
 #  create a copy of Sv to compare against the copy we will manipulate
-Sv_copy = Sv.copy()
+orig_Sv = Sv.copy()
 
 #  create a couple of masks. Masks come in two types. "Ping" masks are 1d masks
 #  that apply to all samples in a ping while "sample" masks are 2d and apply
@@ -61,13 +61,9 @@ print(ping_mask)
 
 #  At the most basic level, setting mask elements to True will specify that
 #  an operation occurs on that element. For example, if we wanted to set
-#  a block of samples between sample 20 and 30 from ping 100-110 to -999
+#  a block of samples between sample 50 and 800 from ping 20-100 to -999
 #  we could set those mask values to True and then use the mask to "index"
 #  into our processed_data object Sv
-
-#  set the mask elements from pings 20-100, samples 50-800 to True (remember
-#  in Python slices include the first and don't include the last index value
-#  in the slice.)
 sample_mask.mask[20:100, 50:800] = True
 
 #  now use the mask to set these samples to -999
@@ -79,7 +75,7 @@ subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.90, wspace=None, hspace
 
 #  plot up the original data
 ax1 = fig.add_subplot(2,1,1)
-eg = echogram.echogram(ax1, Sv_copy)
+eg = echogram.echogram(ax1, orig_Sv)
 eg.set_threshold([-70,-34])
 ax1.set_title("Original Sv Data")
 
@@ -91,6 +87,59 @@ ax2.set_title('Modified Sv data')
 
 #  show the results
 show()
+
+#  but that's not really how you would use a mask since you can
+#  set rectangular regions directly by slicing the processed_data
+#  object. Thresholding is a more realistic example of using a
+#  mask.
+
+#  using Python comparison operators with processed_data objects
+#  will return masks so thresholding is as simple as using <, >
+#  <=, >=, etc.
+
+Sv = orig_Sv.copy()
+
+#  The comparison operators work on scalars - create 3 masks each
+#  with a different threshold
+mask_1 = Sv < -45
+mask_2 = Sv > -25
+
+#  you can apply boolean operators to masks as well which also
+#  returns a mask. Just make sure you group the operations
+#  properly.
+mask_3 = (Sv >= -35) & (Sv <= -70)
+
+#  instead of using the masks to set values in the original Sv
+#  object let's create a processed_data object that is a copy
+#  of Sv with the sample data set to zeros
+synth_data = Sv.zeros_like()
+
+#  now set the values in our new processed_data object
+synth_data[mask_1] = 5
+synth_data[mask_2] += 5
+synth_data[mask_3] += 5
+
+#  and display the results
+fig = figure()
+subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.90, wspace=None, hspace=0.5)
+
+#  plot up the original data
+ax1 = fig.add_subplot(2,1,1)
+eg = echogram.echogram(ax1, orig_Sv)
+eg.set_threshold([-70,-34])
+ax1.set_title("Original Sv Data")
+
+#  and the data we just modified
+ax2 = fig.add_subplot(2,1,2)
+eg = echogram.echogram(ax2, synth_data)
+eg.set_threshold([0,20])
+ax2.set_title('Synthetic yhreshold results')
+
+#  show the results
+show()
+
+
+
 
 #  THIS EXAMPLE IS INCOMPLETE - I'M WORKING ON IT.
 
