@@ -43,7 +43,7 @@ fig = plt.figure(figsize=(7,7))
 for channel_id in ek60.channel_ids:
 
     #  get a reference to the raw_data for this channel
-    raw_data = ek60.get_rawdata(channel_id=channel_id)
+    raw_data = ek60.get_raw_data(channel_id=channel_id)
 
     #  get a color for this channel
     c = next(color)

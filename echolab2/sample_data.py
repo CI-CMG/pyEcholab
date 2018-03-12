@@ -1,4 +1,5 @@
 # coding=utf-8
+# coding=utf-8
 
 #     National Oceanic and Atmospheric Administration (NOAA)
 #     Alaskan Fisheries Science Center (AFSC)
@@ -823,7 +824,73 @@ class sample_data(object):
         return shifted_data
 
 
-    def _empty_like(self, obj, n_pings):
+    def _copy(self, obj):
+        """
+        _copy is an internal helper method that is called by child "copy"
+        methods to copy the sample_data attributes as well as the
+        data_attributes.
+        """
+
+        #  copy the common attributes
+        obj.channel_id = list(self.channel_id)
+        obj.sample_dtype = self.sample_dtype
+        obj.n_samples = self.n_samples
+        obj.n_pings = self.n_pings
+        obj.frequency = self.frequency
+        obj._data_attributes = list(self._data_attributes)
+
+        #  work through the data attributes list copying the values
+        for attr_name in obj._data_attributes:
+            attr = getattr(self, attr_name)
+            setattr(obj, attr_name, attr.copy())
+
+        #  return the copy
+        return obj
+
+
+    def _like(self, obj, n_pings, value, empty_times=False, channel_id=None):
+        """
+        _like is an internal helper method that is called by "empty_like" and
+        "zeros_like" methods of child classes which copy the sample_data attributes
+        into the provided sample_data based object as well as creating "data" arrays
+        that are filled with the specified value. All vertical axis will be copied
+        without modification.
+
+        If empty_times is False, the ping_time vector of this instance is copied
+        to the new object. If it is True, the new ping_time vector is filled with
+        NaT (not a time) values. IF n_pings != self.n_pings THIS ARGUMENT IS IGNORED
+        AND THE NEW PING VECTOR IS FILLED WITH NaT.
+
+        You can specify channel_id if you want to explicitly set it and not copy
+        it from this instance.
+
+        The result should be a new object where horizontal axes (excepting ping_time)
+        and sample data arrays are empty (NaN or NaT). The contents of the ping_time
+        vector will depend on the state of the empty_times keyword. The new object's
+        shape will be (n_pings, self.n_samples)
+        """
+        #  if n_pings is None, we create an empty array with the same number of pings
+        if (n_pings == None):
+            n_pings = self.n_pings
+
+        #  copy the common attributes
+        if (channel_id):
+            obj.channel_id = channel_id
+        else:
+            obj.channel_id = list(self.channel_id)
+        obj.sample_dtype = self.sample_dtype
+        obj.n_samples = self.n_samples
+        obj.n_pings = n_pings
+        obj.frequency = self.frequency
+        obj._data_attributes = list(self._data_attributes)
+
+        #  check if n_pings != self.n_pings - If the new object's horizontal axis is
+        #  a different shape than this object's we can't copy ping_time data since
+        #  there isn't a direct mapping and we don't know what the user wants here.
+        #  This can/should be handled in the child method if needed.
+        if (n_pings != self.n_pings):
+            #  we have to force an empty ping_time vector since the axes differ
+            empty_times = True
 
         #  create the dynamic attributes
         for attr_name in self._data_attributes:
@@ -835,20 +902,34 @@ class sample_data(object):
                 #  copy all vertical axes w/o changing them
                 data = attr.copy()
             else:
-                #  create an array the appropriate shape filled with Nans
+                #  create an array the appropriate shape filled with the specified value
                 if (attr.ndim == 1):
-                    #  create an array the same shape filled with Nans
+                    #  create an array the same shape filled with the specified value
                     data = np.empty((n_pings), dtype=attr.dtype)
-                    if data.dtype == 'datetime64[ms]':
+
+                    #  check if this is the ping_time attribute and if we should copy
+                    #  this instances ping_time data or create an empty ping_time vector
+                    if (attr_name == 'ping_time'):
+                        if (empty_times):
+                            data[:] = np.datetime64('NaT')
+                        else:
+                            data[:] = attr.copy()
+                    #  other time based attribuets are set to NaT - not sure if this is
+                    #  what we want to do, but not sure what other time attributes would
+                    #  exist so this is what we're doing for now
+                    elif data.dtype == 'datetime64[ms]':
                         data[:] = np.datetime64('NaT')
                     else:
-                        data[:] = np.nan
+                        data[:] = value
                 else:
+                    #  create the 2d array(s)
                     data = np.empty((n_pings, self.n_samples), dtype=attr.dtype)
-                    data[:, :] = np.nan
+                    data[:, :] = value
 
-            #  and add the attribute to our empty object
-            obj.add_attribute(attr_name, data)
+            #  add the attribute to our empty object - we can skip using add_attribute
+            #  here because we shouldn't need to check dimensions and we've already handled
+            #  the low level stuff like copying the _data_sttributes list, etc.
+            setattr(obj, attr_name, data)
 
         return obj
 
