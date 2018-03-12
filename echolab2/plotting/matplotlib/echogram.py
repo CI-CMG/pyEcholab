@@ -12,11 +12,20 @@ class echogram(object):
     "projections".
 
     https://matplotlib.org/examples/api/custom_projection_example.html
+
+    THIS IS SOME RAW CODE. It would be really great if someone picked this up
+    and made it better.
+
     '''
 
 
-    def __init__(self, axes, data_object=None, attribute='Sv', threshold=None,
+    def __init__(self, axes, data_object=None, data_attribute=None, threshold=None,
             cmap=None, x_label_attribute='ping_time', y_label_attribute='range'):
+
+        #  the attribute keyword only needs to be used when you are plotting data from
+        #  raw_data objects (which you normally shouldn't need to do.) When attribute
+        #  is None, we assume that we're working with a processed_data object which
+        #  stores the sample data in the "data" attribute.
 
         self.axes = axes
         self.threshold = threshold
@@ -46,16 +55,18 @@ class echogram(object):
             self.cmap = cmap
             self.cmap.set_bad(color='grey')
 
-        self.set_data(data_object, attribute=attribute)
+        self.set_data(data_object, data_attribute=data_attribute)
 
 
-    def set_data(self, data_object, attribute='Sv', update=True):
-        if (hasattr(data_object, attribute)):
-            self.data_object = data_object
-            self.attribute = attribute
+    def set_data(self, data_object, data_attribute=None, update=True):
+        if (data_attribute):
+            self.data_attribute = data_attribute
+        else:
+            self.data_attribute = None
+        self.data_object = data_object
 
-            if update:
-                self.update()
+        if update:
+            self.update()
 
 
     def set_colormap(self, colormap, bad_data='grey', update=True):
@@ -78,26 +89,30 @@ class echogram(object):
             self.update()
 
 
-    def update(self, data_object=None, attribute=None, threshold=None,
-            x_label_attribute='ping_time', y_label_attribute='range'):
+    def update(self, data_object=None, data_attribute=None, threshold=None,
+            x_label_attribute=None, y_label_attribute=None):
 
         #  update attributes if required
         if (threshold):
             self.threshold = threshold
-        if (threshold):
+        if (x_label_attribute):
             self.x_label_attribute = x_label_attribute
-        if (threshold):
+        if (y_label_attribute):
             self.y_label_attribute = y_label_attribute
+        if (data_attribute):
+            self.data_attribute = data_attribute
         if (data_object):
-            self. set_data(data_object, attribute=attribute, update=False)
+            self. set_data(data_object, data_attribute=data_attribute, update=False)
 
-        #  check if we have the data we're being asked to plot
-        if (not hasattr(self.data_object, self.attribute)):
-            #  we don't have any data to plot
-            return
-
-        #  get a reference to that data
-        data = getattr(self.data_object, self.attribute)
+        #  get a reference to the data to plot.
+        if (self.data_attribute):
+            if (not hasattr(self.data_object, self.data_attribute)):
+                #  we don't have any data to plot
+                return
+            else:
+                data = getattr(self.data_object, self.data_attribute)
+        else:
+            data = self.data_object.data
 
         #  set the threshold
         if (self.threshold):
@@ -106,7 +121,7 @@ class echogram(object):
             threshold = [np.nanmin(data),np.nanmax(data)]
 
         #  transform the data so it looks
-        echodata = np.flipud(np.rot90(data,1))#.astype('float32')
+        echodata = np.flipud(np.rot90(data,1))
 
         #  plot the sample data
         self.axes_image = self.axes.imshow(echodata, cmap=self.cmap, vmin=threshold[0],

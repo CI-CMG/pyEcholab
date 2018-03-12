@@ -67,7 +67,7 @@ ek60.read_raw(rawfiles)
 print(ek60)
 
 #  now get a reference to the RawData object that contains data from the first 38 kHz channel.
-raw_data_38_1 = ek60.get_rawdata(channel_number=2)
+raw_data_38_1 = ek60.get_raw_data(channel_number=2)
 '''
 the sample data from channel 2 is contained in a 136x994 array. The data was recorded
 with a 1024us transmit pulse length which on the EK60 and related hardware results
@@ -77,7 +77,7 @@ recorded in 2012.
 print(raw_data_38_1)
 
 #  and get a reference to the RawData object that contains data from the second 38 kHz channel.
-raw_data_38_2 = ek60.get_rawdata(channel_number=7)
+raw_data_38_2 = ek60.get_raw_data(channel_number=7)
 '''
 Channel 7's sample data is a 763x1059 array recoded with a 512us pulse length
 resulting in a sample interval of 128us. These data were recorded in 2017.
@@ -110,7 +110,7 @@ print(raw_data_38_1)
 ax_1 = fig.add_subplot(3,1,1)
 #  create an echogram to plot up the raw sample data
 echogram_2 = echogram.echogram(ax_1, raw_data_38_1, 'power')
-ax_1.set_title("Raw power as stored in RawData object")
+ax_1.set_title("Raw power as stored in raw_data object")
 
 
 '''
@@ -148,7 +148,7 @@ print(processed_power_1)
 #  create an axes
 ax_2 = fig.add_subplot(3,1,2)
 #  create an echogram which will display on our newly created axes
-echogram_2 = echogram.echogram(ax_2, processed_power_1, 'power')
+echogram_2 = echogram.echogram(ax_2, processed_power_1)
 ax_2.set_title("Power data in time order")
 
 #  now request Sv data in time order
@@ -161,7 +161,7 @@ print(Sv)
 #  create another axes
 ax_3 = fig.add_subplot(3,1,3)
 #  create an echogram which will display on our newly created axes
-echogram_3 = echogram.echogram(ax_3, Sv, 'Sv', threshold=[-70,-34])
+echogram_3 = echogram.echogram(ax_3, Sv, threshold=[-70,-34])
 ax_3.set_title("Sv data in time order")
 
 #  show our figure
@@ -176,20 +176,21 @@ angle_cmap = get_cmap('plasma')
 
 #  now request angles data in time order
 t = time.clock()
-angles = raw_data_38_1.get_physical_angles()
+angles_along, angles_athwart = raw_data_38_1.get_physical_angles()
 print("get_physical_angles - time ordered: " + str(time.clock() - t))
-print(angles)
+print(angles_along)
+print(angles_athwart)
 
 #  create another axes
 ax_1 = fig.add_subplot(2,1,1)
 #  create an echogram which will display on our newly created axes
-echogram_3 = echogram.echogram(ax_1, angles, 'angles_alongship', cmap=angle_cmap)
+echogram_3 = echogram.echogram(ax_1, angles_along, cmap=angle_cmap)
 ax_1.set_title("angles_alongship data in time order")
 
 #  create another axes
 ax_2 = fig.add_subplot(2,1,2)
 #  create an echogram which will display on our newly created axes
-echogram_3 = echogram.echogram(ax_2, angles, 'angles_athwartship', cmap=angle_cmap)
+echogram_3 = echogram.echogram(ax_2, angles_athwart, cmap=angle_cmap)
 ax_2.set_title("angles_athwartship data in time order")
 
 #  show our figure
