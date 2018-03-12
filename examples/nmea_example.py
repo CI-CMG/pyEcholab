@@ -135,7 +135,7 @@ gga_vlw_data = ek60.nmea_data.get_datagrams(['GGA','VLW'])
 # Now let's interpolate some data. First we need to get an instance of
 # processed_data since that will contain the time vector we're interpolating
 # to. In this case we grab Sv from the first channel we read.
-raw_data = ek60.get_rawdata(channel_number=1)
+raw_data = ek60.get_raw_data(channel_number=1)
 Sv = raw_data.get_sv()
 
 # Now we call the interpolate method where we pass the processed_data object and
@@ -207,12 +207,12 @@ plot_trackline(positions['latitude'][np.isfinite(positions['latitude'])],
 
 #  first try to interpolate the POS-MV attitude data. Do this by using the
 #  "attitude" meta-type
-positions = ek60.nmea_data.interpolate(Sv, 'attitude')
+hpr = ek60.nmea_data.interpolate(Sv, 'attitude')
 
 fig = plt.figure()
-plt.plot(Sv.ping_time, positions['heave'], color='g', label='heave')
-plt.plot(Sv.ping_time, positions['pitch'], color='r', label='pitch')
-plt.plot(Sv.ping_time, positions['roll'], color='c', label='roll')
+plt.plot(Sv.ping_time, hpr['heave'], color='g', label='heave')
+plt.plot(Sv.ping_time, hpr['pitch'], color='r', label='pitch')
+plt.plot(Sv.ping_time, hpr['roll'], color='c', label='roll')
 title = 'Heave, Pitch, and Roll'
 fig.suptitle(title, fontsize=14)
 plt.legend()
