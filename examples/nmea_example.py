@@ -83,89 +83,95 @@ def plot_trackline(lat, lon, raw_positions=None):
 #        see anything.
 
 #  specify a raw file or files for this example
-rawfiles = ['./data/EK60/DY1706_EK60-D20170609-T005736.raw']
+# rawfiles = ['./data/EK60/DY1706_EK60-D20170609-T005736.raw']
 
-#  these files ship with the EK60 software and currently are not in our example data set
+# These files ship with the EK60 software and currently are not in our example
+# data set.
 #rawfiles = ['./data/EK60/OfotenDemo-D20001214-T145902.raw',
 #            './data/EK60/OfotenDemo-D20001214-T154020.raw',
 #            './data/EK60/OfotenDemo-D20001214-T162003.raw',
 #            './data/EK60/OfotenDemo-D20001214-T164709.raw']
 
-#  these files are in our example dataset
+# These files are in our example dataset.
 rawfiles = ['./data/EK60/PC1106-D20110830-T034700.raw',
                './data/EK60/PC1106-D20110830-T044817.raw',
                './data/EK60/PC1106-D20110830-T052815.raw',
                './data/EK60/PC1106-D20110830-T053815.raw']
 
-#  create an instance of the EK60 instrument. This is the top level object used
-#  to interact with EK60 data sources
+# Create an instance of the EK60 instrument. This is the top level object used
+# to interact with EK60 data sources.
 ek60 = EK60.EK60()
 
-#  read our raw file
+# Read our raw file.
 ek60.read_raw(rawfiles)
 
-#  at this point you can print out some basic information about the nmea_data object
-print(ek60.nmea_data)
+# At this point you can print out some basic information about the nmea_data
+# object.
+# print(ek60.nmea_data)
 
-#  and you can extract the data if you want. When calling get_datagrams, the default
-#  behavior is to parse the data before returning it. pyecholab2 uses pynmea2 for
-#  parsing NMEA data. get_datagrams returns a dictionary keyed by the requested datagram
-#  type where the elements themselves are dictionaries that contain a 'time' field
-#  and 'nmea_object' field. In the example here, we'll request GGA and VLW data
+# And you can extract the data if you want. When calling get_datagrams,
+# the default behavior is to parse the data before returning it. pyecholab2
+# uses pynmea2 for parsing NMEA data. get_datagrams returns a dictionary
+# keyed by the requested datagram type where the elements themselves are
+# dictionaries that contain a 'time' field and 'nmea_object' field. In the
+# example here, we'll request GGA and VLW data.
 gga_vlw_data = ek60.nmea_data.get_datagrams(['GGA','VLW'])
 
-#  lets print out the time of the first GGA message and the parsed message data
-print(gga_vlw_data['GGA']['time'][0])
-print(gga_vlw_data['GGA']['data'][0])
+# Lets print out the time of the first GGA message and the parsed message data.
+# print(gga_vlw_data['GGA']['time'][0])
+# print(gga_vlw_data['GGA']['data'][0])
 
-#  As stated, by default the data is parsed so you can access that through the
-#  pynmea2 attributes. Check out the pynema2 docs for more info:
-#  https://github.com/Knio/pynmea2
-print('Parsed pynema2 data:')
-print('  Lat:', gga_vlw_data['GGA']['data'][0].latitude)
-print('  Lon:', gga_vlw_data['GGA']['data'][0].longitude)
+# As stated, by default the data is parsed so you can access that through the
+# pynmea2 attributes. Check out the pynema2 docs for more info:
+# https://github.com/Knio/pynmea2.
+# print('Parsed pynema2 data:')
+# print('  Lat:', gga_vlw_data['GGA']['data'][0].latitude)
+# print('  Lon:', gga_vlw_data['GGA']['data'][0].longitude)
 
-#  and do the same for VLW
-print(gga_vlw_data['VLW']['time'][0])
-print(gga_vlw_data['VLW']['data'][0])
+# ...and do the same for VLW.
+# print(gga_vlw_data['VLW']['time'][0])
+# print(gga_vlw_data['VLW']['data'][0])
 
-#  now let's interpolate some data. First we need to get an instance of processed_data
-#  since that will contain the time vector we're interpolating to. In this case we grab
-#  Sv from the first channel we read.
-raw_data = ek60.get_rawdata(channel_number=1)
+# Now let's interpolate some data. First we need to get an instance of
+# processed_data since that will contain the time vector we're interpolating
+# to. In this case we grab Sv from the first channel we read.
+raw_data = ek60.get_raw_data(channel_number=1)
 Sv = raw_data.get_sv()
 
-#  and now we call the interpolate method where we pass the processed_data object and
-#  a NMEA message type. By default, we can only interpolate message types that have been
-#  defined in the nmea_data class. These definitions are required since we need to be
-#  told what actual fields to interpolate since we wouldn't want to and often can't
-#  interpolate them all. (There is a keyword that allows you to specify these without
-#  having them defined in the class but I am ignoring that right now.)
+# Now we call the interpolate method where we pass the processed_data object and
+# a NMEA message type. By default, we can only interpolate message types that
+# have been defined in the nmea_data class. These definitions are required
+# since we need to be told what actual fields to interpolate since we
+# wouldn't want to and often can't interpolate them all. (There is a keyword
+# that allows you to specify these without having them defined in the class
+# but I am ignoring that right now.) The interpolate method returns a
+# dictionary containing ling times and corresponding values for specified
+# parameters.
 #
-#  So, let's try to interpolate the RMC message which contains lat/lon.
-ek60.nmea_data.interpolate(Sv, 'RMC')
+# So, let's try to interpolate the RMC message which contains lat/lon.
+positions = ek60.nmea_data.interpolate(Sv, 'RMC')
 
-#  check what we got:
-print(Sv)
+# Check what we got:
+# print(Sv)
 
-#  looks ok but...
-print('"RMC" lat:', Sv.latitude[0:10])
+# looks ok but...
+print('"RMC" lat:', positions['latitude'][0:10])
 
-#  Oh, it's all NaNs. This is because there wasn't any RMC data to interpolate.
-#  That's OK though, 'cause we'll blow your mind with this one. Let's interpolate
-#  again, using our 'position' meta-type. Meta-types allow us to specify multiple
-#  message types that contain the same data so you don't need to know ahead of
-#  time what position data is available. (Note that in the case where multiple
-#  position types are available, the first one that covers a given time range will
-#  be used.)
-ek60.nmea_data.interpolate(Sv, 'position')
+# Oh, it's all NaNs. This is because there wasn't any RMC data to interpolate.
+# That's OK though, 'cause we'll blow your mind with this one. Let's interpolate
+# again, using our 'position' meta-type. Meta-types allow us to specify multiple
+# message types that contain the same data so you don't need to know ahead of
+# time what position data is available. (Note that in the case where multiple
+# position types are available, the first one that covers a given time range
+# will be used.)
+positions = ek60.nmea_data.interpolate(Sv, 'position')
 
-#  take a look at what we got:
-print('"position" lat:', Sv.latitude[0:10])
+# Take a look at what we got:
+print('"RMC" lat:', positions['latitude'][0:10])
 
-#  that's better. There will probably still be a few NaNs since we often
-#  get pings before we receive GPS data and those pings end up outside of
-#  our interpolated data range.
+# That's better. There will probably still be a few NaNs since we often get
+# pings before we receive GPS data and those pings end up outside of our
+# interpolated data range.
 
 #  OK, now I'm coming back to something I ignored above. I want to get the
 #  non-interpolated lat and lon data so we can plot that on top of the
@@ -190,8 +196,8 @@ raw_lon = raw_latlon_data['GGA']['longitude']
 
 #  Now let's create a map with the trackline and the raw lat/lon
 #  plotted as X's on top of it.
-plot_trackline(Sv.latitude[np.isfinite(Sv.latitude)],
-               Sv.longitude[np.isfinite(Sv.longitude)],
+plot_trackline(positions['latitude'][np.isfinite(positions['latitude'])],
+               positions['longitude'][np.isfinite(positions['longitude'])],
                raw_positions=[raw_lat,raw_lon])
 
 
@@ -201,12 +207,12 @@ plot_trackline(Sv.latitude[np.isfinite(Sv.latitude)],
 
 #  first try to interpolate the POS-MV attitude data. Do this by using the
 #  "attitude" meta-type
-ek60.nmea_data.interpolate(Sv, 'attitude')
+hpr = ek60.nmea_data.interpolate(Sv, 'attitude')
 
 fig = plt.figure()
-plt.plot(Sv.ping_time, Sv.heave, color='g', label='heave')
-plt.plot(Sv.ping_time, Sv.pitch, color='r', label='pitch')
-plt.plot(Sv.ping_time, Sv.roll, color='c', label='roll')
+plt.plot(Sv.ping_time, hpr['heave'], color='g', label='heave')
+plt.plot(Sv.ping_time, hpr['pitch'], color='r', label='pitch')
+plt.plot(Sv.ping_time, hpr['roll'], color='c', label='roll')
 title = 'Heave, Pitch, and Roll'
 fig.suptitle(title, fontsize=14)
 plt.legend()
@@ -214,11 +220,12 @@ plt.show()
 
 
 #  next interpolate the speed data
-ek60.nmea_data.interpolate(Sv, 'speed')
+speed = ek60.nmea_data.interpolate(Sv, 'speed')
 
 fig = plt.figure()
-plt.plot(Sv.ping_time, Sv.spd_over_grnd_kts, color='c', label='Speed over ground')
-title = 'Speed over gound in Knots'
+plt.plot(Sv.ping_time, speed['spd_over_grnd_kts'],
+         color='c', label='Speed over ground')
+title = 'Speed over ground in Knots'
 fig.suptitle(title, fontsize=14)
 plt.legend()
 plt.show()
@@ -226,10 +233,11 @@ plt.show()
 
 #  and lastly the distance traveled obtained using the SDVLW datagram
 #  generated by the ER60 software.
-ek60.nmea_data.interpolate(Sv, 'distance')
+distance = ek60.nmea_data.interpolate(Sv, 'distance')
 
 fig = plt.figure()
-plt.plot(Sv.ping_time, Sv.trip_distance_nmi, color='c', label='distance (nmi)')
+plt.plot(Sv.ping_time, distance['trip_distance_nmi'], color='c',
+         label='distance (nmi)')
 title = 'Distance travelled in nmi'
 fig.suptitle(title, fontsize=14)
 plt.legend()
