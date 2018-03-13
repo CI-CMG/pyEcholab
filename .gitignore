@@ -113,3 +113,5 @@ venv.bak/
 #  MATLAB data files
 *.mat
 
+#  chuck's IDE
+.idea/
