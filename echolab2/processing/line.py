@@ -30,36 +30,28 @@
 
 import numpy as np
 import matplotlib
+from . import processed_data
 
-class mask(object):
+class line(object):
     '''
 
     '''
 
-    def __init__(self, size=None, like=None, value=False, type='sample', color=[148,0,211],
-            name='Mask', sample_offset=0):
+    def __init__(self,  type='sample', color=[148,0,211], name='line'):
 
-        super(mask, self).__init__()
+        super(line, self).__init__()
 
-        #  ensure the value arg is a bool
-        if (value):
-            value = True
-        else:
-            value = False
+
 
         #  set the initial attribute values
-        self.type = type
         self.color = color
         self.name = name
         self.n_pings = 0
-        self.n_samples = 0
-        self.sample_offset = sample_offset
 
-        #  if we've been provided with an object or size to base our mask on, create it
-        if (like):
-            self.like(like, value, type=type)
-        elif (size):
-            self.create(size, value, type=type, sample_offset=self.sample_offset)
+        self.ping_time = None
+        self.
+
+
 
 
     def create(self, size, value, type='sample', sample_offset=0):
@@ -109,7 +101,6 @@ class mask(object):
         self.sample_offset = like_obj.sample_offset
 
         #  masks must be based on processed_data objects or other masks
-
         if (isinstance(like_obj, processed_data.processed_data)):
             #  base this mask off of a processed_data object
 
