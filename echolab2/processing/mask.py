@@ -57,12 +57,12 @@ class mask(object):
 
         #  if we've been provided with an object or size to base our mask on, create it
         if (like):
-            self.like(like, value, type=type)
+            self.like(like, value, mask_type=type)
         elif (size):
-            self.create(size, value, type=type, sample_offset=self.sample_offset)
+            self.create(size, value, mask_type=type, sample_offset=self.sample_offset)
 
 
-    def create(self, size, value, type='sample', sample_offset=0):
+    def create(self, size, value, mask_type='sample', sample_offset=0):
         '''
         create creates a new mask array and axes given a mask size, type, and
         initial value. Size must be a list/tuple defining the mask dimensions
@@ -75,15 +75,15 @@ class mask(object):
         masks of any size
         '''
 
-        if (type.lower() == 'sample'):
+        if (mask_type.lower() == 'sample'):
             self.mask = np.full(size, value, dtype=bool)
             self.n_samples = size[1]
             self.range = np.full(size[1], np.nan)
-        elif (type.lower() == 'ping'):
+        elif (mask_type.lower() == 'ping'):
             self.mask = np.full(size, value, dtype=bool)
             self.n_samples = 0
         else:
-            raise TypeError('Unknown mask type: ' + type)
+            raise TypeError('Unknown mask type: ' + mask_type)
 
         self.n_pings = size[0]
         self.ping_time = np.full(size[0], np.datetime64('NaT'),
@@ -91,7 +91,7 @@ class mask(object):
         self.sample_offset = sample_offset
 
 
-    def like(self, like_obj, value=False, type='sample'):
+    def like(self, like_obj, value=False, mask_type='sample'):
         '''
         like creates a mask with shape and axes properties that match an existing
         processed_data object.
@@ -109,12 +109,14 @@ class mask(object):
         self.sample_offset = like_obj.sample_offset
 
         #  masks must be based on processed_data objects or other masks
-
-        if (isinstance(like_obj, processed_data.processed_data)):
+        #  use type().__name__ to determine if class of "like_obj"
+        #  is a processed_data object to avoid circular import references
+        #  (processed_data imports mask so mask cannot import processed_data)
+        if (type(like_obj).__name__ == 'processed_data'):
             #  base this mask off of a processed_data object
 
             #  create the type specific attributes
-            if (type.lower() == 'sample'):
+            if (mask_type.lower() == 'sample'):
                 #  set the type
                 self.type = 'sample'
 
@@ -128,7 +130,7 @@ class mask(object):
                     self.range = like_obj.range.copy()
                 else:
                     self.depth = like_obj.depth.copy()
-            elif (type.lower() == 'ping'):
+            elif (mask_type.lower() == 'ping'):
                 #  set the type
                 self.type = 'ping'
 
@@ -139,7 +141,7 @@ class mask(object):
                 self.mask = np.full((like_obj.n_pings), value, dtype=bool)
 
             else:
-                raise TypeError('Unknown mask type: ' + type)
+                raise TypeError('Unknown mask type: ' + mask_type)
 
         elif (isinstance(like_obj, mask)):
             #  base this mask off of another mask - copy the rest of the attributes

@@ -594,6 +594,11 @@ class sample_data(object):
         old_sample_dim = self.n_samples
         old_ping_dim = self.ping_time.shape[0]
 
+        #  ensure our values are ints - some platforms/versions don't automagically
+        #  coerce floats to ints when used as integer args
+        new_ping_dim = int(new_ping_dim)
+        new_sample_dim = int(new_sample_dim)
+
         #  work thru our list of attributes
         for attr_name in self._data_attributes:
 
