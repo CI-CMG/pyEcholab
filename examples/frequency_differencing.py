@@ -33,9 +33,11 @@ botfiles = ['./data/EK60/DY1706_EK60-D20170625-T062521.bot',
 ek60 = EK60.EK60()
 
 #  read the raw files, store 18, 38, and 120 kHz
+print('Reading the raw files...')
 ek60.read_raw(rawfiles, frequencies=[18000,38000,120000])
 
 #  read the .bot files
+print('Reading the bot files...')
 ek60.read_bot(botfiles)
 
 #  get the raw_data objects from the ek60 object - we'll call

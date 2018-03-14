@@ -78,13 +78,13 @@ fig = figure()
 subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.90, wspace=None, hspace=0.5)
 
 #  get the data in ping order and plot
-Sv = raw_data_38.get_sv(time_order=False)
+Sv = raw_data_38.get_Sv(time_order=False)
 ax = fig.add_subplot(2,1,1)
 eg = echogram.echogram(ax, Sv)
 ax.set_title('Sythetic power converted to Sv shown in ping order.')
 
 #  get the Sv data in time order and plot
-Sv = raw_data_38.get_sv()
+Sv = raw_data_38.get_Sv()
 ax = fig.add_subplot(2,1,2)
 eg = echogram.echogram(ax, Sv)
 ax.set_title('Sythetic power converted to Sv shown in time order.')
@@ -107,7 +107,7 @@ eg = echogram.echogram(ax, raw_data_38, data_attribute='power')
 ax.set_title("Synthetic power after delete - should be 136 pings")
 
 #  get the Sv data in time order and plot
-Sv = raw_data_38.get_sv()
+Sv = raw_data_38.get_Sv()
 ax = fig.add_subplot(2,1,2)
 eg = echogram.echogram(ax, Sv)
 ax.set_title('Sythetic power after delete converted to Sv shown in time order.')

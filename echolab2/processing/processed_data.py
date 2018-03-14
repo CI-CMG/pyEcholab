@@ -831,6 +831,9 @@ class processed_data(sample_data):
         #  and set the mask
         compare_mask.mask[:] = self.data > other_data
 
+        #  restore the error settings we disabled in _setup_compare
+        np.seterr(**self._old_npset)
+
         return compare_mask
 
 
@@ -847,6 +850,9 @@ class processed_data(sample_data):
 
         #  and set the mask
         compare_mask.mask[:] = self.data < other_data
+
+        #  restore the error settings we disabled in _setup_compare
+        np.seterr(**self._old_npset)
 
         return compare_mask
 
@@ -866,6 +872,9 @@ class processed_data(sample_data):
         #  and set the mask
         compare_mask.mask[:] = self.data >= other_data
 
+        #  restore the error settings we disabled in _setup_compare
+        np.seterr(**self._old_npset)
+
         return compare_mask
 
 
@@ -884,6 +893,9 @@ class processed_data(sample_data):
         #  and set the mask
         compare_mask.mask[:] = self.data <= other_data
 
+        #  restore the error settings we disabled in _setup_compare
+        np.seterr(**self._old_npset)
+
         return compare_mask
 
 
@@ -901,6 +913,9 @@ class processed_data(sample_data):
         #  and set the mask
         compare_mask.mask[:] = self.data == other_data
 
+        #  restore the error settings we disabled in _setup_compare
+        np.seterr(**self._old_npset)
+
         return compare_mask
 
 
@@ -917,6 +932,9 @@ class processed_data(sample_data):
 
         #  and set the mask
         compare_mask.mask[:] = self.data != other_data
+
+        #  restore the error settings we disabled in _setup_compare
+        np.seterr(**self._old_npset)
 
         return compare_mask
 
@@ -964,6 +982,9 @@ class processed_data(sample_data):
 
         #  create the mask we will return
         compare_mask = mask.mask(like=self)
+
+        #  disable warning for comparing NaNs
+        self._old_npset = np.seterr(invalid='ignore')
 
         return (compare_mask, other_data)
 

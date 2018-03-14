@@ -34,7 +34,7 @@ ek60.read_raw(rawfiles)
 raw_data_38 = ek60.get_raw_data(channel_number=1)
 
 #  get Sv
-Sv_38 = raw_data_38.get_sv()
+Sv_38 = raw_data_38.get_Sv()
 
 #  create an application instance
 app = QApplication([])

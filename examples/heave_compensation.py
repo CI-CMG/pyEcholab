@@ -28,7 +28,7 @@ ek60.read_raw(rawfiles)
 raw_data_38 = ek60.get_raw_data(channel_number=2)
 
 #  get a processed_data object containing the heave corrected Sv on a depth grid
-heave_corrected_Sv = raw_data_38.get_sv(heave_correct=True)
+heave_corrected_Sv = raw_data_38.get_Sv(heave_correct=True)
 print(heave_corrected_Sv)
 
 #  extract a portion of the data to plot "zoomed in". We can use the view method

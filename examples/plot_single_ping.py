@@ -39,6 +39,8 @@ color = iter(cm.rainbow(np.linspace(0, 1, len(ek60.channel_ids))))
 #  create a figure
 fig = plt.figure(figsize=(7,7))
 
+#  get references
+
 #  plot power from the specified ping from all channels
 for channel_id in ek60.channel_ids:
 

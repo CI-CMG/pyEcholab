@@ -21,7 +21,7 @@ raw_data_38 = ek60.get_raw_data(channel_number=2)
 print(raw_data_38)
 
 #  get a processed_data object containing Sv
-Sv = raw_data_38.get_sv()
+Sv = raw_data_38.get_Sv()
 print(Sv)
 
 #  create a copy of Sv to compare against the copy we will manipulate

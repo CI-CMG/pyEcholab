@@ -153,7 +153,7 @@ ax_2.set_title("Power data in time order")
 
 #  now request Sv data in time order
 t = time.clock()
-Sv = raw_data_38_1.get_sv()
+Sv = raw_data_38_1.get_Sv()
 print("get_Sv - time ordered: " + str(time.clock() - t))
 #  this will also be 1662 pings by 1988 samples but is Sv ordered by time
 print(Sv)
