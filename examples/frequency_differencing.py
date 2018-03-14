@@ -15,15 +15,28 @@ to be an example of how to really do frequency differening.
 from matplotlib.pyplot import figure, show, subplots_adjust
 from echolab2.instruments import EK60
 from echolab2.plotting.matplotlib import echogram
+from echolab2.processing import mask
+import numpy as np
 
 
 #  read in some data
 rawfiles = ['./data/EK60/DY1706_EK60-D20170625-T062521.raw',
             './data/EK60/DY1706_EK60-D20170625-T063335.raw',
             './data/EK60/DY1706_EK60-D20170625-T064148.raw']
-ek60 = EK60.EK60()
-ek60.read_raw(rawfiles)
 
+#  specify the matching bottom files.
+botfiles = ['./data/EK60/DY1706_EK60-D20170625-T062521.bot',
+            './data/EK60/DY1706_EK60-D20170625-T063335.bot',
+            './data/EK60/DY1706_EK60-D20170625-T064148.bot']
+
+#  create an instance of our EK60 class
+ek60 = EK60.EK60()
+
+#  read the raw files, store 18, 38, and 120 kHz
+ek60.read_raw(rawfiles, frequencies=[18000,38000,120000])
+
+#  read the .bot files
+ek60.read_bot(botfiles)
 
 #  get the raw_data objects from the ek60 object - we'll call
 #  get_raw_data with no arguments to get a dict keyed by channel
@@ -35,13 +48,37 @@ raw_data = ek60.get_raw_data()
 #  would not work if there are multiple channels with the same
 #  frequency.
 Sv_data = {18000:None, 38000:None, 120000:None}
+bottom_lines = {18000:None, 38000:None, 120000:None}
 for chan_id in raw_data:
     #  check if this is a frequency we're looking for
     if (raw_data[chan_id].frequency[0] in Sv_data.keys()):
-        #  it is, get the linear sv and assign to our dict
+        #  it is, get Sv and assign to our dict
         Sv_data[raw_data[chan_id].frequency[0]] = \
-            raw_data[chan_id].get_sv()
+            raw_data[chan_id].get_Sv()
+        bottom_lines[raw_data[chan_id].frequency[0]] = \
+            raw_data[chan_id].get_bottom_depths(return_range=True)
 
+#  now create a amsk for each frequency and apply the bottom lines
+#  to these masks such that we mask out samples below the bottom.
+#  (we'll actually mask everything from 0.5m above the bottom down.)
+masks = {18000:None, 38000:None, 120000:None}
+for freq in Sv_data.keys():
+
+    #  create a mask
+    masks[freq] = mask.mask(like=Sv_data[freq])
+
+    #  next create a new line that is 0.5m shallower. (in place
+    #  operators will change the existing line.)
+    mask_line = bottom_lines[freq] - 0.5
+
+    #  now apply that line to our mask - we apply the value True
+    #  BELOW our line. Note that we don't need to specify the value
+    #  as True is the default.
+    masks[freq].apply_line(mask_line, apply_above=False)
+
+    # now use this mask to set sample data from 0.5m above the bottom
+    # downward to NaN.
+    Sv_data[freq][masks[freq]] = np.nan
 
 #  now lets compute some differences - the process_data class
 #  implements the basic Python arithmetic operators so we can

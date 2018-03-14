@@ -29,445 +29,248 @@
 """
 
 import numpy as np
-import matplotlib
-from . import processed_data
+
 
 class line(object):
     '''
 
     '''
 
-    def __init__(self,  type='sample', color=[148,0,211], name='line'):
+    def __init__(self, ping_time=None, data=None, color=[148,0,211], name='line'):
 
         super(line, self).__init__()
 
 
+        self.ping_time = ping_time
+        self.data = data
 
         #  set the initial attribute values
         self.color = color
         self.name = name
-        self.n_pings = 0
-
-        self.ping_time = None
-        self.
 
 
+    def empty_like(self, line_obj, name=None, color=None):
+        """
 
+        """
+        #  create a new line object to return
+        new_line = line(ping_time=line_obj.ping_time.copy())
 
-    def create(self, size, value, type='sample', sample_offset=0):
-        '''
-        create creates a new mask array and axes given a mask size, type, and
-        initial value. Size must be a list/tuple defining the mask dimensions
-        as [n_pings, n_samples]. For ping masks it must at least contain 1
-        elements and for sample masks it must contain 2. Because this mask
-        is not based on an existing object, the axes will be empty.
-
-        99% of the time you will call "like" to create a mask size to an
-        existing processed_data object but this method can be used to create
-        masks of any size
-        '''
-
-        if (type.lower() == 'sample'):
-            self.mask = np.full(size, value, dtype=bool)
-            self.n_samples = size[1]
-            self.range = np.full(size[1], np.nan)
-        elif (type.lower() == 'ping'):
-            self.mask = np.full(size, value, dtype=bool)
-            self.n_samples = 0
+        #  check if new props were provided
+        if (color):
+            new_line.color = color
         else:
-            raise TypeError('Unknown mask type: ' + type)
-
-        self.n_pings = size[0]
-        self.ping_time = np.full(size[0], np.datetime64('NaT'),
-                dtype='datetime64[ms]')
-        self.sample_offset = sample_offset
-
-
-    def like(self, like_obj, value=False, type='sample'):
-        '''
-        like creates a mask with shape and axes properties that match an existing
-        processed_data object.
-        '''
-
-        #  ensure the value arg is a bool
-        if (value):
-            value = True
+            new_line.color = line_obj.color
+        if (name):
+            new_line.name = name
         else:
-            value = False
+            new_line.name = line_obj.name
 
-        #  copy attributes common to both mask types
-        self.n_pings = like_obj.n_pings
-        self.ping_time = like_obj.ping_time.copy()
-        self.sample_offset = like_obj.sample_offset
+        #  set the data array to NaNs
+        new_line.data = np.full(new_line.ping_time.shape[0], np.nan)
 
-        #  masks must be based on processed_data objects or other masks
-        if (isinstance(like_obj, processed_data.processed_data)):
-            #  base this mask off of a processed_data object
+        #  and return the new line object
+        return new_line
 
-            #  create the type specific attributes
-            if (type.lower() == 'sample'):
-                #  set the type
-                self.type = 'sample'
 
-                #  create a 2d mask array
-                self.mask = np.full((like_obj.n_pings,like_obj.n_samples),
-                        value, dtype=bool)
-                self.n_samples = like_obj.n_samples
+    def interpolate(self, new_times):
+        """
+        interpolate interpolates the data values to the provided time vector.
+        """
+        self.data[:] = np.interp(self.ping_time, new_times,
+                    self.data, left=np.nan, right=np.nan)
+        self.ping_time = new_times.copy()
 
-                #  get the range or depth vector
-                if (hasattr(like_obj, 'range')):
-                    self.range = like_obj.range.copy()
-                else:
-                    self.depth = like_obj.depth.copy()
-            elif (type.lower() == 'ping'):
-                #  set the type
-                self.type = 'ping'
 
-                #  ping masks don't have a sample dimension
-                self.n_samples = 0
+    def _setup_numeric(self, other):
+        """
+        _setup_numeric is an internal method that contains generalized code for
+        the numeric operators.
+        """
 
-                #  create a 1D mask n_pings long
-                self.mask = np.full((like_obj.n_pings), value, dtype=bool)
-
+        if (isinstance(other, line)):
+            if (other.data.shape[0] != self.data.shape[0]):
+                #  the other line has a different number of pings
+                #  so interpolate to this line's pings
+                other_data = np.interp(self.ping_time, other.ping_time,
+                    self.data, left=np.nan, right=np.nan)
             else:
-                raise TypeError('Unknown mask type: ' + type)
-
-        elif (isinstance(like_obj, mask)):
-            #  base this mask off of another mask - copy the rest of the attributes
-            self.type = like_obj.type
-            self.n_samples = like_obj.n_samples
-            if (hasattr(like_obj, 'range')):
-                self.range = like_obj.range.copy()
-            else:
-                self.depth = like_obj.depth.copy()
-
-            #  and set the mask data
-            self.mask = np.full(like_obj.mask.shape, value, dtype=bool)
-
+                other_data = other.data
         else:
-            #  we only can base masks on processed_data or mask objects
-            raise TypeError('"like_obj" argument must be an instance of echolab2 ' +
-                    'procesed_data or mask classes' )
+            #  assume this is a scalar or array thats compatible
+            other_data = other
+
+        return other_data
 
 
-    def copy(self):
-        '''
-        copy returns a deep copy of this mask.
-        '''
-        #  create a new empty mask
-        mask_copy = mask.mask(type=self.type, color=self.color, name=self.name,
-            sample_offset=self.sample_offset)
-
-        #  copy common attributes
-        mask_copy.n_pings = self.n_pings
-        mask_copy.n_samples = self.n_samples
-        mask_copy.mask = self.mask.copy()
-        mask_copy.ping_time = self.ping_time.copy()
-
-        #  copy the vertical axis for sample masks
-        if (self.type.lower() == 'sample'):
-            if (hasattr(self, 'range')):
-                mask_copy.range = self.range.copy()
-            else:
-                mask_copy.depth = self.depth.copy()
-
-
-    def apply_line(self, line_obj, above=True, below=False):
+    def __add__(self, other):
         """
-        apply_line (working name) sets mask elements above the line object to
-        the value specified by the above keyword and mask elements below the
-        line to the value specified by the below keyword.
-
-        This is a place holder. A method similar to this should be implemented.
+        __add__ implements the binary addition operator
         """
-        pass
-
-
-    def apply_polygon(self, poly_obj, inside=True, outside=False):
-        """
-        apply_polygon (working name) sets mask elements inside the polygon object to
-        the value specified by the inside keyword and mask elements outside the
-        polygon to the value specified by the outside keyword.
-
-        This code is based on code posted to Stack Overflow by Yusuke N.:
-        https://stackoverflow.com/questions/3654289/scipy-create-2d-polygon-mask
-        """
-
-        if (self.type == 'ping'):
-            raise TypeError('You cannot apply a polygon to a ping mask. ' +
-                    'You must convert it to a sample mask first.')
-
-        #  get a reference to the vertical axis
-        if (hasattr(self, 'range')):
-            v_axis = self.range
+        other_data = self._setup_numeric(other)
+        new_line = self.empty_like(self)
+        if (isinstance(other, line)):
+            other_data = other.data
         else:
-            v_axis = self.depth
+            other_data = other
 
-        #  create a matplotlib path
-        path = matplotlib.path.Path(poly_obj)
+        new_line.data[:] = self.data + other_data
 
-        #  generate the vertices for the mask
-        x = np.resize(self.ping_time.copy(), self.n_samples)
-        y = np.repeat(v_axis, self.n_pings)
-        points = np.vstack((x,y)).T
-
-        #  determine which samples fall within the polygon
-        mask = path.contains_points(points)
-
-        #  and reshape the results back into our 2d
-        self.mask = mask.reshape((self.n_pings,self.n_samples))
+        return new_line
 
 
-    def __eq__(self, other):
-
-        try:
-            #  check that the two masks are the same shape and share common axes
-            other_mask, ret_mask = self._check_mask(other)
-
-            return np.all(ret_mask.mask == other.mask)
-        except:
-            return False
-
-
-    def __ne__(self, other):
-
-        try:
-            #  check that the two masks are the same shape and share common axes
-            other_mask, ret_mask = self._check_mask(other)
-
-            return np.any(ret_mask.mask != other.mask)
-        except:
-            return False
-
-
-    def any(self):
-        '''
-        any returns True if any elements of the mask are True
-        '''
-
-        try:
-            return np.any(self.mask)
-        except:
-            return False
-
-
-    def all(self):
-        '''
-        all returns True if all elements of the mask are True
-        '''
-
-        try:
-            return np.all(self.mask)
-        except:
-            return False
-
-
-    def __and__(self, other):
+    def __radd__(self, other):
         """
-        __and__ implements the logical AND operator (&)
-        """
-        #  check that the two masks are the same shape and share common axes
-        other_mask, ret_mask = self._check_mask(other)
-
-        #  set the mask
-        ret_mask.mask[:] = self.mask & other_mask.mask
-
-        #  and return the result
-        return ret_mask
-
-
-    def __rand__(self, other):
-        """
-        __rand__ implements the reflected logical AND operator (&)
+        __radd__ implements the reflected binary addition operator
         """
 
-        return self.__and__(other)
+        return self.__add__(other)
 
 
-    def __iand__(self, other):
+    def __iadd__(self, other):
         """
-        __iand__ implements the in-place logical AND operator (&)
+        __iadd__ implements the in-place binary addition operator
         """
-        #  check that the two masks are the same shape and share common axes
-        other_mask, ret_mask = self._check_mask(other, inplace=True)
+        other_data = self._setup_numeric(other)
+        self.data[:] = self.data + other_data
 
-        #  set the mask
-        ret_mask.mask[:] = self.mask & other_mask.mask
-
-        #  and return the result
-        return ret_mask
+        return self
 
 
-    def __or__(self, other):
+    def __sub__(self, other):
         """
-        __or__ implements the logical OR operator (|)
+        __sub__ implements the binary subtraction operator
         """
-        #  check that the two masks are the same shape and share common axes
-        other_mask, ret_mask = self._check_mask(other)
-
-        #  set the mask
-        ret_mask.mask[:] = self.mask | other_mask.mask
-
-        #  and return the result
-        return ret_mask
-
-
-    def __ror__(self, other):
-        """
-        __rand__ implements the reflected logical OR operator (|)
-        """
-
-        return self.__or__(other)
-
-
-    def __ior__(self, other):
-        """
-        __iand__ implements the in-place logical OR operator (|)
-        """
-        #  check that the two masks are the same shape and share common axes
-        other_mask, ret_mask = self._check_mask(other, inplace=True)
-
-        #  set the mask
-        ret_mask.mask[:] = self.mask | other_mask.mask
-
-        #  and return the result
-        return ret_mask
-
-
-    def __xor__(self, other):
-        """
-        __rand__ implements the logical exclusive or XOR operator (^)
-        """
-        #  check that the two masks are the same shape and share common axes
-        other_mask, ret_mask = self._check_mask(other)
-
-        #  set the mask
-        ret_mask.mask[:] = self.mask ^ other_mask.mask
-
-        #  and return the result
-        return ret_mask
-
-
-    def __rxor__(self, other):
-        """
-        __rand__ implements the reflected logical exclusive or XOR operator (^)
-        """
-
-        return self.__xor__(other)
-
-
-    def __ixor__(self, other):
-        """
-        __iand__ implements the in-place logical exclusive or XOR operator (^)
-        """
-        #  check that the two masks are the same shape and share common axes
-        other_mask, ret_mask = self._check_mask(other, inplace=True)
-
-        #  set the mask
-        ret_mask.mask[:] = self.mask ^ other_mask.mask
-
-        #  and return the result
-        return ret_mask
-
-
-    def __invert__(self):
-        """
-        __invert__ implements the unary arithmetic operatior ~ which when applied
-        to logical arrays will invert the values. There is no in-place version of
-        this operator in Python.
-        """
-
-        #  create the mask to return
-        ret_mask = self.copy()
-
-        #  set the return mask elements to the inverted state of this mask
-        ret_mask.mask[:] = ~self.mask
-
-        return ret_mask
-
-
-    def to_sample_mask(self, other):
-        """
-        to_sample_mask returns a new 2d sample based mask created when called
-        by a ping based mask and provided with another sample mask or
-        processed_data object to obtain the sample count from.
-        """
-        if (self.type == 'sample'):
-            return
-
-        #  create a new 2d mask based on the "other" sample mask
-        new_mask = mask(like=other)
-
-        #  set all samples to true for each ping set true in the this mask
-        new_mask.mask[self.mask,:] = True
-
-        #  and update the type and data
-        self.type = 'sample'
-        self.mask = new_mask.mask
-
-
-    def _check_mask(self, other, inplace=False):
-        '''
-        _check_mask ensures that the dimensions and axes values match. If possible,
-        it will coerce a ping mask to a sample mask by vertically expanding the
-        ping mask.
-        '''
-        #  make sure we share the same ping_time axis
-        if (not np.array_equal(self.ping_time, other.ping_time)):
-            raise ValueError('Mask ping times do not match.')
-
-        #  make sure the vertical axes are the same (if present)
-        if (hasattr(self, 'range')):
-            if (hasattr(other, 'range')):
-                if (not np.array_equal(self.range, other.range)):
-                    raise ValueError('Mask ranges do not match.')
-            else:
-                raise AttributeError('You cannot apply a range based mask ' +
-                        'to a depth based mask.')
+        other_data = self._setup_numeric(other)
+        new_line = self.empty_like(self)
+        if (isinstance(other, line)):
+            other_data = other.data
         else:
-            if (hasattr(other, 'depth')):
-                if (not np.array_equal(self.depth, other.depth)):
-                    raise ValueError('Mask depths do not match.')
-            else:
-                raise AttributeError('You cannot apply a depth based mask ' +
-                        'to a range based mask.')
+            other_data = other
 
-        #  check if we need to do any coercion - we can convert ping masks to sample
-        #  masks in most cases. The only time we cannot is when someone is trying
-        #  to do an in-place operation applying a sample mask to a ping mask because
-        #  this requires that a new mask array be created which violates in-place
-        ret_mask = None
-        if (self.type == 'ping' and other.type == 'sample'):
-            if (inplace):
-                raise AttributeError('You cannot apply a sample based mask ' +
-                        'to a ping based mask in-place')
-            else:
-                #  create a new 2d mask based on the "other" sample mask
-                ret_mask = mask(like=other)
+        new_line.data[:] = self.data - other_data
 
-                #  set all samples to true for each ping set true in the this mask
-                ret_mask.mask[self.mask,:] = True
-        elif (self.type == 'sample' and other.type == 'ping'):
-            #  coerce the other mask to a sample mask
-            other_mask = mask(like=self)
+        return new_line
 
-            #  set all samples to true for each ping set true in the other mask
-            other_mask.mask[other.mask,:] = True
 
+    def __rsub__(self, other):
+        """
+        __rsub__ implements the reflected binary subtraction operator
+        """
+
+        return self.__sub__(other)
+
+
+    def __isub__(self, other):
+        """
+        __isub__ implements the in-place binary subtraction operator
+        """
+        other_data = self._setup_numeric(other)
+        self.data[:] = self.data - other_data
+
+        return self
+
+
+    def __mul__(self, other):
+        """
+        __mul__ implements the binary multiplication operator
+        """
+        other_data = self._setup_numeric(other)
+        new_line = self.empty_like(self)
+        if (isinstance(other, line)):
+            other_data = other.data
         else:
-            #  mask types match, nothing to do
-            other_mask = other
+            other_data = other
 
-        if (ret_mask is None):
-            #  we didn't have to coerce the return mask so set the return mask now
-            if (inplace):
-                #  if we're operating in-place - return self
-                ret_mask = self
-            else:
-                #  we're returning a new mask - create it
-                ret_mask = mask(like=self)
+        new_line.data[:] = self.data * other_data
 
-        return (other_mask, ret_mask)
+        return new_line
+
+
+    def __rmul__(self, other):
+        """
+        __rmul__ implements the reflected binary multiplication operator
+        """
+
+        return self.__mul__(other)
+
+
+    def __imul__(self, other):
+        """
+        __imul__ implements the in-place binary multiplication operator
+        """
+        other_data = self._setup_numeric(other)
+        self.data[:] = self.data * other_data
+
+        return self
+
+
+    def __truediv__(self, other):
+        """
+        __truediv__ implements the binary fp division operator
+        """
+        other_data = self._setup_numeric(other)
+        new_line = self.empty_like(self)
+        if (isinstance(other, line)):
+            other_data = other.data
+        else:
+            other_data = other
+
+        new_line.data[:] = self.data / other_data
+
+        return new_line
+
+
+    def __rtruediv__(self, other):
+        """
+        __rtruediv__ implements the reflected binary fp division operator
+        """
+
+        return self.__truediv__(other)
+
+
+    def __itruediv__(self, other):
+        """
+        __itruediv__ implements the in-place binary fp division operator
+        """
+        other_data = self._setup_numeric(other)
+        self.data[:] = self.data / other_data
+
+        return self
+
+
+    def __pow__(self, other):
+        """
+        __pow__ implements the binary power operator
+        """
+        other_data = self._setup_numeric(other)
+        new_line = self.empty_like(self)
+        if (isinstance(other, line)):
+            other_data = other.data
+        else:
+            other_data = other
+
+        new_line.data[:] = self.data ** other_data
+
+        return new_line
+
+
+    def __rpow__(self, other):
+        """
+        __rpow__ implements the reflected binary power operator
+        """
+
+        return self.__pow__(other)
+
+
+    def __ipow__(self, other):
+        """
+        __ipow__ implements the in-place binary power operator
+        """
+        other_data = self._setup_numeric(other)
+        self.data[:] = self.data ** other_data
+
+        return self
 
 
     def __str__(self):
@@ -479,14 +282,11 @@ class line(object):
         msg = str(self.__class__) + " at " + str(hex(id(self))) + "\n"
 
         #  and some other basic info
-        msg = msg + "                 mask name: " + self.name + "\n"
+        msg = msg + "                 line name: " + self.name + "\n"
         msg = msg + "                      type: " + self.type + "\n"
         msg = msg + "                     color: " + str(self.color) + "\n"
-        if (self.type.lower() == 'ping'):
-            msg = msg + "                dimensions: (" + str(self.n_pings) + ")\n"
-        else:
-            msg = msg + "                dimensions: (" + str(self.n_pings) + "," + \
-                    str(self.n_samples) + ")\n"
-            msg = msg + "             sample offset: " + str(self.sample_offset) + "\n"
+        msg = msg + "                Start Time: " + str(self.ping_time[0]) + "\n"
+        msg = msg + "                  End Time: " + str(self.ping_time[-1]) + "\n"
+
 
         return msg

@@ -42,10 +42,7 @@ class mask(object):
         super(mask, self).__init__()
 
         #  ensure the value arg is a bool
-        if (value):
-            value = True
-        else:
-            value = False
+        value = bool(value)
 
         #  set the initial attribute values
         self.type = type
@@ -183,7 +180,7 @@ class mask(object):
                 mask_copy.depth = self.depth.copy()
 
 
-    def apply_line(self, line_obj, above=True, below=False):
+    def apply_line(self, line_obj, apply_above=False, value=True):
         """
         apply_line (working name) sets mask elements above the line object to
         the value specified by the above keyword and mask elements below the
@@ -191,7 +188,31 @@ class mask(object):
 
         This is a place holder. A method similar to this should be implemented.
         """
-        pass
+        #  make sure this is a sample mask
+        if (self.type == 'ping'):
+            raise TypeError('You cannot apply a line to a ping mask. ' +
+                    'You must convert it to a sample mask first.')
+
+        #  make sure we share the same ping_time axis
+        if (not np.array_equal(self.ping_time, line_obj.ping_time)):
+            raise ValueError('Line ping times do not match mask times.')
+
+        #  ensure value is a bool
+        value = bool(value)
+
+        if (hasattr(self, 'range')):
+            v_axis = self.range
+        else:
+            v_axis = self.depth
+
+        if (apply_above):
+            for ping in range(self.n_pings):
+                samps_to_mask = v_axis <= line_obj.data[ping]
+                self.mask[ping,:][samps_to_mask] = value
+        else:
+            for ping in range(self.n_pings):
+                samps_to_mask = v_axis >= line_obj.data[ping]
+                self.mask[ping,:][samps_to_mask] = value
 
 
     def apply_polygon(self, poly_obj, inside=True, outside=False):

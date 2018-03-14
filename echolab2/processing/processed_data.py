@@ -1061,7 +1061,7 @@ class processed_data(sample_data):
 
     def __mul__(self, other):
         """
-        __add__ implements the binary multiplication operator
+        __mul__ implements the binary multiplication operator
         """
         #  do some checks and get the data references
         op_result, other_data = self._setup_numeric(other)
@@ -1075,7 +1075,7 @@ class processed_data(sample_data):
 
     def __rmul__(self, other):
         """
-        __radd__ implements the reflected binary multiplication operator
+        __rmul__ implements the reflected binary multiplication operator
         """
 
         return self.__mul__(other)
@@ -1083,13 +1083,13 @@ class processed_data(sample_data):
 
     def __imul__(self, other):
         """
-        __iadd__ implements the in-place binary multiplication operator
+        __imul__ implements the in-place binary multiplication operator
         """
         #  do some checks and get the data references
         op_result, other_data = self._setup_numeric(other, inplace=True)
 
         #  do the math
-        op_result.data[:] = self.data / other_data
+        op_result.data[:] = self.data * other_data
 
         #  and return the result
         return op_result

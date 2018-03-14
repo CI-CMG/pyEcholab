@@ -33,6 +33,9 @@ raw_data_120 = ek60.get_raw_data(channel_number=2)
 print(raw_data_38)
 print(raw_data_120)
 
+bottom_38 = raw_data_38.get_bottom_depths()
+bottom_120 = raw_data_120.get_bottom_depths()
+
 #  get a processed_data object containing Sv
 Sv = raw_data_38.get_sv()
 print(Sv)
