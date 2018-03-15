@@ -216,7 +216,7 @@ if __name__ == "__main__":
 
         #  get the Sv array for this channel
         #  extract the power data into a processed_data object
-        data = raw_data.get_sv()
+        data = raw_data.get_Sv()
         title = '%3.0f kHz Sv results' % (ref_data[reference_input[i][0]]['frequency'] / 1000)
         difference = ref_data[reference_input[i][0]]['sv'] - data.data
         print_difference(difference, title)
@@ -245,7 +245,7 @@ if __name__ == "__main__":
 
 
         #  get the sv array for this channel
-        data = raw_data.get_sv(linear=True)
+        data = raw_data.get_sv()
         title = '%3.0f kHz sv results' % (ref_data[reference_input[i][0]]['frequency'] / 1000)
         difference = ref_data[reference_input[i][0]]['sv_linear'] - data.data
         print_difference(difference, title)
@@ -257,7 +257,7 @@ if __name__ == "__main__":
 
 
         #  get the Sp array for this channel
-        data = raw_data.get_sp()
+        data = raw_data.get_Sp()
         title = '%3.0f kHz Sp results' % (ref_data[reference_input[i][0]]['frequency'] / 1000)
         difference = ref_data[reference_input[i][0]]['sp'] - data.data
         print_difference(difference, title)
@@ -268,7 +268,7 @@ if __name__ == "__main__":
             plt.show(block=True)
 
         #  get the sp array for this channel
-        data = raw_data.get_sp(linear=True)
+        data = raw_data.get_sp()
         title = '%3.0f kHz sp results' % (ref_data[reference_input[i][0]]['frequency'] / 1000)
         difference = ref_data[reference_input[i][0]]['sp_linear'] - data.data
         print_difference(difference, title)
