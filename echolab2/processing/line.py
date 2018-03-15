@@ -33,15 +33,36 @@ import numpy as np
 
 class line(object):
     '''
-
+    The line class implements lines based on ping_time and depth/range values.
+    The class provides methods manipulating these values in various ways. The
+    numerical operators operate on the data, allowing offset lines to easily
+    be created. Color and name properties can be used in plotting the lines.
     '''
 
     def __init__(self, ping_time=None, data=None, color=[148,0,211], name='line'):
 
         super(line, self).__init__()
 
-
+        #  set the ping time
         self.ping_time = ping_time
+
+        #  assign data based on what we're given. Arrays must be the same shape
+        #  as ping_time, scalars are expanded to the same shape as ping_time
+        #  and None is None.
+        if (isinstance(data, np.ndarray)):
+            if (data.ndim == 0):
+                data = np.full(ping_time.shape[0], data, dtype='float32')
+            else:
+                if (data.shape[0] != ping_time.shape[0]):
+                    raise ValueError("The data array must be None, a scalar " +
+                            "or an array the same size as ping_time.")
+        else:
+            try:
+                data = float(data)
+                data = np.full(ping_time.shape[0], data, dtype='float32')
+            except:
+                raise ValueError("The data array must be None, a scalar " +
+                            "or an array the same size as ping_time.")
         self.data = data
 
         #  set the initial attribute values
@@ -51,7 +72,9 @@ class line(object):
 
     def empty_like(self, line_obj, name=None, color=None):
         """
-
+        empty_like creates an empty line (where data values are NaN) that
+        is the same length as the provided line object. The name and
+        color attributes are copied if not explicitly provided.
         """
         #  create a new line object to return
         new_line = line(ping_time=line_obj.ping_time.copy())

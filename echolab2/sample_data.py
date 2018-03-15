@@ -560,6 +560,56 @@ class sample_data(object):
         self.resize(n_pings, n_samples)
 
 
+    def roll(self, roll_pings):
+        """
+        roll rolls our data array elements along the ping axis.
+
+        Elements that roll beyond the last position are re-introduced at the first.
+        """
+
+        #TODO: Test these inline rolling functions
+        #      Need to profile this code to see which methods are faster. Currently all rolling is
+        #      implemented using np.roll which makes a copy of the data.
+        #TODO: verify rolling direction
+        #      Verify the correct rolling direction for both the np.roll calls and the 2 inline
+        #      functions. I *think* the calls to np.roll are correct and the inline functions roll
+        #      the wrong way.
+
+        def roll_1d(data, n):
+            #  rolls a 1d mostly in place
+            #  based on code found here:
+            #    https://stackoverflow.com/questions/35916201/alternative-to-numpy-roll-without-copying-array
+            #  THESE HAVE NOT BEEN TESTED
+            temp_view = data[:-n]
+            temp_copy = data[-n]
+            data[n:] = temp_view
+            data[0] = temp_copy
+
+        def roll_2d(data, n):
+            #  rolls a 2d mostly in place
+            temp_view = data[:-n,:]
+            temp_copy = data[-n,:]
+            data[n:,:] = temp_view
+            data[0,:] = temp_copy
+
+        #  work thru our list of attributes
+        for attr_name in self._data_attributes:
+
+            #  get a reference to this attribute
+            attr = getattr(self, attr_name)
+
+            #  resize the arrays using technique dependent on the array dimension
+            if (attr.ndim == 1):
+                attr = np.roll(attr, roll_pings)
+                #attr[:] = roll_1d(attr, roll_pings)
+            elif (attr.ndim == 2):
+                attr = np.roll(attr, roll_pings, axis=0)
+                #attr[:] = roll_2d(attr, roll_pings)
+
+            #  update the attribute
+            setattr(self, attr_name, attr)
+
+
     def resize(self, new_ping_dim, new_sample_dim):
         """
         resize_arrays iterates thru the provided list of attributes and
@@ -937,4 +987,3 @@ class sample_data(object):
             setattr(obj, attr_name, data)
 
         return obj
-
