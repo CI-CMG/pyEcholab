@@ -13,6 +13,10 @@ You must install pyproj before basemap.
 D:\temp>pip install pyproj-1.9.5.1-cp36-cp36m-win_amd64.whl
 D:\temp>pip install basemap-1.1.0-cp36-cp36m-win_amd64.whl
 
+pip installing the basemap package on linux is currently broken. You're
+on your own. Use Google or a "Scientific Python distro" like Anaconda
+which ships with basemap installed.
+
 """
 
 import numpy as np

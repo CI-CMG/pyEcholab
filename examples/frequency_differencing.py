@@ -15,7 +15,7 @@ to be an example of how to really do frequency differening.
 from matplotlib.pyplot import figure, show, subplots_adjust
 from echolab2.instruments import EK60
 from echolab2.plotting.matplotlib import echogram
-from echolab2.processing import mask
+from echolab2.processing import mask, line
 import numpy as np
 
 
@@ -60,9 +60,13 @@ for chan_id in raw_data:
         bottom_lines[raw_data[chan_id].frequency[0]] = \
             raw_data[chan_id].get_bottom_depths(return_range=True)
 
-#  now create a amsk for each frequency and apply the bottom lines
-#  to these masks such that we mask out samples below the bottom.
-#  (we'll actually mask everything from 0.5m above the bottom down.)
+#  now create a amsk for each frequency and apply a surface and bottom
+#  lines to these masks such that we mask out samples near the surface
+#  and below the bottom. (we'll actually mask everything from 0.5m above
+#  the bottom down.)
+
+#  first create a surface line - note that when we pass a scalar
+
 masks = {18000:None, 38000:None, 120000:None}
 for freq in Sv_data.keys():
 
@@ -71,12 +75,19 @@ for freq in Sv_data.keys():
 
     #  next create a new line that is 0.5m shallower. (in place
     #  operators will change the existing line.)
-    mask_line = bottom_lines[freq] - 0.5
+    bot_line = bottom_lines[freq] - 0.5
+
+    #  now create a surface exclusion line at 10m RANGE
+    surf_line = line.line(ping_time=Sv_data[freq].ping_time,
+            data=10)
 
     #  now apply that line to our mask - we apply the value True
     #  BELOW our line. Note that we don't need to specify the value
     #  as True is the default.
-    masks[freq].apply_line(mask_line, apply_above=False)
+    masks[freq].apply_line(bot_line, apply_above=False)
+
+    #  now apply our surface line to this same mask.
+    masks[freq].apply_line(surf_line, apply_above=True)
 
     # now use this mask to set sample data from 0.5m above the bottom
     # downward to NaN.

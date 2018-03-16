@@ -61,7 +61,7 @@ class line(ping_data):
                 if (data.shape[0] != ping_time.shape[0]):
                     raise ValueError("The data array must be None, a scalar " +
                             "or an array the same size as ping_time.")
-        else:
+        elif (data is not None):
             try:
                 data = float(data)
                 data = np.full(ping_time.shape[0], data, dtype='float32')

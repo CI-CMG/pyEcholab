@@ -318,7 +318,7 @@ class mask(object):
 
     def __iand__(self, other):
         """
-        __iand__ implements the in-place logical AND operator (&)
+        __iand__ implements the in-place logical AND operator (&=)
         """
         #  check that the two masks are the same shape and share common axes
         other_mask, ret_mask = self._check_mask(other, inplace=True)
@@ -354,7 +354,7 @@ class mask(object):
 
     def __ior__(self, other):
         """
-        __iand__ implements the in-place logical OR operator (|)
+        __iand__ implements the in-place logical OR operator (|=)
         """
         #  check that the two masks are the same shape and share common axes
         other_mask, ret_mask = self._check_mask(other, inplace=True)
@@ -390,7 +390,7 @@ class mask(object):
 
     def __ixor__(self, other):
         """
-        __iand__ implements the in-place logical exclusive or XOR operator (^)
+        __iand__ implements the in-place logical exclusive or XOR operator (^=)
         """
         #  check that the two masks are the same shape and share common axes
         other_mask, ret_mask = self._check_mask(other, inplace=True)

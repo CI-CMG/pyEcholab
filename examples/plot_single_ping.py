@@ -5,9 +5,9 @@
 This example plots a single ping as power for every channel in the specified raw file
 
 NOTE! This example is reaching into the EK60RawData objects directly to pull out power.
-This is only because we have not written the get_power method. If should be altered once
-the get_power method is written.
-
+Normally you would call EK60.raw_data.get_power() to get the power data in a
+processed_data object but this example was written before the get_power method
+existed and still (I think) has some worth as an example.
 
 """
 
