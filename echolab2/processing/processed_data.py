@@ -114,11 +114,11 @@ or 'depth'.
 
 '''
 import numpy as np
-from ..sample_data import sample_data
+from ..ping_data import ping_data
 from echolab2.processing import mask
 
 
-class processed_data(sample_data):
+class processed_data(ping_data):
     '''
 
     '''
@@ -326,8 +326,13 @@ class processed_data(sample_data):
             data_type = self.data_type
             is_log = self.is_log
 
-        #  get an empty processed_data object "like" this object (if channel_id
-        #  is not provided, it will be set in the parent's _like method.)
+        #  copy this channel id if none provided
+        if (channel_id):
+            channel_id = channel_id
+        else:
+            channel_id = list(self.channel_id)
+
+        #  get an empty processed_data object "like" this object
         empty_obj = processed_data(channel_id, self.frequency,
                 data_type)
         empty_obj.sample_thickness = self.sample_thickness
@@ -336,7 +341,7 @@ class processed_data(sample_data):
 
          #  call the parent _like helper method and return the result
         return self._like(empty_obj, n_pings, np.nan,
-                empty_times=empty_times, channel_id=None)
+                empty_times=empty_times)
 
 
     def zeros_like(self, n_pings=None, empty_times=False, channel_id=None,
@@ -376,6 +381,12 @@ class processed_data(sample_data):
             data_type = self.data_type
             is_log = self.is_log
 
+        #  copy this channel id if none provided
+        if (channel_id):
+            channel_id = channel_id
+        else:
+            channel_id = list(self.channel_id)
+
         #  get an empty processed_data object "like" this object
         empty_obj = processed_data(channel_id, self.frequency,
                 self.data_type)
@@ -385,7 +396,7 @@ class processed_data(sample_data):
 
         #  call the parent _like helper method and return the result
         return self._like(empty_obj, n_pings, 0.0,
-                empty_times=empty_times, channel_id=None)
+                empty_times=empty_times)
 
 
     def copy(self):

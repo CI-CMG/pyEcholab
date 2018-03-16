@@ -29,9 +29,10 @@
 """
 
 import numpy as np
+from ..ping_data import ping_data
 
 
-class line(object):
+class line(ping_data):
     '''
     The line class implements lines based on ping_time and depth/range values.
     The class provides methods manipulating these values in various ways. The
@@ -45,6 +46,10 @@ class line(object):
 
         #  set the ping time
         self.ping_time = ping_time
+
+        #  and the number of pings
+        if (ping_time is not None):
+            self.n_pings = ping_time.shape[0]
 
         #  assign data based on what we're given. Arrays must be the same shape
         #  as ping_time, scalars are expanded to the same shape as ping_time
@@ -68,6 +73,9 @@ class line(object):
         #  set the initial attribute values
         self.color = color
         self.name = name
+
+        #  update out data_attributes list adding the "data" attribute
+        self._data_attributes += ['data']
 
 
     def empty_like(self, line_obj, name=None, color=None):

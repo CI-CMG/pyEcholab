@@ -31,9 +31,9 @@
 
 import numpy as np
 
-class sample_data(object):
+class ping_data(object):
     """
-    echolab2.sample_data is the base class for all classes that store "ping"
+    echolab2.ping_data is the base class for all classes that store "ping"
     based data from fisheries sonar systems.  This class is not intended to be
     instantiated by the user. It is a base class that defines the common data
     attributes and methods that the user facing classes share.
@@ -53,9 +53,6 @@ class sample_data(object):
 
         #  all data classes contain the following attribites
 
-        #  channel ID stores the unique names for the data channels that are stored in the container.
-        self.channel_id = []
-
         #  n_pings stores the total number of pings contained in our container
         self.n_pings = -1
 
@@ -66,11 +63,6 @@ class sample_data(object):
         #  any attributes are added.
         self.sample_dtype = 'float32'
 
-        #  frequency may be a scalar or vector value depending on the child's implementation
-        #  Typically it would be a vector for "raw" data and a scalar for "processed" data.
-        #  If frequency is used as a vector, it must be defined in the _data_attributes list
-        self.frequency = None
-
         #  _data_attributes is an internal list that contains the names of all of the class's
         #  "data attributes". The echolab2 package uses this attribute to generalize various
         #  functions that manipulate these data.
@@ -79,7 +71,8 @@ class sample_data(object):
         #  ping_time, sample_interval, and transducer_depth. Or they can be 2d such as power,
         #  Sv, angle data, etc. echolab2 supports attributes that are 1 and 2d numpy
         #  arrays. When subclassing, you must extend this list in your __init__ method
-        #  to contain all of the  data attributes of that class THAT EXIST AT INSTANTIATION.
+        #  to contain all of the data attributes of that class that you want to exist at
+        #  instantiation (attributes can also be added later.)
 
         #  for the base class, we only define ping_time which is the only required attribute
         #  that all data objects must have.
@@ -688,9 +681,9 @@ class sample_data(object):
     def get_indices(self, start_ping=None, end_ping=None, start_time=None,
                     end_time=None, time_order=True):
         """
-        get_indices returns an index array containing the indices contained in the range
-        defined by the times and/or ping numbers provided. By default the indexes are in time
-        order. If time_order is set to False, the data will be returned in the
+        get_indices returns a boolean index array containing where the indices in the range
+        defined by the times and/or ping numbers provided are True. By default the indexes
+        are in time order. If time_order is set to False, the data will be returned in the
         order they occur in the data arrays.
 
         Note that pings with "empty" times (ping time == NaT) will be sorted to the
@@ -729,8 +722,8 @@ class sample_data(object):
         return primary_index[mask]
 
 
-    def _vertical_resample(self, data, sample_intervals, unique_sample_intervals, resample_interval,
-            sample_offsets, min_sample_offset, is_power=True):
+    def _vertical_resample(self, data, sample_intervals, unique_sample_intervals,
+            resample_interval, sample_offsets, min_sample_offset, is_power=True):
         """
         vertical_resample er, vertically resamples sample data given a target sample interval.
         This function also shifts samples vertically based on their sample offset so they
@@ -846,7 +839,8 @@ class sample_data(object):
         return (resampled_data, resample_interval)
 
 
-    def _vertical_shift(self, data, sample_offsets, unique_sample_offsets, min_sample_offset):
+    def _vertical_shift(self, data, sample_offsets, unique_sample_offsets,
+            min_sample_offset):
         """
         vertical_shift adjusts the output array size and pads the top of the
         samples array to vertically shift the positions of the sample data in the output
@@ -882,16 +876,14 @@ class sample_data(object):
     def _copy(self, obj):
         """
         _copy is an internal helper method that is called by child "copy"
-        methods to copy the sample_data attributes as well as the
+        methods to copy the ping_data attributes as well as the
         data_attributes.
         """
 
         #  copy the common attributes
-        obj.channel_id = list(self.channel_id)
         obj.sample_dtype = self.sample_dtype
         obj.n_samples = self.n_samples
         obj.n_pings = self.n_pings
-        obj.frequency = self.frequency
         obj._data_attributes = list(self._data_attributes)
 
         #  work through the data attributes list copying the values
@@ -903,11 +895,11 @@ class sample_data(object):
         return obj
 
 
-    def _like(self, obj, n_pings, value, empty_times=False, channel_id=None):
+    def _like(self, obj, n_pings, value, empty_times=False):
         """
         _like is an internal helper method that is called by "empty_like" and
-        "zeros_like" methods of child classes which copy the sample_data attributes
-        into the provided sample_data based object as well as creating "data" arrays
+        "zeros_like" methods of child classes which copy the ping_data attributes
+        into the provided ping_data based object as well as creating "data" arrays
         that are filled with the specified value. All vertical axis will be copied
         without modification.
 
@@ -929,14 +921,10 @@ class sample_data(object):
             n_pings = self.n_pings
 
         #  copy the common attributes
-        if (channel_id):
-            obj.channel_id = channel_id
-        else:
-            obj.channel_id = list(self.channel_id)
         obj.sample_dtype = self.sample_dtype
         obj.n_samples = self.n_samples
         obj.n_pings = n_pings
-        obj.frequency = self.frequency
+
         obj._data_attributes = list(self._data_attributes)
 
         #  check if n_pings != self.n_pings - If the new object's horizontal axis is
