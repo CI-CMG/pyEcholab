@@ -60,7 +60,7 @@ for chan_id in raw_data:
         bottom_lines[raw_data[chan_id].frequency[0]] = \
             raw_data[chan_id].get_bottom_depths(return_range=True)
 
-#  now create a amsk for each frequency and apply a surface and bottom
+#  now create a mask for each frequency and apply a surface and bottom
 #  lines to these masks such that we mask out samples near the surface
 #  and below the bottom. (we'll actually mask everything from 0.5m above
 #  the bottom down.)
@@ -114,8 +114,7 @@ Sv_120m38 = Sv_data[120000] - Sv_data[38000]
 
 
 #  Now we'll generate some masks identifying samples that fall within
-#  various ranges. These values are based *very* loosely on work
-#  done at AFSC by Denise McKelvey and Alex DeRobertis.
+#  various ranges.
 #
 #  The processed_data object also implements the Python comparison
 #  operators. These operators do an element by element comparison and
@@ -169,30 +168,26 @@ ax = fig.add_subplot(4,1,1)
 #  a view into our original data. We will plot all pings and samples
 #  0-2000.
 v_data = Sv_data[18000].view((None,None,None),(0,2000,None))
-eg = echogram.echogram(ax, v_data)
-eg.set_threshold([-70,-34])
+eg = echogram.echogram(ax, v_data, threshold=[-70,-34])
 ax.set_title("Original 18 kHz Sv Data")
 
 ax = fig.add_subplot(4,1,2)
 v_data = Sv_data[38000].view((None,None,None),(0,2000,None))
-eg = echogram.echogram(ax, v_data)
-eg.set_threshold([-70,-34])
+eg = echogram.echogram(ax, v_data, threshold=[-70,-34])
 ax.set_title("Original 38 kHz Sv Data")
 
 ax = fig.add_subplot(4,1,3)
 v_data = Sv_data[120000].view((None,None,None),(0,2000,None))
-eg = echogram.echogram(ax, v_data)
-eg.set_threshold([-70,-34])
+eg = echogram.echogram(ax, v_data, threshold=[-70,-34])
 ax.set_title("Original 120 kHz Sv Data")
 
 
 #  and our differencing data
 ax = fig.add_subplot(4,1,4)
 v_results = diff_results.view((None,None,None),(0,2000,None))
-eg = echogram.echogram(ax, v_results)
 #  note that we set the threshold to something that will work with
 #  the values we assigned to our results.
-eg.set_threshold([0,20])
+eg = echogram.echogram(ax, v_results, threshold=[0,20])
 ax.set_title('Differencing results')
 
 #  show the results

@@ -1,26 +1,19 @@
 
 
-#import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
+
 from matplotlib.colors import LinearSegmentedColormap, Colormap
 import numpy as np
 
 
 class echogram(object):
     '''
-    This should probably be a matplotlib custom Axes or what I gather matplotlib calls
-    "projections".
-
-    https://matplotlib.org/examples/api/custom_projection_example.html
-
-    THIS IS SOME RAW CODE. It would be really great if someone picked this up
-    and made it better.
+    This is becoming less of a mess, but it still needs a lot of work...
 
     '''
 
 
     def __init__(self, axes, data_object=None, data_attribute=None, threshold=None,
-            cmap=None, x_label_attribute='ping_time', y_label_attribute='range'):
+            cmap=None, y_label_attribute='range'):
 
         #  the attribute keyword only needs to be used when you are plotting data from
         #  raw_data objects (which you normally shouldn't need to do.) When attribute
@@ -29,7 +22,6 @@ class echogram(object):
 
         self.axes = axes
         self.threshold = threshold
-        self.x_label_attribute = x_label_attribute
         self.y_label_attribute = y_label_attribute
 
         #  set the default SIMRAD EK500 color table plus grey for NoData
@@ -90,13 +82,12 @@ class echogram(object):
 
 
     def update(self, data_object=None, data_attribute=None, threshold=None,
-            x_label_attribute=None, y_label_attribute=None):
+            y_label_attribute=None):
 
         #  update attributes if required
         if (threshold):
             self.threshold = threshold
-        if (x_label_attribute):
-            self.x_label_attribute = x_label_attribute
+
         if (y_label_attribute):
             self.y_label_attribute = y_label_attribute
         if (data_attribute):
@@ -120,32 +111,53 @@ class echogram(object):
         else:
             threshold = [np.nanmin(data),np.nanmax(data)]
 
-        #  transform the data so it looks
+        #  transform the data so it looks right with imshow
         echodata = np.flipud(np.rot90(data,1))
+
+        #  determine the vertical extent of the data
+        if (hasattr(self.data_object, self.y_label_attribute)):
+            yticks = getattr(self.data_object, self.y_label_attribute)
+        else:
+            #  we don't have a valid axis - just use sample number
+            yticks = np.arange(echodata.shape[0])
 
         #  plot the sample data
         self.axes_image = self.axes.imshow(echodata, cmap=self.cmap, vmin=threshold[0],
-                vmax=threshold[1], aspect='auto', interpolation='none')
+                vmax=threshold[1], aspect='auto', interpolation='none',
+                extent=[0,echodata.shape[1],yticks[-1],yticks[0]])
+
+        #  when setting the axis labels we are being lazy and letting matplotlib decide
+        #  on a suitable label spacing. We could probably do this ourselves and save the
+        #  effort of setting any locations outside of our data range
 
 
-        #  THE AXES LABELING BELOW DOESN'T WORK
-        if (0):
+        #  set the x axis labels
+        xticks = self.data_object.ping_time
+        #  convert the locations to ints so we can use them to index into ping_time
+        x_tic_locs = self.axes.get_xticks().astype('int')
+        #  xticks are sometimes outside the range of our data - find ones that are
+        bad_locs = (x_tic_locs < 0) | (x_tic_locs > echodata.shape[1])
+        #  and set those to 0
+        x_tic_locs[bad_locs] = 0
+        #  build a list of tick labels. there are a couple of good tricks here
+        #  first convert our datetime64 to numpy type 'object' which converts them
+        #  to Python datetime objects. We can then use the datetime.strftime method
+        #  to format them. We then convert this list into a numpy array of python
+        #  string objects so we can use our bad_locs index array to set the bad
+        #  labels to an empty string
+        label_objs = xticks[x_tic_locs].astype('object')
+        ticklabels = np.array([i.strftime("%H:%M:%S")
+            for i in label_objs], dtype='object')
+        ticklabels[bad_locs] = ''
+        #  lastly set the labels
+        self.axes.set_xticklabels(ticklabels)
+        self.axes.set_xlabel(label_objs[0].strftime("%m-%d-%Y"))
 
-            #  update the axes
-            if (hasattr(self.data_object, x_label_attribute)):
-                tick_labels = getattr(self.data_object, self.x_label_attribute)
-                tic_locs = self.axes.get_xticks()
-                tic_locs = tic_locs[ np.logical_and(tic_locs >= 0, tic_locs < tick_labels.shape[0])].astype('uint32')
-                tick_labels = tick_labels[tic_locs]
-                self.axes.set_xticklabels(tick_labels)
 
-            if (hasattr(self.data_object, y_label_attribute)):
+        if (hasattr(self.data_object, self.y_label_attribute)):
+            self.axes.set_ylabel(self.y_label_attribute + ' (m)')
 
-                tick_labels = getattr(self.data_object, self.y_label_attribute)
+        #  apply the grid
+        self.axes.grid(True,color='k')
 
-                tic_locs = np.arange(0, tick_labels.shape[0], 25)
-                tick_labels = tick_labels[tic_locs]
-
-                self.axes.set_yticklabels(tick_labels)
-                self.axes.yaxis.set_major_formatter(ticker.FormatStrFormatter('%0.1f'))
 

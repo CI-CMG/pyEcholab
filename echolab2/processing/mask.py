@@ -30,14 +30,15 @@
 
 import numpy as np
 import matplotlib
+from ..ping_data import ping_data
 
-class mask(object):
+class mask(ping_data):
     '''
 
     '''
 
-    def __init__(self, size=None, like=None, value=False, type='sample', color=[148,0,211],
-            name='Mask', sample_offset=0):
+    def __init__(self, size=None, like=None, value=False, type='sample',
+            color=[148,0,211], name='Mask', sample_offset=0):
 
         super(mask, self).__init__()
 
@@ -48,9 +49,10 @@ class mask(object):
         self.type = type
         self.color = color
         self.name = name
-        self.n_pings = 0
-        self.n_samples = 0
         self.sample_offset = sample_offset
+
+        #  update out data_attributes list adding the "mask" attribute
+        self._data_attributes += ['mask']
 
         #  if we've been provided with an object or size to base our mask on, create it
         if (like):
@@ -95,10 +97,7 @@ class mask(object):
         '''
 
         #  ensure the value arg is a bool
-        if (value):
-            value = True
-        else:
-            value = False
+        value = bool(value)
 
         #  copy attributes common to both mask types
         self.n_pings = like_obj.n_pings
