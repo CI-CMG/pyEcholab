@@ -13,7 +13,7 @@ class echogram(object):
 
 
     def __init__(self, axes, data_object=None, data_attribute=None, threshold=None,
-            cmap=None, y_label_attribute='range'):
+            cmap=None):
 
         #  the attribute keyword only needs to be used when you are plotting data from
         #  raw_data objects (which you normally shouldn't need to do.) When attribute
@@ -22,7 +22,6 @@ class echogram(object):
 
         self.axes = axes
         self.threshold = threshold
-        self.y_label_attribute = y_label_attribute
 
         #  set the default SIMRAD EK500 color table plus grey for NoData
         self._simrad_color_table = [(1,1,1),
@@ -57,6 +56,13 @@ class echogram(object):
             self.data_attribute = None
         self.data_object = data_object
 
+        if (hasattr(self.data_object, 'range')):
+            self.y_label_attribute = 'range'
+        elif (hasattr(self.data_object, 'depth')):
+            self.y_label_attribute = 'depth'
+        else:
+            self.y_label_attribute = None
+
         if update:
             self.update()
 
@@ -81,15 +87,12 @@ class echogram(object):
             self.update()
 
 
-    def update(self, data_object=None, data_attribute=None, threshold=None,
-            y_label_attribute=None):
+    def update(self, data_object=None, data_attribute=None, threshold=None):
 
         #  update attributes if required
         if (threshold):
             self.threshold = threshold
 
-        if (y_label_attribute):
-            self.y_label_attribute = y_label_attribute
         if (data_attribute):
             self.data_attribute = data_attribute
         if (data_object):
@@ -136,7 +139,7 @@ class echogram(object):
         #  convert the locations to ints so we can use them to index into ping_time
         x_tic_locs = self.axes.get_xticks().astype('int')
         #  xticks are sometimes outside the range of our data - find ones that are
-        bad_locs = (x_tic_locs < 0) | (x_tic_locs > echodata.shape[1])
+        bad_locs = (x_tic_locs < 0) | (x_tic_locs >= echodata.shape[1])
         #  and set those to 0
         x_tic_locs[bad_locs] = 0
         #  build a list of tick labels. there are a couple of good tricks here
@@ -156,6 +159,8 @@ class echogram(object):
 
         if (hasattr(self.data_object, self.y_label_attribute)):
             self.axes.set_ylabel(self.y_label_attribute + ' (m)')
+        else:
+            self.axes.set_ylabel('sample')
 
         #  apply the grid
         self.axes.grid(True,color='k')
