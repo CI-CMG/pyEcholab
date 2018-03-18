@@ -57,8 +57,9 @@ for chan_id in raw_data:
         #  it is, get Sv and assign to our dict
         Sv_data[raw_data[chan_id].frequency[0]] = \
             raw_data[chan_id].get_Sv()
+        print(Sv_data[raw_data[chan_id].frequency[0]])
         bottom_lines[raw_data[chan_id].frequency[0]] = \
-            raw_data[chan_id].get_bottom_depths(return_range=True)
+            raw_data[chan_id].get_bottom()
 
 #  now create a mask for each frequency and apply a surface and bottom
 #  lines to these masks such that we mask out samples near the surface

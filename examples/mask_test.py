@@ -130,7 +130,7 @@ ax1.set_title("Original Sv Data")
 ax2 = fig.add_subplot(2,1,2)
 eg = echogram.echogram(ax2, synth_data)
 eg.set_threshold([0,20])
-ax2.set_title('Synthetic yhreshold results')
+ax2.set_title('Synthetic threshold results')
 
 #  show the results
 show()

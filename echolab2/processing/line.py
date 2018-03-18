@@ -40,7 +40,8 @@ class line(ping_data):
     be created. Color and name properties can be used in plotting the lines.
     '''
 
-    def __init__(self, ping_time=None, data=None, color=[148,0,211], name='line'):
+    def __init__(self, ping_time=None, data=None, color=[0.58, 0.0, 0.83],
+            name='line', linestyle='solid', linewidth=1.0):
 
         super(line, self).__init__()
 
@@ -73,6 +74,8 @@ class line(ping_data):
         #  set the initial attribute values
         self.color = color
         self.name = name
+        self.linestyle = linestyle
+        self.linewidth = linewidth
 
         #  update out data_attributes list adding the "data" attribute
         self._data_attributes += ['data']
