@@ -5,6 +5,11 @@ objects using the insert and delete methods. The primary purpose of
 this example is to verify basic operation of the insert and delete methods
 but it also provides some simple and somewhat contrived examples of using
 index arrays with these methods.
+
+Note that the echogram class doesn't always handle ping times that are
+NaT very well so the X axis doesn't always get labeled properly in this
+example.
+
 """
 
 import numpy as np

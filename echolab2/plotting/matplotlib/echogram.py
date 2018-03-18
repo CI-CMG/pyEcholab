@@ -30,6 +30,7 @@
 
 import numpy as np
 from matplotlib import figure, axes
+import matplotlib.ticker as ticker
 from matplotlib.colors import LinearSegmentedColormap, Colormap
 
 
@@ -38,10 +39,9 @@ class echogram(object):
     The echogram class provides basic plotting functions to display
     echolab2 data objects using matplotlib.
 
-    This code is quite fresh and
+    This code is quite fresh and needs testing and further development.
 
     '''
-
 
     def __init__(self, mpl_container, data_object, data_attribute=None,
             threshold=None, cmap=None):
@@ -138,9 +138,31 @@ class echogram(object):
         if update:
             self.update()
 
+    def _adjust_xdata(self, x_data):
+        """
+        _adjust_xdata shifts the x axis data such that the values are centered
+        on the sample pixel's x axis. When using the extents keyword with imshow
+        the pixels are no longer centered on the underlying grid. This method
+
+        """
+
+        n_pings = x_data.shape[0]
+        adj_x = np.empty(n_pings, dtype='float')
+        mid = int((float(n_pings)/ 2.0) + 0.5)
+        adj_x[0:mid] = x_data[0:mid] + ((np.arange(mid,
+                dtype='float')[::-1] / mid) * 0.5)
+        adj_x[mid:] = x_data[mid:] - ((np.arange(mid,
+                dtype='float') / mid) * 0.5)
+
+        return adj_x
+
 
     def plot_line(self, line_obj, color=None, linestyle=None,
             linewidth=None):
+        """
+        plot_line plots an echolab2 line object on the echogram.
+
+        """
 
         if (color is None):
             color = line_obj.color
@@ -157,23 +179,35 @@ class echogram(object):
             interp_line.interpolate(self.data_object.ping_time)
             line_obj = interp_line
 
-        #  get the line's horizontal axis (time) as a float
-        x_vals = line_obj.ping_time.astype('float')
-
-        #  the echogram pixes are not centered on the grid so
-        #  we need to shift them by 1/2 the ping interval in X
-        half_ping_int = np.ediff1d(x_vals) / 2.0
-        x_vals[0:-1] = x_vals[0:-1] + half_ping_int
+        #  generate a ping number vector for x axis indexing
+        xticks = np.arange(line_obj.ping_time.shape[0], dtype=
+                self.data_object.sample_dtype)
+        xticks = self._adjust_xdata(xticks)
 
         #  DO WE NEED TO SHIFT IN Y????
 
         #  and plot
-        self.axes.plot(x_vals, line_obj.data, color=color,
+        self.axes.plot(xticks, line_obj.data, color=color,
             linestyle=linestyle, linewidth=linewidth,
             label=line_obj.name)
 
 
     def update(self):
+        """
+
+        """
+
+        #  this is a custom tick formatter for datetime64 values as floats
+        def format_datetime(x, pos=None):
+            try:
+                x = np.clip(int(x + 0.5), 0, self.data_object.ping_time.shape[0] - 1)
+                dt = self.data_object.ping_time[x].astype('object')
+                tick_label = dt.strftime("%H:%M:%S")
+            except:
+                tick_label = ''
+
+            return tick_label
+
 
         #  get the thresholds if we have been given one
         if (self.threshold):
@@ -199,17 +233,9 @@ class echogram(object):
             yticks = np.arange(echogram_data.shape[0])
             y_label = 'sample'
 
-        #  and get the horizontal axis (time) as a float
-        time_axis = True
-        xticks = self.data_object.ping_time.astype('float')
-
-        #  check to make sure the values are sane - when NaT values are
-        #  in our data we cannot easily plot using a time based axis so
-        #  we'll switch to a sample based axis - numpy 1.14 has "isnat"
-        if (np.any(xticks < 0)):
-            #  there are some NaT's in there
-            xticks = np.arange(self.data_object.ping_time.shape[0])
-            time_axis = False
+        #  generate a ping number vector for x axis indexing
+        n_pings = self.data_object.ping_time.shape[0]
+        xticks = np.arange(n_pings, dtype='float')
 
         #  plot the sample data
         self.axes_image = self.axes.imshow(echogram_data, cmap=self.cmap,
@@ -217,24 +243,20 @@ class echogram(object):
                 interpolation='none', extent=[xticks[0],xticks[-1],
                 yticks[-1],yticks[0]], origin='upper')
 
-        #  if we're plotting on a time axis, set the tick labels
-        if (time_axis):
-            #  get the tick locations as datetime64 objects
-            x_tic_locs = self.axes.get_xticks().astype('datetime64[ms]')
+        #  set our custom x-axis formatter
+        self.axes.xaxis.set_major_formatter(ticker.FuncFormatter(format_datetime))
 
-            #  convert those to Python datetime objects
-            x_tic_locs = x_tic_locs.astype('object')
-
-            #  generate the list of tick label strings and get the date label
-            #  while we're at it - we have to wrap
-            ticklabels = [i.strftime("%H:%M:%S") for i in x_tic_locs]
-
-            #  set the x axis ticklabels and label
-            self.axes.set_xticklabels(ticklabels)
-            self.axes.set_xlabel(x_tic_locs[0].strftime("%m-%d-%Y"))
-        else:
-            #  not a time axis, just set the xlabel
-            self.axes.set_xlabel('ping number')
+        #  set the x axis label to the month-day-year of the first
+        #  valid datetime64 we have in the data. This will fail if there
+        #  are no valid times so we'll not label the axis if that happens
+        try:
+            x = self.axes.get_xticks()[0]
+            x = np.clip(int(x + 0.5), 0, self.data_object.ping_time.shape[0] - 1)
+            dt = self.data_object.ping_time[x].astype('object')
+            x_label = dt.strftime("%m-%d-%Y")
+        except:
+            x_label = ''
+        self.axes.set_xlabel(x_label)
 
         #  set the Y axis label
         self.axes.set_ylabel(y_label)

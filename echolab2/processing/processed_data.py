@@ -1224,7 +1224,7 @@ class processed_data(ping_data):
             for attr_name in self._data_attributes:
                 attr = getattr(self, attr_name)
                 if (n_attr > 0):
-                    padding = "                           "
+                    padding = "                            "
                 if (isinstance(attr, np.ndarray)):
                     if (attr.ndim == 1):
                         msg = msg + padding + attr_name + " (%u)\n" % (attr.shape[0])

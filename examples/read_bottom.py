@@ -8,19 +8,6 @@ from matplotlib.pyplot import figure, show
 from echolab2.instruments import EK60
 from echolab2.plotting.matplotlib import echogram
 
-#############################################################
-##
-##  A lot of testing needs to be done in regards to
-##  plotting bottom detections on echograms.
-##
-##  This code is quite fresh and it appears to me that the
-##  horizontal axes doesn't totally line up. The issue is with
-##  the plotting. Using matplotlib imshow you don't specify the
-##  X,Y locations of the samples but instead provide a start and
-##  end value and handles the rest. Need to look into this more\
-##  closely.
-##
-#############################################################
 
 #  create a list of .raw files
 rawfiles = ['./data/EK60/DY1706_EK60-D20170625-T061707.raw']
@@ -97,6 +84,7 @@ ek60.read_bot(botfiles)
 #  get a reference to the raw_data object
 raw_data_38 = ek60.get_raw_data(channel_number=1)
 
+
 #  get Sv as range
 Sv_38_as_range = raw_data_38.get_Sv()
 #  get bottom as range
@@ -112,6 +100,8 @@ eg.plot_line(bottom_38, linewidth=2.5)
 Sv_38_as_depth = raw_data_38.get_Sv(return_depth=True)
 #  and bottom as depth
 bottom_38 = raw_data_38.get_bottom(return_depth=True)
+print(Sv_38_as_depth)
+print(bottom_38)
 
 #  and display the results - use a processed_data.view to zoom
 #  into the upper part of the water column.

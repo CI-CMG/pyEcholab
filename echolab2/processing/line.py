@@ -317,10 +317,9 @@ class line(ping_data):
 
         #  and some other basic info
         msg = msg + "                 line name: " + self.name + "\n"
-        msg = msg + "                      type: " + self.type + "\n"
-        msg = msg + "                     color: " + str(self.color) + "\n"
-        msg = msg + "                Start Time: " + str(self.ping_time[0]) + "\n"
-        msg = msg + "                  End Time: " + str(self.ping_time[-1]) + "\n"
-
+        msg = msg + "                 ping_time: (" + str(self.ping_time.shape[0]) + ")\n"
+        msg = msg + "                      data: (" + str(self.data.shape[0]) + ")\n"
+        msg = msg + "                start time: " + str(self.ping_time[0]) + "\n"
+        msg = msg + "                  end time: " + str(self.ping_time[-1]) + "\n"
 
         return msg
