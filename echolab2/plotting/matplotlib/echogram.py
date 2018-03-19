@@ -39,7 +39,24 @@ class echogram(object):
     The echogram class provides basic plotting functions to display
     echolab2 data objects using matplotlib.
 
-    This code is quite fresh and needs testing and further development.
+    In matplotlib there are 3 methods for displaying 2d bitmap data:
+    imshow, pcolor, and pcolormesh. For echograms of any size, imshow
+    is the only option. The one downside of imshow is that when the
+    extents are specified by the user, the pixels no longer are centered
+    on the underlying grid. Instead (taking the x axis as an example),
+    the left edge of the left most colum defines the start of the grid
+    and the right edge of the right most column defines the end of the
+    grid. This is not that noticable until you plot data on top of the
+    echogram. Data plotted on the echogram is shifted 1/2 "ping" left
+    on the left most extent, is matched correctly in the center of the
+    echogram, and is shifted 1/2 ping right on the right most extent.
+    This seems like a small amount but things like bottom detection
+    lines definitly do not line up correctly.
+
+    As a result, the axes values of data being plotted on the echogram
+    need to be adjusted to align with the underlying data. Currently
+    this is being done for the X axis, but not yet for the Y. This
+    issue needs to be further examined.
 
     '''
 
@@ -120,6 +137,10 @@ class echogram(object):
 
 
     def set_colormap(self, colormap, bad_data='grey', update=True):
+        """
+
+        """
+
         if (isinstance(colormap, str)):
             colormap = Colormap(colormap)
         self.cmap = colormap
@@ -130,6 +151,10 @@ class echogram(object):
 
 
     def set_threshold(self, threshold=[-70,-34], update=True):
+        """
+
+        """
+
         if (threshold):
             self.threshold = threshold
         else:
@@ -138,23 +163,74 @@ class echogram(object):
         if update:
             self.update()
 
+
+
     def _adjust_xdata(self, x_data):
         """
         _adjust_xdata shifts the x axis data such that the values are centered
         on the sample pixel's x axis. When using the extents keyword with imshow
         the pixels are no longer centered on the underlying grid. This method
-
+        should be used to shift x axis values of data that is being plotted on
+        top of an echogram.
         """
 
+        #  determine the number of pings
         n_pings = x_data.shape[0]
+
+        #  determine the 1/2 median ping interval
+        ping_ints = np.ediff1d(self.data_object.ping_time.astype('float'))
+        ping_int = np.nanmedian(ping_ints) / 2.0
+
         adj_x = np.empty(n_pings, dtype='float')
         mid = int((float(n_pings)/ 2.0) + 0.5)
         adj_x[0:mid] = x_data[0:mid] + ((np.arange(mid,
-                dtype='float')[::-1] / mid) * 0.5)
+                dtype='float')[::-1] / mid) * ping_int)
         adj_x[mid:] = x_data[mid:] - ((np.arange(mid,
-                dtype='float') / mid) * 0.5)
+                dtype='float') / mid) * ping_int)
 
         return adj_x
+
+
+    def _adjust_ydata(self, y_data):
+        """
+        _adjust_ydata shifts the y axis data such that the values are centered
+        on the sample pixel's y axis. When using the extents keyword with imshow
+        the pixels are no longer centered on the underlying grid. This method
+        should be used to shift y axis values of data that is being plotted on
+        top of an echogram.
+
+        NOTE: I think this is correct, but I have not tested it fully.
+        """
+
+        #  determine the 1/2 sample thickness
+        half_samp = self.data_object.sample_thickness / 2.0
+
+        #  create the return array
+        adj_y = np.empty(y_data.shape[0], dtype='float')
+
+        #  get the y axis limits and the limits midpoint
+        y_limits = self.axes.set_ylim()
+        mid = (y_limits[0] - y_limits[1]) / 2.0
+
+        #  set all values at the midpoint without change
+        adj_y[y_data == mid] = y_data[y_data == mid]
+
+        #  in the steps below, the signs are reversed from what you would
+        #  think they should be. This is (I am assuming) because were
+        #  reversing the Y axis when setting the extents to imshow.
+
+        #  identify all values less than the midpoint and subtract
+        #  1/2 sample thickness * 1 - % of midpoint
+        adj_idx = y_data < mid
+        adj_y[adj_idx] = y_data[adj_idx] - \
+                (1.0 - (y_data[adj_idx] / mid)) * half_samp
+        #  identify all values greater than the midpoint and add
+        #  1/2 sample thickness * % of full range
+        adj_idx = y_data > mid
+        adj_y[adj_idx] = y_data[adj_idx] + \
+                ((y_data[adj_idx] / y_limits[0])) * half_samp
+
+        return adj_y
 
 
     def plot_line(self, line_obj, color=None, linestyle=None,
@@ -171,23 +247,25 @@ class echogram(object):
         if (linewidth is None):
             linewidth = line_obj.linewidth
 
-        #  check if the line's time vector matches our data
-        if (not np.array_equal(line_obj.ping_time,
-                self.data_object.ping_time)):
-            #  it doesn't interp a copy of the provided line
-            interp_line = line_obj.empty_like()
-            interp_line.interpolate(self.data_object.ping_time)
-            line_obj = interp_line
+#        #  check if the line's time vector matches our data
+#        if (not np.array_equal(line_obj.ping_time,
+#                self.data_object.ping_time)):
+#            #  it doesn't interp a copy of the provided line
+#            interp_line = line_obj.empty_like()
+#            interp_line.interpolate(self.data_object.ping_time)
+#            line_obj = interp_line
 
-        #  generate a ping number vector for x axis indexing
-        xticks = np.arange(line_obj.ping_time.shape[0], dtype=
-                self.data_object.sample_dtype)
+        #  get the line's horizontal axis (time) as a float
+        xticks = line_obj.ping_time.astype('float')
+
+        #  adjust the x locations so they are centered on the pings
         xticks = self._adjust_xdata(xticks)
 
-        #  DO WE NEED TO SHIFT IN Y????
+        #  adjust the y locations so they are
+        y_adj = self._adjust_ydata(line_obj.data)
 
         #  and plot
-        self.axes.plot(xticks, line_obj.data, color=color,
+        self.axes.plot(xticks, y_adj, color=color,
             linestyle=linestyle, linewidth=linewidth,
             label=line_obj.name)
 
@@ -200,8 +278,7 @@ class echogram(object):
         #  this is a custom tick formatter for datetime64 values as floats
         def format_datetime(x, pos=None):
             try:
-                x = np.clip(int(x + 0.5), 0, self.data_object.ping_time.shape[0] - 1)
-                dt = self.data_object.ping_time[x].astype('object')
+                dt = x.astype('datetime64[ms]').astype('object')
                 tick_label = dt.strftime("%H:%M:%S")
             except:
                 tick_label = ''
@@ -233,9 +310,8 @@ class echogram(object):
             yticks = np.arange(echogram_data.shape[0])
             y_label = 'sample'
 
-        #  generate a ping number vector for x axis indexing
-        n_pings = self.data_object.ping_time.shape[0]
-        xticks = np.arange(n_pings, dtype='float')
+        #  the x ticks are the pings times as serial time
+        xticks = self.data_object.ping_time.astype('float')
 
         #  plot the sample data
         self.axes_image = self.axes.imshow(echogram_data, cmap=self.cmap,
@@ -247,12 +323,12 @@ class echogram(object):
         self.axes.xaxis.set_major_formatter(ticker.FuncFormatter(format_datetime))
 
         #  set the x axis label to the month-day-year of the first
-        #  valid datetime64 we have in the data. This will fail if there
+        #  datetime64 we have in the data. This will fail if there
         #  are no valid times so we'll not label the axis if that happens
         try:
             x = self.axes.get_xticks()[0]
-            x = np.clip(int(x + 0.5), 0, self.data_object.ping_time.shape[0] - 1)
-            dt = self.data_object.ping_time[x].astype('object')
+            dt = x.astype('datetime64[ms]').astype('object')
+
             x_label = dt.strftime("%m-%d-%Y")
         except:
             x_label = ''
@@ -267,3 +343,14 @@ class echogram(object):
 
         #  apply the grid
         self.axes.grid(True,color='k')
+
+        #  there seems to be a bug in matplotlib where extra white space is
+        #  added to the figure around the echogram if other elements are plotted
+        #  on the echogram even if their data ranges fall *within* the echogram.
+        #  This doesn't happen when we use ping number as the x axis but we
+        #  don't want to use ping number becuase everything we plot on the echogram
+        #  would have to be mapped to ping number. Weirdly what solves the issue
+        #  is calling set_xlim/set_ylim without arguments which should only return
+        #  the current limits but seems to fix this issue.
+        self.axes.set_xlim()
+        self.axes.set_ylim()
