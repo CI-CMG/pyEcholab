@@ -5,9 +5,9 @@
 This example plots a single ping as power for every channel in the specified raw file
 
 NOTE! This example is reaching into the EK60RawData objects directly to pull out power.
-This is only because we have not written the get_power method. If should be altered once
-the get_power method is written.
-
+Normally you would call EK60.raw_data.get_power() to get the power data in a
+processed_data object but this example was written before the get_power method
+existed and still (I think) has some worth as an example.
 
 """
 
@@ -39,11 +39,13 @@ color = iter(cm.rainbow(np.linspace(0, 1, len(ek60.channel_ids))))
 #  create a figure
 fig = plt.figure(figsize=(7,7))
 
+#  get references
+
 #  plot power from the specified ping from all channels
 for channel_id in ek60.channel_ids:
 
     #  get a reference to the raw_data for this channel
-    raw_data = ek60.get_rawdata(channel_id=channel_id)
+    raw_data = ek60.get_raw_data(channel_id=channel_id)
 
     #  get a color for this channel
     c = next(color)
