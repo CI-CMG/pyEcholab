@@ -16,7 +16,8 @@ rawfiles = ['./data/EK60/DY1706_EK60-D20170625-T061707.raw',
 fig = figure()
 
 #  set some properties for the sub plot layout
-subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.93, wspace=None, hspace=0.5)
+subplots_adjust(left=0.075, bottom=.05, right=0.98,
+        top=.93, wspace=None, hspace=0.5)
 
 #  create an instance of the EK60 instrument.
 ek60 = EK60.EK60()

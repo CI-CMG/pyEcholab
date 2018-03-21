@@ -222,12 +222,12 @@ class echogram(object):
         #  identify all values less than the midpoint and subtract
         #  1/2 sample thickness * 1 - % of midpoint
         adj_idx = y_data < mid
-        adj_y[adj_idx] = y_data[adj_idx] - \
+        adj_y[adj_idx] = y_data[adj_idx] + \
                 (1.0 - (y_data[adj_idx] / mid)) * half_samp
         #  identify all values greater than the midpoint and add
         #  1/2 sample thickness * % of full range
         adj_idx = y_data > mid
-        adj_y[adj_idx] = y_data[adj_idx] + \
+        adj_y[adj_idx] = y_data[adj_idx] - \
                 ((y_data[adj_idx] / y_limits[0])) * half_samp
 
         return adj_y
@@ -247,14 +247,6 @@ class echogram(object):
         if (linewidth is None):
             linewidth = line_obj.linewidth
 
-#        #  check if the line's time vector matches our data
-#        if (not np.array_equal(line_obj.ping_time,
-#                self.data_object.ping_time)):
-#            #  it doesn't interp a copy of the provided line
-#            interp_line = line_obj.empty_like()
-#            interp_line.interpolate(self.data_object.ping_time)
-#            line_obj = interp_line
-
         #  get the line's horizontal axis (time) as a float
         xticks = line_obj.ping_time.astype('float')
 
@@ -263,6 +255,7 @@ class echogram(object):
 
         #  adjust the y locations so they are
         y_adj = self._adjust_ydata(line_obj.data)
+        y_adj = line_obj.data
 
         #  and plot
         self.axes.plot(xticks, y_adj, color=color,

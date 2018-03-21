@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-
+This is an example exercising the masks.
 """
 
 from matplotlib.pyplot import figure, show, subplots_adjust
@@ -58,28 +58,27 @@ print(ping_mask)
 
 #  At the most basic level, setting mask elements to True will specify that
 #  an operation occurs on that element. For example, if we wanted to set
-#  a block of samples between sample 50 and 800 from ping 20-100 to -999
+#  a block of samples between sample 50 and 800 from ping 20-500 to -999
 #  we could set those mask values to True and then use the mask to "index"
 #  into our processed_data object Sv
-sample_mask.mask[20:100, 50:800] = True
+sample_mask.mask[20:500, 50:800] = True
 
 #  now use the mask to set these samples to -999
 Sv[sample_mask] = -999
 
 #  and display the results
 fig = figure()
-subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.90, wspace=None, hspace=0.5)
+subplots_adjust(left=0.075, bottom=.05, right=0.98,
+        top=.90, wspace=None, hspace=0.5)
 
 #  plot up the original data
 ax1 = fig.add_subplot(2,1,1)
-eg = echogram.echogram(ax1, orig_Sv)
-eg.set_threshold([-70,-34])
+eg = echogram.echogram(ax1, orig_Sv, threshold=[-70,-34])
 ax1.set_title("Original Sv Data")
 
 #  and the data we just modified
 ax2 = fig.add_subplot(2,1,2)
-eg = echogram.echogram(ax2, Sv)
-eg.set_threshold([-70,-34])
+eg = echogram.echogram(ax2, Sv, threshold=[-70,-34])
 ax2.set_title('Modified Sv data')
 
 #  show the results
@@ -118,22 +117,19 @@ synth_data[mask_3] = 15
 
 #  and display the results
 fig = figure()
-subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.90, wspace=None, hspace=0.5)
+subplots_adjust(left=0.075, bottom=.05, right=0.98,
+        top=.90, wspace=None, hspace=0.5)
 
 #  plot up the original data
 ax1 = fig.add_subplot(2,1,1)
-eg = echogram.echogram(ax1, orig_Sv)
-eg.set_threshold([-70,-34])
+eg = echogram.echogram(ax1, orig_Sv, threshold=[-70,-34])
 ax1.set_title("Original Sv Data")
 
 #  and the data we just modified
 ax2 = fig.add_subplot(2,1,2)
-eg = echogram.echogram(ax2, synth_data)
-eg.set_threshold([0,20])
-ax2.set_title('Synthetic threshold results')
+eg = echogram.echogram(ax2, synth_data, threshold=[0,20])
+ax2.set_title('Threshold results')
 
 #  show the results
 show()
 
-
-pass

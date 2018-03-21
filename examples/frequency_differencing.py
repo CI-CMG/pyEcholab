@@ -8,8 +8,8 @@ with the results of our simple analysis. Lastly it shows
 how to use the processed_data.view() method to plot a subset
 of your data.
 
-Note that this example is rather contrived and not intended
-to be an example of how to really do frequency differening.
+Note that this example is not intended to be an example of
+how to really do frequency differening.
 """
 
 from matplotlib.pyplot import figure, show, subplots_adjust

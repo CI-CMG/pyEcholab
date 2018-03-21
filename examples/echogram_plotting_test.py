@@ -22,7 +22,7 @@ fake_Sv.n_pings = test_data_pings
 #  create some fake data arrays
 ranges = np.arange(test_data_samples) * sample_thickness_m
 times = (np.arange(test_data_pings) * ping_interval_ms) + \
-        np.datetime64(datetime.datetime.utcnow(),'ms').astype('float')
+        np.datetime64('2018-03-21T03:30:30','ms').astype('float')
 data = np.zeros((test_data_pings, test_data_samples), dtype='float32')
 data[:,1::2] = 10.0
 
