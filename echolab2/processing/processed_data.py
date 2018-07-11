@@ -28,23 +28,27 @@
 
 """
 
+import numpy as np
+from ..ping_data import ping_data
+from echolab2.processing import mask
 
-'''
 
-The processed_data class stores and manipulates a 2d sample data array along
-with 1d arrays that define the horizontal and vertical axes of that data.
-The horizontal axis is defined as 'ping_time' and the vertical axis is 'range'
-or 'depth'.
+class processed_data(ping_data):
+    """The processed_data class defines the horizontal and vertical axes of
+    the data.
 
-    properties:
-        channel_id: a list of channel id's that are linked to this data
+    This class stores and manipulates a 2d sample data array along with 1d
+    arrays that define the horizontal and vertical axes of that data.  The
+    horizontal axis is defined as 'ping_time' and the vertical axis is
+    'range' or 'depth'.
 
-        frequency: The frequency, in Hz, of the data contained in the object
-
+    Attributes:
+        channel_id: a list of channel id's that are linked to this data.
+        frequency: The frequency, in Hz, of the data contained in the object.
         data_type: Data_type is a string defining the type of sample data the
             object contains. Built-in values are:
-                'Sv', 'sv', 'Sp', 'sp', 'angles_alongship', 'angles_athwartship',
-                'angles_alongship_e', 'angles_athwartship_e', 'power'
+            'Sv', 'sv', 'Sp', 'sp', 'angles_alongship', 'angles_athwartship',
+            'angles_alongship_e', 'angles_athwartship_e', 'power'
 
             User specified data types are allowed and can be used to identify
             "synthetic" channels.
@@ -54,41 +58,32 @@ or 'depth'.
             when using the to_log and to_linear methods but if the data is
             converted outside those methods by the user they will need to
             update this attribute appropriately.
-
         sample_thickness: a float defining the vertical extent of the samples
             in meters. It is calculated as thickness = sample interval(s) *
             sound speed(m/s) / 2.
-
         sample_offset: The number of samples this data
-
         range: An array of floats defining the ranges of the individual samples
             in the sample data array. Initially this is range relative to the
             transducer face but you can change this.
-
         depth: Depth is range relative to the surface.
 
         *Either* depth or range will be present.
 
         This class inherits the following attributes from sample_data:
 
-            n_pings: n_pings stores the total number of pings in the object
+            n_pings: n_pings stores the total number of pings in the object.
+            n_samples: the number of samples in the 2d sample array.
+            ping_time: An array of numpy datetime64 objects representing the
+                times of the individual pings.
 
-            n_samples: the number of samples in the 2d sample array
-
-            ping_time: An array of numpy datetime64 objects representing the times
-                of the individual pings.
-
-        The attribute name of the sample data is "data". The sample data array
-        is a 2d numpy array indexed as [n_pings, n_samples]. To access the 100th
-        ping, you would do something like:
-
+        data: The attribute name of the sample data is "data". The sample
+            data array is a 2d numpy array indexed as [n_pings, n_samples].
+            To access the 100th ping, you would do something like:
             p_data.data[100,:]
 
-        Note that you can access the data directly without specifying the data
-        attribute when you slice the object. To access the same 100th ping
-        you would do this:
-
-            p_data[100,:]
+            Note that you can access the data directly without specifying the
+            data attribute when you slice the object. To access the same
+            100th ping you would do this: p_data[100,:]
 
 
         NEED TO ADD A SECTION REGARDING SLICING
@@ -100,84 +95,77 @@ or 'depth'.
 
         IMPORTANT NOTE!
             This software is under heavy development and while the API is fairly
-            stable, it may still change. Further, while reviewing the code you may
-            wonder why certain things are done a certain way. Understanting that
-            this class initially was written to have an arbitrary number of
-            "sample data" arrays will shed some light on this. This was changed
-            later in development so that processed_data objects only contain
-            a single sample data array but much of the mechanics of dealing with
-            multiple 2d arrays are in place in part because the sample_data class
-            still operates this way and in part because the code hasn't been
-            changed yet.
-
-
-
-'''
-import numpy as np
-from ..ping_data import ping_data
-from echolab2.processing import mask
-
-
-class processed_data(ping_data):
-    '''
-
-    '''
+            stable, it may still change. Further, while reviewing the code
+            you may wonder why certain things are done a certain way.
+            Understanding that this class initially was written to have an
+            arbitrary number of "sample data" arrays will shed some light on
+            this. This was changed later in development so that
+            processed_data objects only contain a single sample data array
+            but much of the mechanics of dealing with multiple 2d arrays are
+            in place in part because the sample_data class still operates
+            this way and in part because the code hasn't been changed yet.
+    """
 
     def __init__(self, channel_id, frequency, data_type):
+        """Initializes processed_data class object.
 
+        Creates and sets several internal properties used to store information
+        about data and control operation of processed data object instance.
+        Code is heavily commented to facilitate use.
+        """
         super(processed_data, self).__init__()
 
-        #  set the frequency, channel_id, and data type
-        if (channel_id):
-            if (isinstance(channel_id, list)):
-                #  if we've been passed a list as a channel id, copy the list
+        # Set the frequency, channel_id, and data type.
+        if channel_id:
+            if isinstance(channel_id, list):
+                # If we've been passed a list as a channel id, copy the list.
                 self.channel_id = list(channel_id)
             else:
-                #  we've been given not a list - just set the id
+                # We've been given not a list - just set the id.
                 self.channel_id = channel_id
         else:
             self.channel_id = None
         self.frequency = frequency
         self.data_type = data_type
 
-        #  data contains the 2d sample data
+        # Data contains the 2d sample data.
         self.data = None
 
-        #  is_log should be set to True if the data contained within is in log
-        #  form and False otherwise. This is handled internally if you use the
-        #  to_log and to_linear methods, but if you are manipulating th
+        #    TODO: finish comment
+        # is_log should be set to True if the data contained within it is in log
+        # form, and False otherwise. This is handled internally if you use the
+        # to_log and to_linear methods, but if you are manipulating the
         self.is_log = False
 
-        #  sample thickness is the vertical extent of the samples in meters
-        #  it is calculated as thickness = sample interval(s) * sound speed(m/s) / 2
+        # Sample thickness is the vertical extent of the samples in meters.  It
+        # is calculated as thickness = sample interval(s)*sound speed(m/s) / 2.
         self.sample_thickness = 0
 
-        #  sample offset is the number of samples the first row of data are offset away from
-        #  the transducer face.
+        # Sample offset is the number of samples the first row of data are
+        # offset away from the transducer face.
         self.sample_offset = 0
 
 
     def replace(self, obj_to_insert, ping_number=None, ping_time=None,
                index_array=None):
-        """
-        replace inserts data without shifting the existing data resulting in the
-        existing data being overwritten by the data in "obj_to_insert"
+        """Inserts data
+
+        This method inserts data without shifting the existing data, resulting
+        in the existing data being overwritten by the data in "obj_to_insert"
 
         Args:
-            obj_to_insert: an instance of echolab2.processed_data that contains the
-                data you are using as the replacement. obj_to_insert's sample data
-                will be vertically interpolated to the vertical axis of this object.
-
+            obj_to_insert (processed_data): an instance of
+                echolab2.processed_data that contains the data you are using
+                as the replacement. obj_to_insert's sample data will be
+                vertically interpolated to the vertical axis of this object.
             ping_number: The ping number specifying the first ping to replace
-
             ping_time: The ping time specifying the first ping to replace
-
             index_array: A numpy array containing the indices of the pings you
                 want to replace. Unlike when using a ping number or ping time,
-                the pings do not have to be consecutive but the number of "pings"
-                in the obj_to_insert must be the same as the number of elements
-                in your index_array. When this keyword is present, the ping_number
-                and ping_time keywords are ignored.
+                the pings do not have to be consecutive, but the number of
+                "pings" in the obj_to_insert must be the same as the number
+                of elements in your index_array. When this keyword is
+                present, the ping_number and ping_time keywords are ignored.
 
         You must specify a ping number, ping time or provide an index array.
 
