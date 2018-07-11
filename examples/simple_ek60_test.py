@@ -8,7 +8,7 @@ from echolab2.instruments import EK60
 from echolab2.plotting.matplotlib import echogram
 
 
-#  create the list of input files - for this test I am purposly picking
+#  create the list of input files - for this test I am purposely picking
 #  two files with the same channels but the channels have different pulse
 #  lengths and a different installation order
 
