@@ -12,10 +12,10 @@ from echolab2.processing.align_pings import AlignPings
 from echolab2.instruments.EK60 import EK60
 from echolab2.plotting.matplotlib.echogram import echogram
 
-if sys.version_info[0] == 3:
-    from io import StringIO
-else:
-    from StringIO import StringIO
+# if sys.version_info[0] == 3:
+#     from io import StringIO
+# else:
+#     from StringIO import StringIO
 
 
 file_bins = fa('../NCEI_workflow/data/SH1507', 10).file_bins
@@ -43,11 +43,11 @@ ek60.read_raw(raw_files, power=None, angles=None, max_sample_count=None,
 # print(ek60)
 
 #  get a reference to the RawData object for each channel
-raw_18 = ek60.get_rawdata(channel_number=1)
-raw_38 = ek60.get_rawdata(channel_number=2)
-raw_70 = ek60.get_rawdata(channel_number=3)
-raw_120 = ek60.get_rawdata(channel_number=4)
-raw_200 = ek60.get_rawdata(channel_number=5)
+raw_18 = ek60.get_raw_data(channel_number=1)
+raw_38 = ek60.get_raw_data(channel_number=2)
+raw_70 = ek60.get_raw_data(channel_number=3)
+raw_120 = ek60.get_raw_data(channel_number=4)
+raw_200 = ek60.get_raw_data(channel_number=5)
 raw = [raw_18, raw_38, raw_70, raw_120, raw_200]
 
 # time 2015-06-26T06:12:03 is missing in the 38kHz channel. this is ping #
@@ -76,11 +76,11 @@ raw = [raw_18, raw_38, raw_70, raw_120, raw_200]
 #     print()
 
 # get Sv for each channel
-Sv_18 = raw_18.get_sv()
-Sv_38 = raw_38.get_sv()
-Sv_70 = raw_70.get_sv()
-Sv_120 = raw_120.get_sv()
-Sv_200 = raw_200.get_sv()
+Sv_18 = raw_18.get_Sv()
+Sv_38 = raw_38.get_Sv()
+Sv_70 = raw_70.get_Sv()
+Sv_120 = raw_120.get_Sv()
+Sv_200 = raw_200.get_Sv()
 Sv = [Sv_18, Sv_38, Sv_70, Sv_120, Sv_200]
 
 
@@ -94,53 +94,55 @@ Sv_200.delete(start_ping=510, end_ping=512)
 # for channel in Sv:
 #     print(channel.channel_id)
 #     for ping in range(488, 491):
-#         print(ping, channel.ping_time[ping], channel.Sv[ping][100])
+#         print(ping, channel.ping_time[ping], channel.data[ping][100])
 #     print()
 
 # call align pings
 aligned = AlignPings(Sv, 'pad')  # 'delete' or 'pad'
 
+
 # print('\n After align')
 # for index, channel in enumerate(Sv):
+#     print(channel)
 #     if hasattr(aligned, 'missing') and len(aligned.missing[index]) > 0:
 #         print('missing pings:{0}'.format(aligned.missing[index]))
 #     elif hasattr(aligned, 'extras') and len(aligned.extras[index]) > 0:
 #         print('extra pings:{0}'.format(aligned.extras[index]))
 #     for ping in range(488, 491):
-#         print(ping, channel.ping_time[ping], channel.Sv[ping][100])
+#         print(ping, channel.ping_time[ping], channel.data[ping][100])
 #     print()
-
-for channel in aligned.details:
-    print('\n'+channel)
-    for detail in aligned.details[channel]:
-        print ('\t{0}: {1}'.format(detail, aligned.details[channel][detail]))
+#
+# for channel in aligned.details:
+#     print('\n'+channel)
+#     for detail in aligned.details[channel]:
+#         print ('\t{0}: {1}'.format(detail, aligned.details[channel][detail]))
 
 
 # plot Sv values
 threshold = [-70, 0]
 
 ax_18 = fig.add_subplot(5, 1, 1)
-echo_18 = echogram(ax_18, Sv_18, 'Sv', threshold=threshold)
+echo_18 = echogram(ax_18, Sv_18, 'data', threshold=threshold)
 ax_18.set_title("18kHz Sv data in time order")
 # print(Sv_18)
 
 ax_38 = fig.add_subplot(5, 1, 2)
-echo_38 = echogram(ax_38, Sv_38, 'Sv', threshold=threshold)
+echo_38 = echogram(ax_38, Sv_38, 'data', threshold=threshold)
 ax_38.set_title("38kHz Sv data in time order")
 # print(Sv_38)
 
 ax_70 = fig.add_subplot(5, 1, 3)
-echo_70 = echogram(ax_70, Sv_70, 'Sv', threshold=threshold)
+echo_70 = echogram(ax_70, Sv_70, 'data', threshold=threshold)
 ax_70.set_title("70kHz Sv data in time order")
 # print(Sv_70)
 
 ax_120 = fig.add_subplot(5, 1, 4)
-echo_120 = echogram(ax_120, Sv_120, 'Sv', threshold=threshold)
+echo_120 = echogram(ax_120, Sv_120, 'data', threshold=threshold)
 ax_120.set_title("120kHz Sv data in time order")
 # print(Sv_120)
 
 ax_200 = fig.add_subplot(5, 1, 5)
-echo_200 = echogram(ax_200, Sv_200, 'Sv', threshold=threshold)
+echo_200 = echogram(ax_200, Sv_200, 'data', threshold=threshold)
 ax_200.set_title("200kHz Sv data in time order")
 # print(Sv_200)
 

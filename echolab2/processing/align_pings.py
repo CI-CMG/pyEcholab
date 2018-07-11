@@ -202,47 +202,11 @@ class AlignPings(object):
 
         Returns: None
         """
-
-        fill = self.make_pad(channels[0])
-
         for index, channel in enumerate(channels):
             if len(missing[index]) > 0:
-                fill.frequency = channel.frequency
-                fill.channel_id = channel.channel_id
+                fill = channels[index].empty_like(n_pings=1, empty_times=True)
                 for ping in missing[index]:
                     fill.ping_time[0] = ping
                     idx = np.where(channels[longest].ping_time == ping)[0][0]
                     insert_time = channels[longest].ping_time[idx-1]
                     channel.insert(fill, ping_time=insert_time)
-
-    @staticmethod
-    def make_pad(source):
-        """
-        Creates a 1-ping length processed data object to use for padding
-        pings. Vertical axis attributes such as range and depth and not
-        created in pad object. data attributes (i.e. Sv are set to Nans
-
-        Args:
-            source: Processed data object used as a source for
-                    attributes in fill object
-
-        Returns: 1-ping length processed data object with appropriate attributes
-        """
-
-        if isinstance(source, processed_data):
-            fill = processed_data('', 0)
-
-            for attr_name in source._data_attributes:
-                attr = getattr(source, attr_name)
-                if attr.ndim == 1 and attr.size != source.n_samples:
-                    data = np.empty((1,), dtype=attr.dtype)
-                    fill.add_attribute(attr_name, data)
-                elif attr.ndim == 2:
-                    data = np.empty((1, attr.shape[1]), dtype=attr.dtype)
-                    data[:] = np.nan
-                    fill.add_attribute(attr_name, data)
-
-            return fill
-        else:
-            raise TypeError('Align pings in pad mode currently only works on '
-                            'processed data objects')
