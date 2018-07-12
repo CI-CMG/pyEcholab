@@ -29,11 +29,11 @@
 """
 
 import numpy as np
-from ..ping_data import ping_data
+from ..ping_data import PingData
 from echolab2.processing import mask
 
 
-class ProcessedData(ping_data):
+class ProcessedData(PingData):
     """The ProcessedData class defines the horizontal and vertical axes of
     the data.
 
@@ -721,7 +721,7 @@ class ProcessedData(ping_data):
         """
         # Determine if we're assigning with a mask or assigning with slice
         # object.
-        if isinstance(key, mask.mask):
+        if isinstance(key, mask.Mask):
             # It's a mask.  Make sure the mask applies to this object.
             self._check_mask(key)
 
@@ -1094,7 +1094,7 @@ class ProcessedData(ping_data):
         other_data = self._setup_operators(other)
 
         # Create the mask we will return.
-        compare_mask = mask.mask(like=self)
+        compare_mask = mask.Mask(like=self)
 
         # Disable warning for comparing NaNs.
         self._old_npset = np.seterr(invalid='ignore')
