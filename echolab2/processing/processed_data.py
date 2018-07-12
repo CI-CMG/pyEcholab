@@ -29,11 +29,11 @@
 """
 
 import numpy as np
-from ..ping_data import ping_data
+from ..ping_data import PingData
 from echolab2.processing import mask
 
 
-class processed_data(ping_data):
+class ProcessedData(PingData):
     """The processed_data class defines the horizontal and vertical axes of
     the data.
 
@@ -113,7 +113,7 @@ class processed_data(ping_data):
         about data and control operation of processed data object instance.
         Code is heavily commented to facilitate use.
         """
-        super(processed_data, self).__init__()
+        super(ProcessedData, self).__init__()
 
         # Set the frequency, channel_id, and data type.
         if channel_id:
@@ -271,7 +271,7 @@ class processed_data(ping_data):
         obj_to_insert.interpolate(this_vaxis)
 
         #  we are now coexisting in harmony - call parent's insert
-        super(processed_data, self).insert(obj_to_insert,
+        super(ProcessedData, self).insert(obj_to_insert,
                                            ping_number=ping_number,
                                            ping_time=ping_time,
                                            insert_after=insert_after,
@@ -321,7 +321,7 @@ class processed_data(ping_data):
             channel_id = list(self.channel_id)
 
         #  get an empty processed_data object "like" this object
-        empty_obj = processed_data(channel_id, self.frequency,
+        empty_obj = ProcessedData(channel_id, self.frequency,
                 data_type)
         empty_obj.sample_thickness = self.sample_thickness
         empty_obj.sample_offset = self.sample_offset
@@ -376,7 +376,7 @@ class processed_data(ping_data):
             channel_id = list(self.channel_id)
 
         #  get an empty processed_data object "like" this object
-        empty_obj = processed_data(channel_id, self.frequency,
+        empty_obj = ProcessedData(channel_id, self.frequency,
                 self.data_type)
         empty_obj.sample_thickness = self.sample_thickness
         empty_obj.sample_offset = self.sample_offset
@@ -393,7 +393,7 @@ class processed_data(ping_data):
         """
 
         #  create an empty processed_data object with the same basic props as ourself
-        pd_copy = processed_data(self.channel_id,
+        pd_copy = ProcessedData(self.channel_id,
                 self.frequency, self.data_type)
 
         #  copy the other base attributes of our class
@@ -432,7 +432,7 @@ class processed_data(ping_data):
 
         #  create a new object to return - the data attributes of the new instance will
         #  be views into this instance's data.
-        p_data = processed_data(self.channel_id, self.frequency, self.data_type)
+        p_data = ProcessedData(self.channel_id, self.frequency, self.data_type)
 
         #  copy common attributes (include parent class attributes since
         #  we don't call a parent method to do this.)
@@ -676,7 +676,7 @@ class processed_data(ping_data):
         vaxis = np.arange(new_sample_dim) * self.sample_thickness + vaxis[0]
 
         #  call the parent method to resize the arrays (n_samples is updated here)
-        super(processed_data, self).resize(new_ping_dim, new_sample_dim)
+        super(ProcessedData, self).resize(new_ping_dim, new_sample_dim)
 
         #  and then update n_pings
         self.n_pings = self.ping_time.shape[0]
@@ -695,7 +695,7 @@ class processed_data(ping_data):
         if you want to assign using these.
         """
         #  determine if we're assigning with a mask or assigning with slice object
-        if (isinstance(key, mask.mask)):
+        if (isinstance(key, mask.Mask)):
             #  it's a mask - make sure the mask applies to this object
             self._check_mask(key)
 
@@ -714,7 +714,7 @@ class processed_data(ping_data):
             sample_mask = key
 
         #  check what value we've been given
-        if (isinstance(value, processed_data)):
+        if (isinstance(value, ProcessedData)):
             #  it is a processed_data object - check if it's compatible
             self._is_like_me(value)
 
@@ -737,7 +737,7 @@ class processed_data(ping_data):
         """
 
         #  determine if we're "slicing" with a mask or slicing with slice object
-        if (isinstance(key, mask.mask)):
+        if (isinstance(key, mask.Mask)):
 
             #  make sure the mask applies to this object
             self._check_mask(key)
@@ -947,7 +947,7 @@ class processed_data(ping_data):
         """
 
         #  determine what we're comparing ourself to
-        if (isinstance(other, processed_data)):
+        if (isinstance(other, ProcessedData)):
             #  we've been passed a processed_data object - make sure it's kosher
             self._is_like_me(other)
 
@@ -980,7 +980,7 @@ class processed_data(ping_data):
         other_data = self._setup_operators(other)
 
         #  create the mask we will return
-        compare_mask = mask.mask(like=self)
+        compare_mask = mask.Mask(like=self)
 
         #  disable warning for comparing NaNs
         self._old_npset = np.seterr(invalid='ignore')

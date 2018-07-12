@@ -41,14 +41,14 @@ orig_Sv = Sv.copy()
 
 #  the default behavior of the constructor is to create a sample mask so we'll
 #  create a sample mask that is like our "Sv" processed_data object.
-sample_mask = mask.mask(like=Sv)
+sample_mask = mask.Mask(like=Sv)
 print(sample_mask)
 
 #  masks are by default created with all elements set to "False". You can use the
 #  value keyword of the constructor to set it to True if you so desire.
 
 #  create a ping mask like Sv - setting all values to True
-ping_mask = mask.mask(like=Sv, type='ping', value=True)
+ping_mask = mask.Mask(like=Sv, type='ping', value=True)
 print(ping_mask)
 
 #  masks can be used on their own to present data (though mask plotting isn't

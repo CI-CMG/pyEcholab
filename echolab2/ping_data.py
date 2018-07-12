@@ -31,8 +31,9 @@
 
 import numpy as np
 
-class ping_data(object):
-    """echolab2.ping_data is the base class for all classes that store "ping"
+
+class PingData(object):
+    """echolab2.PingData is the base class for all classes that store "ping"
     based data from fisheries sonar systems.
 
     This class is not intended to be instantiated by the user. It is a base
@@ -52,10 +53,10 @@ class ping_data(object):
     """
 
     def __init__(self):
-        """Initializes ping_data class object.
+        """Initializes PingData class object.
 
         Creates and sets several internal properties used to store information
-        about data and control operation of data processing of ping_data
+        about data and control operation of data processing of PingData
         object instance. Code is heavily commented to facilitate use.
         """
 
@@ -186,7 +187,7 @@ class ping_data(object):
         adding.
 
         Args:
-            obj_to_insert (ping_data): An instance of ping_data containing the
+            obj_to_insert (PingData): An instance of PingData containing the
                 replacement data to insert.
             ping_number (int): The ping number specifying the first ping to
                 replace.
@@ -202,7 +203,7 @@ class ping_data(object):
 
         Raises:
             ValueError: ping_number, ping_time or index array not provided.
-            TypeError: The object provided isn't an instance of the ping_data
+            TypeError: The object provided isn't an instance of the PingData
                 class.
             TypeError: The frequency of the replacement data does not match
                 the frequency of the data to be replaced.
@@ -459,7 +460,7 @@ class ping_data(object):
 
         Raises:
             ValueError: Insertion point not specified.
-            TypeError: The object is not an instance of ping_data class.
+            TypeError: The object is not an instance of PingData class.
             TypeError: The frequency of the object to be inserted
                 doesn't match the frequency of this object.
             TypeError: Index array isn't a numpy array.
@@ -1061,10 +1062,10 @@ class ping_data(object):
         """Copies attributes.
 
         This is an internal helper method that is called by child "copy"
-        methods to copy the ping_data attributes as well as the data_attributes.
+        methods to copy the PingData attributes as well as the data_attributes.
 
         Args:
-            obj (ping_data): The object to copy attributes to.
+            obj (PingData): The object to copy attributes to.
 
         Returns:
             The copy of the object.
@@ -1086,12 +1087,12 @@ class ping_data(object):
 
 
     def _like(self, obj, n_pings, value, empty_times=False):
-        """Copies ping_data attributes and creates data arrays filled with the
+        """Copies PingData attributes and creates data arrays filled with the
         specified value.
 
         This is an internal helper method that is called by "empty_like" and
-        "zeros_like" methods of child classes which copy the ping_data
-        attributes into the provided ping_data based object as well as
+        "zeros_like" methods of child classes which copy the PingData
+        attributes into the provided PingData based object as well as
         create "data" arrays that are filled with the specified value. All
         vertical axes will be copied without modification.
 
@@ -1110,7 +1111,7 @@ class ping_data(object):
         self.n_samples).
 
         Args:
-            obj (ping_data): An empty object to copy attributes to.
+            obj (PingData): An empty object to copy attributes to.
             n_pings (int): Number of pings (horizontal axis)
             value (int): A specified value to fill the array with.
             empty_times (bool): Controls whether ping_time data is copied

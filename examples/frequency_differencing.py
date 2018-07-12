@@ -72,14 +72,14 @@ masks = {18000:None, 38000:None, 120000:None}
 for freq in Sv_data.keys():
 
     #  create a mask
-    masks[freq] = mask.mask(like=Sv_data[freq])
+    masks[freq] = mask.Mask(like=Sv_data[freq])
 
     #  next create a new line that is 0.5m shallower. (in place
     #  operators will change the existing line.)
     bot_line = bottom_lines[freq] - 0.5
 
     #  now create a surface exclusion line at 10m RANGE
-    surf_line = line.line(ping_time=Sv_data[freq].ping_time,
+    surf_line = line.Line(ping_time=Sv_data[freq].ping_time,
             data=10)
 
     #  now apply that line to our mask - we apply the value True

@@ -30,9 +30,10 @@
 
 import numpy as np
 import matplotlib
-from ..ping_data import ping_data
+from ..ping_data import PingData
 
-class mask(ping_data):
+
+class Mask(PingData):
     '''
 
     '''
@@ -40,7 +41,7 @@ class mask(ping_data):
     def __init__(self, size=None, like=None, value=False, type='sample',
             color=[148,0,211], name='Mask', sample_offset=0):
 
-        super(mask, self).__init__()
+        super(Mask, self).__init__()
 
         #  ensure the value arg is a bool
         value = bool(value)
@@ -108,7 +109,7 @@ class mask(ping_data):
         #  use type().__name__ to determine if class of "like_obj"
         #  is a processed_data object to avoid circular import references
         #  (processed_data imports mask so mask cannot import processed_data)
-        if (type(like_obj).__name__ == 'processed_data'):
+        if (type(like_obj).__name__ == 'ProcessedData'):
             #  base this mask off of a processed_data object
 
             #  create the type specific attributes
@@ -139,7 +140,7 @@ class mask(ping_data):
             else:
                 raise TypeError('Unknown mask type: ' + mask_type)
 
-        elif (isinstance(like_obj, mask)):
+        elif (isinstance(like_obj, Mask)):
             #  base this mask off of another mask - copy the rest of the attributes
             self.type = like_obj.type
             self.n_samples = like_obj.n_samples
@@ -496,7 +497,7 @@ class mask(ping_data):
                 ret_mask = self
             else:
                 #  we're returning a new mask - create it
-                ret_mask = mask(like=self)
+                ret_mask = Mask(like=self)
 
         return (other_mask, ret_mask)
 

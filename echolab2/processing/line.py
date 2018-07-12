@@ -29,10 +29,10 @@
 """
 
 import numpy as np
-from ..ping_data import ping_data
+from ..ping_data import PingData
 
 
-class line(ping_data):
+class Line(PingData):
     '''
     The line class implements lines based on ping_time and depth/range values.
     The class provides methods manipulating these values in various ways. The
@@ -41,9 +41,9 @@ class line(ping_data):
     '''
 
     def __init__(self, ping_time=None, data=None, color=[0.58, 0.0, 0.83],
-            name='line', linestyle='solid', linewidth=1.0):
+                 name='line', linestyle='solid', linewidth=1.0):
 
-        super(line, self).__init__()
+        super(Line, self).__init__()
 
         #  set the ping time
         self.ping_time = ping_time
@@ -88,7 +88,7 @@ class line(ping_data):
         color attributes are copied if not explicitly provided.
         """
         #  create a new line object to return
-        new_line = line(ping_time=line_obj.ping_time.copy())
+        new_line = Line(ping_time=line_obj.ping_time.copy())
 
         #  check if new props were provided
         if (color):
@@ -122,7 +122,7 @@ class line(ping_data):
         the numeric operators.
         """
 
-        if (isinstance(other, line)):
+        if (isinstance(other, Line)):
             if (other.data.shape[0] != self.data.shape[0]):
                 #  the other line has a different number of pings
                 #  so interpolate to this line's pings
@@ -177,7 +177,7 @@ class line(ping_data):
         """
         other_data = self._setup_numeric(other)
         new_line = self.empty_like(self)
-        if (isinstance(other, line)):
+        if (isinstance(other, Line)):
             other_data = other.data
         else:
             other_data = other

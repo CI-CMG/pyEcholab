@@ -9,7 +9,7 @@ in short object.
 
 """
 import numpy as np
-from .processed_data import processed_data
+from .processed_data import ProcessedData
 
 
 class AlignPings(object):
