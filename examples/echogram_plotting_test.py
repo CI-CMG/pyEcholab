@@ -15,7 +15,7 @@ sample_thickness_m = 0.5
 ping_interval_ms = 1000.0
 
 
-fake_Sv = processed_data.processed_data('Fake News!', 120000, 'Sv')
+fake_Sv = processed_data.ProcessedData('Fake News!', 120000, 'Sv')
 fake_Sv.n_samples = test_data_samples
 fake_Sv.n_pings = test_data_pings
 
@@ -32,7 +32,7 @@ fake_Sv.add_attribute('ping_time', times.astype('datetime64[ms]'))
 fake_Sv.add_attribute('data', data)
 
 #  create lines
-a_line = line.line(ping_time=np.array([times[0], times[-1]]),
+a_line = line.Line(ping_time=np.array([times[0], times[-1]]),
         data=np.array([0,0]))
 n_lines = int((ranges[-1] / (sample_thickness_m * 10)) + 0.5)
 
