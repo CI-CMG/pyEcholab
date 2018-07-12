@@ -5,13 +5,13 @@
 #     Resource Assessment and Conservation Engineering (RACE)
 #     Midwater Assessment and Conservation Engineering (MACE)
 
-#  THIS SOFTWARE AND ITS DOCUMENTATION ARE CONSIDERED TO BE IN THE PUBLIC DOMAIN
-#  AND THUS ARE AVAILABLE FOR UNRESTRICTED PUBLIC USE. THEY ARE FURNISHED "AS IS."
-#  THE AUTHORS, THE UNITED STATES GOVERNMENT, ITS INSTRUMENTALITIES, OFFICERS,
-#  EMPLOYEES, AND AGENTS MAKE NO WARRANTY, EXPRESS OR IMPLIED, AS TO THE USEFULNESS
-#  OF THE SOFTWARE AND DOCUMENTATION FOR ANY PURPOSE. THEY ASSUME NO RESPONSIBILITY
-#  (1) FOR THE USE OF THE SOFTWARE AND DOCUMENTATION; OR (2) TO PROVIDE TECHNICAL
-#  SUPPORT TO USERS.
+# THIS SOFTWARE AND ITS DOCUMENTATION ARE CONSIDERED TO BE IN THE PUBLIC DOMAIN
+# AND THUS ARE AVAILABLE FOR UNRESTRICTED PUBLIC USE. THEY ARE FURNISHED "AS
+# IS. THE AUTHORS, THE UNITED STATES GOVERNMENT, ITS INSTRUMENTALITIES,
+# OFFICERS, EMPLOYEES, AND AGENTS MAKE NO WARRANTY, EXPRESS OR IMPLIED,
+# AS TO THE USEFULNESS OF THE SOFTWARE AND DOCUMENTATION FOR ANY PURPOSE.
+# THEY ASSUME NO RESPONSIBILITY (1) FOR THE USE OF THE SOFTWARE AND
+# DOCUMENTATION; OR (2) TO PROVIDE TECHNICAL SUPPORT TO USERS.
 
 """
 
@@ -33,12 +33,12 @@ from ..ping_data import PingData
 
 
 class Line(PingData):
-    '''
+    """
     The line class implements lines based on ping_time and depth/range values.
     The class provides methods manipulating these values in various ways. The
     numerical operators operate on the data, allowing offset lines to easily
     be created. Color and name properties can be used in plotting the lines.
-    '''
+    """
 
     def __init__(self, ping_time=None, data=None, color=[0.58, 0.0, 0.83],
                  name='line', linestyle='solid', linewidth=1.0):
@@ -49,26 +49,26 @@ class Line(PingData):
         self.ping_time = ping_time
 
         #  and the number of pings
-        if (ping_time is not None):
+        if ping_time is not None:
             self.n_pings = ping_time.shape[0]
 
         #  assign data based on what we're given. Arrays must be the same shape
         #  as ping_time, scalars are expanded to the same shape as ping_time
         #  and None is None.
-        if (isinstance(data, np.ndarray)):
-            if (data.ndim == 0):
+        if isinstance(data, np.ndarray):
+            if data.ndim == 0:
                 data = np.full(ping_time.shape[0], data, dtype='float32')
             else:
-                if (data.shape[0] != ping_time.shape[0]):
-                    raise ValueError("The data array must be None, a scalar " +
-                            "or an array the same size as ping_time.")
-        elif (data is not None):
+                if data.shape[0] != ping_time.shape[0]:
+                    raise ValueError("The data array must be None, a scalar "
+                                     "or an array the same size as ping_time.")
+        elif data is not None:
             try:
                 data = float(data)
                 data = np.full(ping_time.shape[0], data, dtype='float32')
-            except:
-                raise ValueError("The data array must be None, a scalar " +
-                            "or an array the same size as ping_time.")
+            except Exception:
+                raise ValueError("The data array must be None, a scalar or an"
+                                 " array the same size as ping_time.")
         self.data = data
 
         #  set the initial attribute values
@@ -82,68 +82,105 @@ class Line(PingData):
 
 
     def empty_like(self, line_obj, name=None, color=None):
-        """
-        empty_like creates an empty line (where data values are NaN) that
+        """  Empty_like creates an empty line object.
+
+        Empty_like creates an empty line (where data values are NaN) that
         is the same length as the provided line object. The name and
         color attributes are copied if not explicitly provided.
+
+        Args:
+            line_obj (Line object): The Line object instance that is the
+            template for the new object being created.
+            name (str): Optional name for the new Line object.
+            color (): Optional color for the new Line object.
+
+        Returns:
+            New empty instance of Line object with name and color ether
+            copied from Line object passed in ur using optional parameters
+            passed to method.
+
         """
-        #  create a new line object to return
+        # Create a new line object to return.
         new_line = Line(ping_time=line_obj.ping_time.copy())
 
-        #  check if new props were provided
-        if (color):
+        # Check if new properties were provided, otherwise copy from original.
+        if color:
             new_line.color = color
         else:
             new_line.color = line_obj.color
-        if (name):
+        if name:
             new_line.name = name
         else:
             new_line.name = line_obj.name
 
-        #  set the data array to NaNs
+        # Set the data array to NaNs.
         new_line.data = np.full(new_line.ping_time.shape[0], np.nan)
 
-        #  and return the new line object
         return new_line
 
 
     def interpolate(self, new_times):
+        """ Interpolates the data values to the provided time vector.
+
+        Interpolate interpolates the data values to the provided time vector.
+
+        Args:
+            new_times (array): 1D numpy array of new dateTime64 times
         """
-        interpolate interpolates the data values to the provided time vector.
-        """
+
         self.data[:] = np.interp(self.ping_time, new_times,
                     self.data, left=np.nan, right=np.nan)
         self.ping_time = new_times.copy()
 
 
     def _setup_numeric(self, other):
-        """
-        _setup_numeric is an internal method that contains generalized code for
-        the numeric operators.
+        """ Internal method containing generalized numeric operators code.
+
+         _setup_numeric is an internal method that contains generalized code for
+        the numeric operators. Biggest job is interpolating ping times if the
+        current Line instance has a different number of pings from "other".
+
+        Args:
+            other(Line object or array or scalar value): The data that is
+            being used in the operator along with the Line instance being
+            operated on.
+
+        Returns:
+            The data from other if it's a Line object or other if other is a
+            scalar or array.
         """
 
-        if (isinstance(other, Line)):
-            if (other.data.shape[0] != self.data.shape[0]):
-                #  the other line has a different number of pings
-                #  so interpolate to this line's pings
+        if isinstance(other, Line):
+            if other.data.shape[0] != self.data.shape[0]:
+                # The other line has a different number of pings so
+                # interpolate to this line's pings.
                 other_data = np.interp(self.ping_time, other.ping_time,
-                    self.data, left=np.nan, right=np.nan)
+                                       self.data, left=np.nan, right=np.nan)
             else:
                 other_data = other.data
         else:
-            #  assume this is a scalar or array thats compatible
+            # Assume this is a scalar or array that is compatible.
             other_data = other
 
         return other_data
 
 
     def __add__(self, other):
-        """
-        __add__ implements the binary addition operator
+        """ Implement the binary addition operator.
+
+        __add__ implements the binary addition operator.
+
+        Args:
+            other(Line object or array or scalar value): The data that is
+            being added to the Line instance being operated on.
+
+        Returns:
+            Line object that is the result of adding "other" to the Line object.
         """
         other_data = self._setup_numeric(other)
         new_line = self.empty_like(self)
-        if (isinstance(other, Line)):
+
+        if isinstance(other, Line):
             other_data = other.data
         else:
             other_data = other
@@ -154,17 +191,35 @@ class Line(PingData):
 
 
     def __radd__(self, other):
-        """
-        __radd__ implements the reflected binary addition operator
+        """ Implement the reflected binary addition operator.
+
+        __radd__ implements the reflected binary addition operator.
+
+        Args:
+            other(Line object or array or scalar value): The data that is
+            being reflected added to the Line instance being operated on.
+
+        Returns:
+            Line object that is the result of reflective adding "other" to
+            the Line object.
         """
 
         return self.__add__(other)
 
 
     def __iadd__(self, other):
-        """
+        """ Implement the in-place binary addition operator.
+
         __iadd__ implements the in-place binary addition operator
+
+        Args:
+            other(Line object or array or scalar value): The data that is
+            being added to the Line instance being operated on.
+
+        Returns:
+            Returns original Line object with "other" added to it.
         """
+
         other_data = self._setup_numeric(other)
         self.data[:] = self.data + other_data
 
@@ -172,12 +227,21 @@ class Line(PingData):
 
 
     def __sub__(self, other):
+        """ Implement the binary subtraction operator.
+
+        __sub__ implements the binary subtraction operator.
+
+        Args:
+            other(Line object or array or scalar value): The data that is
+            being subtracted from the Line instance being operated on.
+
+        Returns:
+            New Line object that is the original object minus "other".
         """
-        __sub__ implements the binary subtraction operator
-        """
+
         other_data = self._setup_numeric(other)
         new_line = self.empty_like(self)
-        if (isinstance(other, Line)):
+        if isinstance(other, Line):
             other_data = other.data
         else:
             other_data = other
@@ -188,16 +252,32 @@ class Line(PingData):
 
 
     def __rsub__(self, other):
-        """
-        __rsub__ implements the reflected binary subtraction operator
+        """ Implements the reflected binary subtraction operator.
+
+        __rsub__ implements the reflected binary subtraction operator.
+
+        Args:
+            other(Line object or array or scalar value): The data that is
+            being subtracted from the Line instance being operated on.
+
+        Returns:
+            New Line object that is the original object minus "other".
         """
 
         return self.__sub__(other)
 
 
     def __isub__(self, other):
-        """
-        __isub__ implements the in-place binary subtraction operator
+        """i Implements the in-place binary subtraction operator.
+
+        __isub__ implements the in-place binary subtraction operator.
+
+        Args:
+            other(Line object or array or scalar value): The data that is
+            being subtracted from the Line instance being operated on.
+
+        Returns:
+            Original Line object with "other" subtracted from it.
         """
         other_data = self._setup_numeric(other)
         self.data[:] = self.data - other_data
@@ -206,12 +286,21 @@ class Line(PingData):
 
 
     def __mul__(self, other):
+        """ Implement the binary multiplication operator.
+
+        __mul__ implements the binary multiplication operator.
+
+        Args:
+            other(Line object or array or scalar value): The data that is
+            being multiplied with the Line instance being operated on.
+
+        Returns:
+            New Line object that is the original object multiplied by  "other".
         """
-        __mul__ implements the binary multiplication operator
-        """
+
         other_data = self._setup_numeric(other)
         new_line = self.empty_like(self)
-        if (isinstance(other, Line)):
+        if isinstance(other, Line):
             other_data = other.data
         else:
             other_data = other
@@ -222,17 +311,34 @@ class Line(PingData):
 
 
     def __rmul__(self, other):
-        """
-        __rmul__ implements the reflected binary multiplication operator
+        """ Implement the reflected binary multiplication operator.
+
+        __rmul__ implements the reflected binary multiplication operator.
+
+        Args:
+            other(Line object or array or scalar value): The data that is
+            being multiplied with the Line instance being operated on.
+
+        Returns:
+            New Line object that is the original object multiplied by  "other".
         """
 
         return self.__mul__(other)
 
 
     def __imul__(self, other):
+        """ Implements the in-place binary multiplication operator.
+
+        __imul__ implements the in-place binary multiplication operator.
+
+        Args:
+            other(Line object or array or scalar value): The data that is
+            being multiplied with the Line instance being operated on.
+
+        Returns:
+            Original Line object multiplied by other".
         """
-        __imul__ implements the in-place binary multiplication operator
-        """
+
         other_data = self._setup_numeric(other)
         self.data[:] = self.data * other_data
 
@@ -240,12 +346,20 @@ class Line(PingData):
 
 
     def __truediv__(self, other):
-        """
-        __truediv__ implements the binary fp division operator
+        """ Implement the binary fp division operator.
+
+        __truediv__ implements the binary fp division operator.
+
+        Args:
+            other(Line object or array or scalar value): The data to divide the
+            Line instance being operated on.
+
+        Returns:
+            New Line object that is the original Line object divided bu other.
         """
         other_data = self._setup_numeric(other)
         new_line = self.empty_like(self)
-        if (isinstance(other, Line)):
+        if isinstance(other, Line):
             other_data = other.data
         else:
             other_data = other
@@ -256,17 +370,33 @@ class Line(PingData):
 
 
     def __rtruediv__(self, other):
-        """
-        __rtruediv__ implements the reflected binary fp division operator
+        """ Implement the reflected binary fp division operator.
+
+        __rtruediv__ implements the reflected binary fp division operator.
+
+        Args:
+            other(Line object or array or scalar value): The data to divide the
+            Line instance being operated on.
+        Returns:
+            New Line object that is the original Line object divided bu other.
         """
 
         return self.__truediv__(other)
 
 
     def __itruediv__(self, other):
+        """ Implement the in-place binary fp division operator.
+
+        __itruediv__ implements the in-place binary fp division operator.
+
+        Args:
+            other(Line object or array or scalar value): The data to divide the
+            Line instance being operated on.
+
+        Returns:
+            Original Line object divided by other.
         """
-        __itruediv__ implements the in-place binary fp division operator
-        """
+
         other_data = self._setup_numeric(other)
         self.data[:] = self.data / other_data
 
@@ -274,12 +404,21 @@ class Line(PingData):
 
 
     def __pow__(self, other):
-        """
-        __pow__ implements the binary power operator
+        """ Implement the binary power operator.
+
+        __pow__ implements the binary power operator.
+
+        Args:
+            other(Line object or array or scalar value): The data to raise the
+            Line instance being operated on.
+
+        Returns:
+            New Line object that is the original Line raided to "other".
+
         """
         other_data = self._setup_numeric(other)
         new_line = self.empty_like(self)
-        if (isinstance(other, Line)):
+        if isinstance(other, Line):
             other_data = other.data
         else:
             other_data = other
@@ -290,17 +429,34 @@ class Line(PingData):
 
 
     def __rpow__(self, other):
-        """
-        __rpow__ implements the reflected binary power operator
+        """ Implements the reflected binary power operator.
+
+        __rpow__ implements the reflected binary power operator.
+
+        Args:
+            other(Line object or array or scalar value): The data to raise the
+            Line instance being operated on.
+
+        Returns:
+            New Line object that is the original Line raided to "other".
         """
 
         return self.__pow__(other)
 
 
     def __ipow__(self, other):
+        """ Implements the in-place binary power operator.
+
+        __ipow__ implements the in-place binary power operator.
+
+        Args:
+           other(Line object or array or scalar value): The data to raise the
+            Line instance being operated on.
+
+        Returns:
+        Original Line object that raided to "other".
         """
-        __ipow__ implements the in-place binary power operator
-        """
+
         other_data = self._setup_numeric(other)
         self.data[:] = self.data ** other_data
 
@@ -308,18 +464,26 @@ class Line(PingData):
 
 
     def __str__(self):
-        '''
-        reimplemented string method that provides some basic info about the mask object
-        '''
+        """ Re-implement string method to provide basic info.
 
-        #  print the class and address
-        msg = str(self.__class__) + " at " + str(hex(id(self))) + "\n"
+        Reimplemented string method that provides some basic info about the
+        mask object.
+        """
 
-        #  and some other basic info
-        msg = msg + "                 line name: " + self.name + "\n"
-        msg = msg + "                 ping_time: (" + str(self.ping_time.shape[0]) + ")\n"
-        msg = msg + "                      data: (" + str(self.data.shape[0]) + ")\n"
-        msg = msg + "                start time: " + str(self.ping_time[0]) + "\n"
-        msg = msg + "                  end time: " + str(self.ping_time[-1]) + "\n"
+        # Print the class and address
+        msg = "{0} at {1}\n".format(str(self.__class__), str(hex(id(self))))
+
+        # Print some other basic info
+        msg = "{0}                 line name: ({1})\n".format(msg, self.name)
+        msg = "{0}                 ping_time: ({1})\n".format(
+                                                    msg,
+                                                    self.ping_time.shape[0])
+        msg = "{0}                      data: ({1})\n".format(
+                                                            msg,
+                                                            self.data.shape[0])
+        msg = "{0}                start time: {1}\n".format(msg,
+                                                            self.ping_time[0])
+        msg = "{0}                  end time: {1}\n" .format(msg,
+                                                             self.ping_time[-1])
 
         return msg
