@@ -143,7 +143,7 @@ class Line(PingData):
         """
         other_data = self._setup_numeric(other)
         new_line = self.empty_like(self)
-        if (isinstance(other, line)):
+        if (isinstance(other, Line)):
             other_data = other.data
         else:
             other_data = other
@@ -211,7 +211,7 @@ class Line(PingData):
         """
         other_data = self._setup_numeric(other)
         new_line = self.empty_like(self)
-        if (isinstance(other, line)):
+        if (isinstance(other, Line)):
             other_data = other.data
         else:
             other_data = other
@@ -245,7 +245,7 @@ class Line(PingData):
         """
         other_data = self._setup_numeric(other)
         new_line = self.empty_like(self)
-        if (isinstance(other, line)):
+        if (isinstance(other, Line)):
             other_data = other.data
         else:
             other_data = other
@@ -279,7 +279,7 @@ class Line(PingData):
         """
         other_data = self._setup_numeric(other)
         new_line = self.empty_like(self)
-        if (isinstance(other, line)):
+        if (isinstance(other, Line)):
             other_data = other.data
         else:
             other_data = other
