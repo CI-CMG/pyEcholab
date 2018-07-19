@@ -19,7 +19,7 @@
 | Developed by:  Rick Towler   <rick.towler@noaa.gov>
 | National Oceanic and Atmospheric Administration (NOAA)
 | Alaska Fisheries Science Center (AFSC)
-| Midwater Assesment and Conservation Engineering Group (MACE)
+| Midwater Assessment and Conservation Engineering Group (MACE)
 |
 | Author:
 |       Rick Towler   <rick.towler@noaa.gov>
@@ -33,28 +33,42 @@ from ..ping_data import PingData
 
 
 class Line(PingData):
-    """
-    The line class implements lines based on ping_time and depth/range values.
+    #   TODO: Review attributes in this docstring
+    """The line class implements lines based on ping_time and depth/range values.
     The class provides methods manipulating these values in various ways. The
     numerical operators operate on the data, allowing offset lines to easily
     be created. Color and name properties can be used in plotting the lines.
+
+    Attributes:
+        ping_time: ping_time is a datetime object that defines the time the
+            ping was recorded.
+        data: data is a numpy array which contains the float data.
+        color: color is a list which defines the color of the lines.
+        name: name is a string.
+        linestyle: linestyle is a string that defines the style of the lines.
+        linewidth: linewidth is a float the defines the width of the lines.
     """
 
     def __init__(self, ping_time=None, data=None, color=[0.58, 0.0, 0.83],
                  name='line', linestyle='solid', linewidth=1.0):
+        """Initializes Line class object.
+
+        Creates and sets several internal properties.
+        """
+
 
         super(Line, self).__init__()
 
-        #  set the ping time
+        # Set the ping time.
         self.ping_time = ping_time
 
-        #  and the number of pings
+        # Set the number of pings.
         if ping_time is not None:
             self.n_pings = ping_time.shape[0]
 
-        #  assign data based on what we're given. Arrays must be the same shape
-        #  as ping_time, scalars are expanded to the same shape as ping_time
-        #  and None is None.
+        # Assign data based on what we're given. Arrays must be the same shape
+        # as ping_time, scalars are expanded to the same shape as ping_time
+        # and None is None.
         if isinstance(data, np.ndarray):
             if data.ndim == 0:
                 data = np.full(ping_time.shape[0], data, dtype='float32')
@@ -71,18 +85,18 @@ class Line(PingData):
                                  " array the same size as ping_time.")
         self.data = data
 
-        #  set the initial attribute values
+        # Set the initial attribute values.
         self.color = color
         self.name = name
         self.linestyle = linestyle
         self.linewidth = linewidth
 
-        #  update out data_attributes list adding the "data" attribute
+        # Update out data_attributes list, adding the "data" attribute.
         self._data_attributes += ['data']
 
 
     def empty_like(self, line_obj, name=None, color=None):
-        """  Empty_like creates an empty line object.
+        """Creates an empty line object.
 
         Empty_like creates an empty line (where data values are NaN) that
         is the same length as the provided line object. The name and
@@ -98,7 +112,6 @@ class Line(PingData):
             New empty instance of Line object with name and color ether
             copied from Line object passed in ur using optional parameters
             passed to method.
-
         """
         # Create a new line object to return.
         new_line = Line(ping_time=line_obj.ping_time.copy())
@@ -120,7 +133,7 @@ class Line(PingData):
 
 
     def interpolate(self, new_times):
-        """ Interpolates the data values to the provided time vector.
+        """Interpolates the data values to the provided time vector.
 
         Interpolate interpolates the data values to the provided time vector.
 
@@ -134,7 +147,7 @@ class Line(PingData):
 
 
     def _setup_numeric(self, other):
-        """ Internal method containing generalized numeric operators code.
+        """Internal method containing generalized numeric operators code.
 
          _setup_numeric is an internal method that contains generalized code for
         the numeric operators. Biggest job is interpolating ping times if the
@@ -166,13 +179,13 @@ class Line(PingData):
 
 
     def __add__(self, other):
-        """ Implement the binary addition operator.
+        """Implements the binary addition operator.
 
         __add__ implements the binary addition operator.
 
         Args:
             other(Line object or array or scalar value): The data that is
-            being added to the Line instance being operated on.
+                being added to the Line instance being operated on.
 
         Returns:
             Line object that is the result of adding "other" to the Line object.
@@ -191,13 +204,13 @@ class Line(PingData):
 
 
     def __radd__(self, other):
-        """ Implement the reflected binary addition operator.
+        """Implements the reflected binary addition operator.
 
         __radd__ implements the reflected binary addition operator.
 
         Args:
             other(Line object or array or scalar value): The data that is
-            being reflected added to the Line instance being operated on.
+                being reflected added to the Line instance being operated on.
 
         Returns:
             Line object that is the result of reflective adding "other" to
@@ -208,13 +221,13 @@ class Line(PingData):
 
 
     def __iadd__(self, other):
-        """ Implement the in-place binary addition operator.
+        """Implements the in-place binary addition operator.
 
         __iadd__ implements the in-place binary addition operator
 
         Args:
             other(Line object or array or scalar value): The data that is
-            being added to the Line instance being operated on.
+                being added to the Line instance being operated on.
 
         Returns:
             Returns original Line object with "other" added to it.
@@ -227,13 +240,13 @@ class Line(PingData):
 
 
     def __sub__(self, other):
-        """ Implement the binary subtraction operator.
+        """Implements the binary subtraction operator.
 
         __sub__ implements the binary subtraction operator.
 
         Args:
             other(Line object or array or scalar value): The data that is
-            being subtracted from the Line instance being operated on.
+                being subtracted from the Line instance being operated on.
 
         Returns:
             New Line object that is the original object minus "other".
@@ -252,7 +265,7 @@ class Line(PingData):
 
 
     def __rsub__(self, other):
-        """ Implements the reflected binary subtraction operator.
+        """Implements the reflected binary subtraction operator.
 
         __rsub__ implements the reflected binary subtraction operator.
 
@@ -268,7 +281,7 @@ class Line(PingData):
 
 
     def __isub__(self, other):
-        """i Implements the in-place binary subtraction operator.
+        """Implements the in-place binary subtraction operator.
 
         __isub__ implements the in-place binary subtraction operator.
 
@@ -286,7 +299,7 @@ class Line(PingData):
 
 
     def __mul__(self, other):
-        """ Implement the binary multiplication operator.
+        """Implements the binary multiplication operator.
 
         __mul__ implements the binary multiplication operator.
 
@@ -311,7 +324,7 @@ class Line(PingData):
 
 
     def __rmul__(self, other):
-        """ Implement the reflected binary multiplication operator.
+        """Implements the reflected binary multiplication operator.
 
         __rmul__ implements the reflected binary multiplication operator.
 
@@ -327,7 +340,7 @@ class Line(PingData):
 
 
     def __imul__(self, other):
-        """ Implements the in-place binary multiplication operator.
+        """Implements the in-place binary multiplication operator.
 
         __imul__ implements the in-place binary multiplication operator.
 
@@ -346,7 +359,7 @@ class Line(PingData):
 
 
     def __truediv__(self, other):
-        """ Implement the binary fp division operator.
+        """Implements the binary fp division operator.
 
         __truediv__ implements the binary fp division operator.
 
@@ -370,7 +383,7 @@ class Line(PingData):
 
 
     def __rtruediv__(self, other):
-        """ Implement the reflected binary fp division operator.
+        """Implements the reflected binary fp division operator.
 
         __rtruediv__ implements the reflected binary fp division operator.
 
@@ -385,7 +398,7 @@ class Line(PingData):
 
 
     def __itruediv__(self, other):
-        """ Implement the in-place binary fp division operator.
+        """Implements the in-place binary fp division operator.
 
         __itruediv__ implements the in-place binary fp division operator.
 
@@ -404,7 +417,7 @@ class Line(PingData):
 
 
     def __pow__(self, other):
-        """ Implement the binary power operator.
+        """Implements the binary power operator.
 
         __pow__ implements the binary power operator.
 
@@ -414,7 +427,6 @@ class Line(PingData):
 
         Returns:
             New Line object that is the original Line raided to "other".
-
         """
         other_data = self._setup_numeric(other)
         new_line = self.empty_like(self)
@@ -429,7 +441,7 @@ class Line(PingData):
 
 
     def __rpow__(self, other):
-        """ Implements the reflected binary power operator.
+        """Implements the reflected binary power operator.
 
         __rpow__ implements the reflected binary power operator.
 
@@ -445,7 +457,7 @@ class Line(PingData):
 
 
     def __ipow__(self, other):
-        """ Implements the in-place binary power operator.
+        """Implements the in-place binary power operator.
 
         __ipow__ implements the in-place binary power operator.
 
@@ -454,7 +466,7 @@ class Line(PingData):
             Line instance being operated on.
 
         Returns:
-        Original Line object that raided to "other".
+            Original Line object that raided to "other".
         """
 
         other_data = self._setup_numeric(other)
@@ -464,16 +476,19 @@ class Line(PingData):
 
 
     def __str__(self):
-        """ Re-implement string method to provide basic info.
+        """Re-implements string method to provide basic information.
 
         Reimplemented string method that provides some basic info about the
         mask object.
+
+        Return:
+            A message with basic information about the mask object.
         """
 
-        # Print the class and address
+        # Print the class and address.
         msg = "{0} at {1}\n".format(str(self.__class__), str(hex(id(self))))
 
-        # Print some other basic info
+        # Print some other basic information.
         msg = "{0}                 line name: ({1})\n".format(msg, self.name)
         msg = "{0}                 ping_time: ({1})\n".format(
                                                     msg,

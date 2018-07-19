@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Script to test AlignPings functionality
-"""
+"""This example script tests AlignPings functionality."""
 
 import sys
 
@@ -22,27 +20,27 @@ file_bins = fa('../NCEI_workflow/data/SH1507', 10).file_bins
 raw_files = file_bins[0]
 
 
-#  create a matplotlib figure to plot our echograms on
+# Create a matplotlib figure to plot our echograms on.
 fig = figure()
-#  set some properties for the sub plot layout
+# Set some properties for the sub plot layout.
 subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.93, wspace=None,
                 hspace=1.25)
 
-#  create an instance of the EK60 instrument. This is the top level object used
-#  to interact with EK60 and data sources
+# Create an instance of the EK60 instrument.  This is the top level object used
+# to interact with EK60 and data sources.
 ek60 = EK60()
 
-#  use the read_raw method to read in a data file
+# Use the read_raw method to read in a data file.
 ek60.read_raw(raw_files, power=None, angles=None, max_sample_count=None,
               start_time=None, end_time=None, start_ping=None, end_ping=None,
               frequencies=None, channel_ids=None,
               time_format_string='%Y-%m-%d %H:%M:%S', incremental=None,
               start_sample=None, end_sample=None)
 
-#  print some basic info about our object.
+# Print some basic info about our object.
 # print(ek60)
 
-#  get a reference to the RawData object for each channel
+# Get a reference to the RawData object for each channel.
 raw_18 = ek60.get_raw_data(channel_number=1)
 raw_38 = ek60.get_raw_data(channel_number=2)
 raw_70 = ek60.get_raw_data(channel_number=3)
@@ -50,11 +48,12 @@ raw_120 = ek60.get_raw_data(channel_number=4)
 raw_200 = ek60.get_raw_data(channel_number=5)
 raw = [raw_18, raw_38, raw_70, raw_120, raw_200]
 
-# time 2015-06-26T06:12:03 is missing in the 38kHz channel. this is ping #
-# 489 in he other channels
-# uncomment lines 56-69 to test aligning of raw data objects the keyword
-# 'pad' aligns by padding, 'delete' aligns by dropping extra pings. Pad
-# method only works on processed data objects
+# Time 2015-06-26T06:12:03 is missing in the 38kHz channel.  This is ping number
+# 489 in the other channels.
+#
+# Uncomment lines 57-75 to test aligning of raw data objects the keyword
+# 'pad' aligns by padding, 'delete' aligns by dropping  extra pings. Pad
+# method only works on processed data objects.
 # print('Before alignment')
 # for channel in raw:
 #     print(channel.channel_id)
@@ -75,7 +74,7 @@ raw = [raw_18, raw_38, raw_70, raw_120, raw_200]
 #         print(ping, channel.ping_time[ping], channel.power[ping][100])
 #     print()
 
-# get Sv for each channel
+# Get Sv for each channel.
 Sv_18 = raw_18.get_Sv()
 Sv_38 = raw_38.get_Sv()
 Sv_70 = raw_70.get_Sv()
@@ -84,9 +83,9 @@ Sv_200 = raw_200.get_Sv()
 Sv = [Sv_18, Sv_38, Sv_70, Sv_120, Sv_200]
 
 
-# remove some pings for better testing of align functionality Comment these
+# Remove some pings for better testing of align functionality.  Comment these
 # lines to test against the one missing ping in the 38KHz channel of the
-# example files
+# example files.
 Sv_18.delete(start_ping=603, end_ping=605)
 Sv_200.delete(start_ping=510, end_ping=512)
 
@@ -97,7 +96,7 @@ Sv_200.delete(start_ping=510, end_ping=512)
 #         print(ping, channel.ping_time[ping], channel.data[ping][100])
 #     print()
 
-# call align pings
+# Call align pings.
 aligned = AlignPings(Sv, 'pad')  # 'delete' or 'pad'
 
 
@@ -118,7 +117,7 @@ aligned = AlignPings(Sv, 'pad')  # 'delete' or 'pad'
 #         print ('\t{0}: {1}'.format(detail, aligned.details[channel][detail]))
 
 
-# plot Sv values
+# Plot Sv values.
 threshold = [-70, 0]
 
 ax_18 = fig.add_subplot(5, 1, 1)
@@ -146,5 +145,5 @@ echo_200 = echogram(ax_200, Sv_200, 'data', threshold=threshold)
 ax_200.set_title("200kHz Sv data in time order")
 # print(Sv_200)
 
-#  show our figure
+# Display our figure.
 show()
