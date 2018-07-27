@@ -877,7 +877,7 @@ class ProcessedData(PingData):
                                      'object with a depth based object.')
         else:
             if hasattr(self, 'depth'):
-                if not np.array_equal(self.depth, mask.depth):
+                if not np.array_equal(self.depth, pd_object.depth):
                     raise ValueError("The ProcessedData object's depths do "
                                      "not match our depths.")
             else:
