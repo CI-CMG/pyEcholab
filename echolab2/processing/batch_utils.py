@@ -1,10 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-This is Chuck's personal testing script. It could well be in an unhappy
-state. It's in the repo so I can access it at home and work without needing a
-separate branch. You are happy to test this script but please don't change
-it. thanks...Chuck
-"""
+
 
 import os
 import re
@@ -12,10 +7,18 @@ from datetime import datetime, timedelta
 
 
 class FileAggregator(object):
-    """
-    Class that returns an object containing an time sorted list of files with
-    file name and datetime timestamp for use in batch processing of files. A
-    list of lists with files aggregated by time interval is also available,
+    """This class provides a time sorted list of files.
+
+    This class returns an object containing a time sorted list of files with
+    filename and datetime timestamp for use in batch processing of files. A
+    list of lists with files aggregated by time interval is also available.
+
+    Attributes:
+        regex: A string pattern used to parse date and time information from
+            a filename.
+        format: A string datetime format the filename contains.
+        file_list: A list of files.
+        file_bins: A list of file lists based on a specified time interval.
     """
     def __init__(self, source_dir, interval=60, extension='.raw',
                  regex='D\d{8}-T\d{6}', time_format='D%Y%m%d-T%H%M%S'):
@@ -27,12 +30,16 @@ class FileAggregator(object):
         self.file_bins = self.bin_files(interval)
 
     def _get_timestamp(self, item):
-        """
-        Parses date and time elements from filename for use in sorting based
-        on time recorded in filename
+        """Parses the timestamp from files.
 
-        :param item: file path
-        :return: timestamp: datetime timestamp
+        This method parses date and time elements from the filename for use in
+        sorting based on the time recorded in the filename.
+
+        Args:
+            item (str): The file path to be parsed.
+
+        Return:
+            The timestamp from the filename.
         """
         raw = self.pattern.search(item).group()
         timestamp = datetime.strptime(raw, self.format)
@@ -40,6 +47,18 @@ class FileAggregator(object):
         return timestamp
 
     def sort_files(self, source_dir, extension):
+        """Sorts files.
+
+        This class sorts files in a specified directory based on timestamps
+        parsed from filenames.
+
+        Args:
+            source_dir (str): The directory containing the files.
+            extension (str): The file extension of the data files.
+
+        Returns:
+            A sorted list of files.
+        """
 
         raw_files = []
         for files in os.walk(source_dir):
@@ -56,6 +75,18 @@ class FileAggregator(object):
         return sorted(file_list, key=lambda item: item[1])
 
     def bin_files(self, interval):
+        """Creates bins of files.
+
+        This method bins files based on the time interval specified.  The start
+        time of the file is used for this process.  The result is a list of
+        file lists (bins).
+
+        Args:
+            interval (int): A number of minutes to bin the files by.
+
+        Returns:
+            A list of binned files.
+        """
         delta = timedelta(minutes=interval)
         binned_files = []
         bin_start = self.file_list[0][1]
@@ -68,7 +99,7 @@ class FileAggregator(object):
                 current_bin = []
                 bin_start = file[1]
                 current_bin.append(file[0])
-        # add last remaining bin of files
+        # Add last remaining bin of files.
         binned_files.append(current_bin)
 
         return binned_files
