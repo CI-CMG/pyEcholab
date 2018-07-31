@@ -20,7 +20,7 @@ class FileAggregator(object):
     def __init__(self, source_dir, interval=60, extension='.raw',
                  regex='D\d{8}-T\d{6}', time_format='D%Y%m%d-T%H%M%S'):
 
-        self.regex = regex
+        self.pattern = re.compile(regex, re.IGNORECASE)
         self.format = time_format
 
         self.file_list = self.sort_files(source_dir, extension)
@@ -34,9 +34,7 @@ class FileAggregator(object):
         :param item: file path
         :return: timestamp: datetime timestamp
         """
-
-        pattern = re.compile(self.regex, re.IGNORECASE)
-        raw = pattern.search(item).group()
+        raw = self.pattern.search(item).group()
         timestamp = datetime.strptime(raw, self.format)
 
         return timestamp
