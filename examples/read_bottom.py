@@ -28,7 +28,7 @@ ek60.read_raw(rawfiles, frequencies=[38000, 120000])
 print('reading bot files...')
 ek60.read_bot(botfiles)
 
-# Get a reference to the raw_data object for specified channels.
+# Get a reference to the RawData object for specified channels.
 raw_data_38 = ek60.get_raw_data(channel_number=1)
 raw_data_120 = ek60.get_raw_data(channel_number=2)
 
@@ -49,12 +49,12 @@ bottom_120 = raw_data_120.get_bottom(heave_correct=True)
 
 # Create matplotlib figures and display the results.
 fig_38 = figure()
-eg = echogram.echogram(fig_38, Sv_38_as_depth, threshold=[-70, -34])
+eg = echogram.Echogram(fig_38, Sv_38_as_depth, threshold=[-70, -34])
 eg.axes.set_title("Heave Corrected with Detected Bottom - 38kHz")
 eg.plot_line(bottom_38, linewidth=2.5)
 
 fig_120 = figure()
-eg = echogram.echogram(fig_120, Sv_120_as_depth, threshold=[-70, -34])
+eg = echogram.Echogram(fig_120, Sv_120_as_depth, threshold=[-70, -34])
 eg.axes.set_title("Heave Corrected with Detected Bottom - 120kHz")
 eg.plot_line(bottom_120, linewidth=2.5)
 
@@ -82,7 +82,7 @@ ek60.read_raw(rawfiles)
 print('reading out files...')
 ek60.read_bot(botfiles)
 
-# Get a reference to the raw_data object.
+# Get a reference to the RawData object.
 raw_data_38 = ek60.get_raw_data(channel_number=1)
 
 # Get Sv as range.
@@ -92,7 +92,7 @@ bottom_38 = raw_data_38.get_bottom()
 
 # Create a matplotlib figure.
 fig_1 = figure()
-eg = echogram.echogram(fig_1, Sv_38_as_range, threshold=[-70, -34])
+eg = echogram.Echogram(fig_1, Sv_38_as_range, threshold=[-70, -34])
 eg.axes.set_title("Bottom as range - 38kHz")
 eg.plot_line(bottom_38, linewidth=2.5)
 
@@ -103,11 +103,11 @@ bottom_38 = raw_data_38.get_bottom(return_depth=True)
 print(Sv_38_as_depth)
 print(bottom_38)
 
-# Create another figure and display the results.  Use a processed_data.view
+# Create another figure and display the results.  Use a ProcessedData.view
 # to zoom into the upper part of the water column.
 fig_2 = figure()
 Sv_38_view = Sv_38_as_depth.view((None, None, None), (0, 500, None))
-eg = echogram.echogram(fig_2, Sv_38_view, threshold=[-70, -34])
+eg = echogram.Echogram(fig_2, Sv_38_view, threshold=[-70, -34])
 eg.axes.set_title("Bottom as depth - 38kHz")
 eg.plot_line(bottom_38, linewidth=2.5)
 show()

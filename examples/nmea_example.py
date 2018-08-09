@@ -141,12 +141,12 @@ gga_vlw_data = ek60.nmea_data.get_datagrams(['GGA', 'VLW'])
 # print(gga_vlw_data['VLW']['data'][0])
 
 # Now let's interpolate some data.  First we need to get an instance of
-# processed_data since that will contain the time vector we're interpolating
+# ProcessedData since that will contain the time vector we're interpolating
 # to.  In this case, we grab Sv from the first channel we read.
 raw_data = ek60.get_raw_data(channel_number=1)
 Sv = raw_data.get_sv()
 
-# Now we call the interpolate method where we pass the processed_data object and
+# Now we call the interpolate method where we pass the ProcessedData object and
 # a NMEA message type.  By default, we can only interpolate message types that
 # have been defined in the nmea_data class.  These definitions are required
 # since we need to be told what actual fields to interpolate since we

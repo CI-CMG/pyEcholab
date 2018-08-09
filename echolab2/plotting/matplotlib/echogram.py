@@ -33,10 +33,10 @@ import matplotlib.ticker as ticker
 from matplotlib.colors import LinearSegmentedColormap, Colormap
 
 
-class echogram(object):
+class Echogram(object):
     """This class generates echogram plots.
 
-    The echogram class provides basic plotting functions to display
+    The Echogram class provides basic plotting functions to display
     echolab2 data objects using matplotlib.
 
     In matplotlib there are 3 methods for displaying 2d bitmap data: imshow,
@@ -185,7 +185,6 @@ class echogram(object):
         Args:
             threshold (list): A two element list of upper and lower thresholds.
             update (bool): Set to True to update the plot.
-
         """
 
         if threshold:

@@ -8,7 +8,7 @@ from matplotlib.pyplot import figure, show, subplots_adjust, get_cmap
 from echolab2.processing.batch_utils import FileAggregator as fa
 from echolab2.processing.align_pings import AlignPings
 from echolab2.instruments.EK60 import EK60
-from echolab2.plotting.matplotlib.echogram import echogram
+from echolab2.plotting.matplotlib.echogram import Echogram
 
 # if sys.version_info[0] == 3:
 #     from io import StringIO
@@ -121,27 +121,27 @@ aligned = AlignPings(Sv, 'pad')  # 'delete' or 'pad'
 threshold = [-70, 0]
 
 ax_18 = fig.add_subplot(5, 1, 1)
-echo_18 = echogram(ax_18, Sv_18, 'data', threshold=threshold)
+echo_18 = Echogram(ax_18, Sv_18, 'data', threshold=threshold)
 ax_18.set_title("18kHz Sv data in time order")
 # print(Sv_18)
 
 ax_38 = fig.add_subplot(5, 1, 2)
-echo_38 = echogram(ax_38, Sv_38, 'data', threshold=threshold)
+echo_38 = Echogram(ax_38, Sv_38, 'data', threshold=threshold)
 ax_38.set_title("38kHz Sv data in time order")
 # print(Sv_38)
 
 ax_70 = fig.add_subplot(5, 1, 3)
-echo_70 = echogram(ax_70, Sv_70, 'data', threshold=threshold)
+echo_70 = Echogram(ax_70, Sv_70, 'data', threshold=threshold)
 ax_70.set_title("70kHz Sv data in time order")
 # print(Sv_70)
 
 ax_120 = fig.add_subplot(5, 1, 4)
-echo_120 = echogram(ax_120, Sv_120, 'data', threshold=threshold)
+echo_120 = Echogram(ax_120, Sv_120, 'data', threshold=threshold)
 ax_120.set_title("120kHz Sv data in time order")
 # print(Sv_120)
 
 ax_200 = fig.add_subplot(5, 1, 5)
-echo_200 = echogram(ax_200, Sv_200, 'data', threshold=threshold)
+echo_200 = Echogram(ax_200, Sv_200, 'data', threshold=threshold)
 ax_200.set_title("200kHz Sv data in time order")
 # print(Sv_200)
 
