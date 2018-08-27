@@ -382,7 +382,7 @@ class PingData(object):
 
         # Determine the number of pings we're keeping.
         new_n_pings = keep_idx.shape[0]
-        print('old pings', self.n_pings, 'NEW PINGS',new_n_pings )
+
         # Work through the attributes to delete the data.  If we're removing
         # the pings, we first copy the data we're keeping to a contiguous
         # block before we resize all of the arrays (which will shrink them).
