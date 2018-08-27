@@ -372,6 +372,7 @@ class PingData(object):
             # on provided ranges.
             del_idx = self.get_indices(start_time=start_time, end_time=end_time,
                                        start_ping=start_ping, end_ping=end_ping)
+            print('index', del_idx)
         else:
             # Explicit array provided.
             del_idx = index_array
@@ -381,12 +382,14 @@ class PingData(object):
 
         # Determine the number of pings we're keeping.
         new_n_pings = keep_idx.shape[0]
-
+        print('old pings', self.n_pings, 'NEW PINGS',new_n_pings )
         # Work through the attributes to delete the data.  If we're removing
         # the pings, we first copy the data we're keeping to a contiguous
         # block before we resize all of the arrays (which will shrink them).
         # If we're not removing the pings, we simply set the values of the
-        # various attributes we're deleting to NaNs.
+        # various attributes we're deleting to NaNs. Note. Only modify
+        # 1D attributes that are ping based (i.e. ping_times) and skip
+        # attributes in teh sample dimension.
         for attr_name in self._data_attributes:
             attr = getattr(self, attr_name)
             if isinstance(attr, np.ndarray) and (attr.ndim == 2):
@@ -394,7 +397,7 @@ class PingData(object):
                     attr[0:new_n_pings, :] = attr[keep_idx, :]
                 else:
                     attr[del_idx, :] = np.nan
-            else:
+            elif attr.shape[0] != self.n_samples:
                 if remove:
                     # Copy the data we're keeping into a contiguous block.
                     attr[0:new_n_pings] = attr[keep_idx]
