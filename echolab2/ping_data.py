@@ -372,7 +372,6 @@ class PingData(object):
             # on provided ranges.
             del_idx = self.get_indices(start_time=start_time, end_time=end_time,
                                        start_ping=start_ping, end_ping=end_ping)
-            print('index', del_idx)
         else:
             # Explicit array provided.
             del_idx = index_array
