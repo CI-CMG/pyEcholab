@@ -15,7 +15,7 @@ rawfiles = ['./data/EK60/DY1706_EK60-D20170625-T061707.raw',
 fig = figure()
 
 # Get some properties for the sub plot layout.
-subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.93, wspace=None,
+subplots_adjust(left=0.1, bottom=0.1, right=0.95, top=0.93, wspace=None,
                 hspace=0.5)
 
 # Create an instance of the EK60 instrument and read the data.
@@ -42,13 +42,13 @@ print(subset_Sv)
 # Create an axis.
 ax_1 = fig.add_subplot(2, 1, 1)
 # Create an echogram which will display on our heave corrected data.
-echogram_1 = echogram.echogram(ax_1, heave_corrected_Sv, threshold=[-70, -34])
+echogram_1 = echogram.Echogram(ax_1, heave_corrected_Sv, threshold=[-70, -34])
 ax_1.set_title("heave compensated Sv on depth grid")
 
 # Create another axis.
 ax_2 = fig.add_subplot(2, 1, 2)
 # Create an echogram which will display the Sv data on a range grid.
-echogram_2 = echogram.echogram(ax_2, subset_Sv, threshold=[-70, -34])
+echogram_2 = echogram.Echogram(ax_2, subset_Sv, threshold=[-70, -34])
 ax_2.set_title("zoomed view of heave compensated Sv on depth grid")
 
 

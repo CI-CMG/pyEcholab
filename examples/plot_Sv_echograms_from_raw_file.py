@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from matplotlib.pyplot import cm
 from echolab2.instruments import EK60
 # for processed data
-from echolab2.processing import processed_data, line
+from echolab2.processing import ProcessedData, line
 # for echogram fig
 from matplotlib.pyplot import figure, show 
 from echolab2.plotting.matplotlib import echogram
@@ -51,7 +51,7 @@ print("N channels = %d" % len(ek60.channel_ids))
 # Plot power from the specified ping from all channels.
 for channel_id in ek60.channel_ids:
 
-    # Get a reference to the raw_data for this channel.
+    # Get a reference to the raw data for this channel.
     raw_data = ek60.get_raw_data(channel_id=channel_id)
 
     print("raw_data.power shape = %s" % str(raw_data.power[:,:].shape))
@@ -84,7 +84,7 @@ for channel_id in ek60.channel_ids:
     
     # Create echogram plot.
     fig_1 = figure()
-    eg = echogram.echogram(fig_1, Sv )
+    eg = echogram.Echogram(fig_1, Sv )
     titstr = 'Sv Echogram, %s' % channel_id
     eg.axes.set_title( titstr )
     
