@@ -771,7 +771,7 @@ class ProcessedData(PingData):
         """
 
         # Determine if we're "slicing" with a mask or slicing with slice object.
-        if isinstance(key, mask.mask):
+        if isinstance(key, mask.Mask):
 
             # Make sure the mask applies to this object.
             self._check_mask(key)
