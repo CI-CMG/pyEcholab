@@ -16,35 +16,46 @@ class QIVPolygonItem(QGraphicsItem):
     selection "hit boxes". This class is primarily used by QIVPolygon to provide
     polygon objects with simplified vertex labeling.
 
-
     QIVPolygon Arguments:
 
-
+        vertices - The polygon vertices as:
+                    A list of QPoint or QpointF objects defining the vertices
+                    A list of [x,y] pairs (i.e. [[x,y],[x,y],[x,y],...]
+                    A QRect or QRectF object
         color - a 3 element list or tuple containing the RGB triplet
-                specifying the color polygon OR an instrance of QColor()
-        thickness - A float specifying the thickness of the line.
-        alpha - A integer specifying the opacity of the line. 0 is transparent
+                specifying the outline color of the polygon
+        thickness - A float specifying the outline thickness of the polygon.
+        alpha - A integer specifying the opacity of the polygon. 0 is transparent
                 and 255 is solid.
         linestyle - '=' for solid, '-' for dashed, and '.' for dotted.
+        fill - a 3 element list or tuple containing the RGB triplet
+                specifying the fill color of the polygon. Set to None for
+                no fill.
 
     """
 
     def __init__(self, vertices,  color=[220,10,10], thickness=1.0,
-                 alpha=255, linestyle='=', fill=None, selectable=True, movable=False,
-                 closed=True, parent=None, name='QIVPolygonItem'):
+                selectColor=None, alpha=255, linestyle='=', fill=None,
+                selectable=False, selectThickness=2.0, movable=False,
+                ignoresTransforms=False, closed=True, parent=None,
+                name='QIVPolygonItem'):
+
+        #  call the parent class init
         super(QIVPolygonItem, self).__init__(parent)
 
+        #  set the initial props
         self.thickness = thickness
         self.alpha = alpha
         self.linestyle = linestyle
         self.closed = closed
         self.name = name
+        self.selectThickness = selectThickness
+        self.selected = False
+        self.selectColor = selectColor
+        self.color = color
 
         #  create the pen
-        self.pen = self.getPen(color, self.alpha, self.linestyle, self.thickness)
-
-        #  set our color
-        self.setColor(color, update=False)
+        self.pen = self.getPen(self.color, self.alpha, self.linestyle, self.thickness)
 
         #  set the brush for filling the polygon (if any)
         if (fill and self.closed):
@@ -63,15 +74,17 @@ class QIVPolygonItem(QGraphicsItem):
 
         #  create the polygon
         self.polygon = QPolygonF()
-        for v in vertices:
-            if (v.__class__.__name__.lower() == 'qpointf'):
-                self.polygon.append(v)
-            else:
-                self.polygon.append(QPointF(v[0], v[1]))
 
-        #  set the selectable and movable flags
+        #  and set the geometry
+        self.setGeometry(vertices)
+
+        #  set the selectable, movable and ignores transforms flags
+        #  usually this object is part of a QGraphicsItemGroup so we don't
+        #  want it to be selectable, nor movable and unlike marks, we usually
+        #  want it to honor transforms and the defaults above reflect this.
         self.setFlag(QGraphicsItem.ItemIsSelectable, selectable)
         self.setFlag(QGraphicsItem.ItemIsMovable, movable)
+        self.setFlag(QGraphicsItem.ItemIgnoresTransformations, ignoresTransforms)
 
 
     def __getitem__(self, key):
@@ -80,6 +93,41 @@ class QIVPolygonItem(QGraphicsItem):
         """
 
         return self.polygon[key]
+
+
+    def setGeometry(self, vertices):
+        """
+        setGeometry sets the shape of the polygon to the geometry defined in geom.
+
+            vertices - The polygon vertices as:
+                    A list of QPoint or QpointF objects defining the vertices
+                    A list of [x,y] pairs (i.e. [[x,y],[x,y],[x,y],...]
+                    A QRect or QRectF object
+        """
+
+        self.polygon.clear()
+
+        #  handle QRect and QRectF objects
+        if ((vertices.__class__.__name__.lower() == 'qrectf') or
+           (vertices.__class__.__name__.lower() == 'qrect')):
+            #  append the QRect vertices to our polygon
+            self.polygon.append(vertices.topLeft())
+            self.polygon.append(vertices.topRight())
+            self.polygon.append(vertices.bottomRight())
+            self.polygon.append(vertices.bottomLeft())
+            #  close the polygon
+            self.polygon.append(vertices.topLeft())
+        else:
+            #  assume this is a list of verts of
+            for v in vertices:
+                if ((v.__class__.__name__.lower() == 'qpointf') or
+                    (v.__class__.__name__.lower() == 'qpoint')):
+                    self.polygon.append(v)
+                else:
+                    self.polygon.append(QPointF(v[0], v[1]))
+
+        #  ensure that QGraphicsView knows we're changing our geometry
+        self.prepareGeometryChange()
 
 
     def setColor(self, color, update=True):
@@ -97,6 +145,22 @@ class QIVPolygonItem(QGraphicsItem):
         #  schedule a re-paint
         if (update):
             self.update()
+
+
+    def setSelectColor(self, color):
+        """
+        Sets the polygon selected color. Color is a 3 element list or tuple containing the RGB triplet.
+        """
+
+        #  change the polygon's selection pen color - if color is None, we get the inverted
+        #  outline color
+        if (color is None):
+            self.selectColor = self.getInvertedColor(self.color)
+        else:
+            self.selectColor = color
+        if self.selected:
+            self.pen = self.getPen(self.selectColor, self.markAlpha, self.linestyle,
+                    self.selectThickness)
 
 
     def setFill(self, fill, update=True):
@@ -124,34 +188,34 @@ class QIVPolygonItem(QGraphicsItem):
             self.update()
 
 
-    def invertColor(self, invert, update=True):
-
-        if (invert):
-            invertedColor = self.color.toHsv()
-            hue = invertedColor.hsvHue() - 180
-            if hue < 0:
-                hue = hue + 360
-            invertedColor.setHsv(hue, invertedColor.saturation(),invertedColor.value(), self.alpha)
-            self.pen.setColor(invertedColor)
-        else:
-            self.pen.setColor(self.color)
-
-        #  schedule a re-paint
-        if (update):
-            self.update()
-
-
-    def setWidth(self, width):
+    def setThickness(self, thickness):
         """
-        Sets the width of the polygon outline.
+        Sets the line width of the unselected polygon outline.
         """
 
-        #  change the pen width
-        self.width = width
-        self.pen.setWidthF(width)
+        #  change the unselected pen width
+        self.thickness = thickness
+        if (not self.selected):
+            self.pen.setWidthF(self.thickness)
 
-        #  ensure that QGraphicsView knows we're changing our bounding rect
-        self.prepareGeometryChange()
+        #  check if our bounding box will change due to change in line thickness
+        if (self.thickness != self.selectThickness):
+            self.prepareGeometryChange()
+
+
+    def setSelectThickness(self, thickness):
+        """
+        Sets the line width of the selected polygon outline.
+        """
+
+        #  change the selected pen width
+        self.selectThickness = thickness
+        if (self.selected):
+            self.pen.setWidthF(self.selectThickness)
+
+        #  check if our bounding box will change due to change in line thickness
+        if (self.thickness != self.selectThickness):
+            self.prepareGeometryChange()
 
 
     def setAlpha(self, alpha, update=True):
@@ -168,6 +232,64 @@ class QIVPolygonItem(QGraphicsItem):
         #  schedule a re-paint
         if (update):
             self.update()
+
+
+    def setSelected(self, selected):
+        '''
+        setSelected sets this polygon as being selected. It changes the pen color to
+        the "selected" color and sets the "selected" property to true. We're not using Qt's
+        built in selection handling for now so we're not calling the polygon's "setSelected"
+        method purposefully.
+        '''
+
+        if selected:
+            #  if we don't have an explicit select color, invert the regular color
+            if (self.selectColor is None):
+                selectColor = self.getInvertedColor(self.color)
+            else:
+                selectColor = self.selectColor
+
+            #  set the pen with the selection color
+            self.pen = self.getPen(selectColor, self.alpha, self.linestyle,
+                    self.selectThickness)
+            self.selected = True
+        else:
+            self.pen = self.getPen(self.color, self.alpha, self.linestyle, self.thickness)
+            self.selected = False
+
+        #  check if our bounding box will change due to change in line thickness
+        if (self.thickness != self.selectThickness):
+            self.prepareGeometryChange()
+
+        #  schedule a re-paint
+        self.update()
+
+
+    def isSelected(self):
+        '''
+        isSelected returns true if this mark is selected, false if not.
+        '''
+        return self.selected
+
+
+    def getInvertedColor(self, color):
+        '''
+        getInvertedColor accepts an RGB triplet or QColor and returns a
+        QColor object with the "inverted" color.
+        '''
+
+        if (color.__class__.__name__.lower().find('qcolor') == -1):
+            invertedColor = QColor(color[0], color[1], color[2], self.alpha)
+        else:
+            invertedColor = color
+        invertedColor = invertedColor.toHsv()
+        hue = invertedColor.hsvHue() - 180
+        if hue < 0:
+            hue = hue + 360
+        invertedColor.setHsv(hue, invertedColor.saturation(),invertedColor.value(),
+                self.alpha)
+
+        return invertedColor
 
 
     def boundingRect(self):

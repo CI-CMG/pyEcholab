@@ -21,7 +21,7 @@ from echolab2.plotting.matplotlib import echogram
 
 # The descriptions below apply to reading these 2 files in the following order.
 rawfiles = ['./data/EK60/DY1201_EK60-D20120214-T231011.raw',
-            './data/EK60/DY1706_EK60-D20170609-T005736.raw']
+               './data/EK60/DY1706_EK60-D20170609-T005736.raw']
 
 # Create a matplotlib figure to plot our echograms on.
 fig = figure()

@@ -16,26 +16,35 @@ class QIVPolygon(QGraphicsItemGroup):
     labeling. The labels are implemented by QIVMarkerText, are non-scaling,
     and provide the ability to justify and offset labels from the vertex anchor.
 
-    All polygons are defined by a list of QPoint objects defining the polygon
-    vertices. If a polygon is specified as "open" the last vertex is not connected
+    If you only need a simple polygon object without labeling, you can use
+    QIVPolygonItem directly.
+
+    If a polygon is specified as "open" the last vertex is not connected
     the first and the polygon cannot be filled. You can also think of open
     polygons as polylines. "Closed" polygons do have their last vertext connected
     to the first. Closed polygons can be filled by setting the fill keyword.
 
     QIVPolygon Arguments:
 
-
+        vertices - The polygon vertices as:
+                    A list of QPoint or QpointF objects defining the vertices
+                    A list of [x,y] pairs (i.e. [[x,y],[x,y],[x,y],...]
+                    A QRect or QRectF object
         color - a 3 element list or tuple containing the RGB triplet
-                specifying the color of the line or mline.
-        thickness - A float specifying the thickness of the line.
-        alpha - A integer specifying the opacity of the line. 0 is transparent
+                specifying the outline color of the polygon
+        thickness - A float specifying the outline thickness of the polygon.
+        alpha - A integer specifying the opacity of the polygon. 0 is transparent
                 and 255 is solid.
         linestyle - '=' for solid, '-' for dashed, and '.' for dotted.
+        fill - a 3 element list or tuple containing the RGB triplet
+                specifying the fill color of the polygon. Set to None for
+                no fill.
 
     """
 
     def __init__(self, vertices,  color=[220,10,10], thickness=1.0,
-                 alpha=255, linestyle='=', fill=None, selectable=True, movable=False,
+                 alpha=255, linestyle='=', fill=None, selectable=True,
+                 movable=False, selectThickness=4.0, selectColor=None,
                  closed=True, view=None, parent=None, name='QIVPolygon'):
         super(QIVPolygon, self).__init__(parent)
 
@@ -44,16 +53,19 @@ class QIVPolygon(QGraphicsItemGroup):
         self.polygon = None
         self.labels = []
 
-        #  create the polygon item
+        #  create the polygon item - note that we make the item non-selectable and non-movable
+        #  since we want to select/move the "this" object (the QGraphicsItemGroup) and not the
+        #  items contained in it.
         self.polygon = QIVPolygonItem(vertices,  color=color, thickness=thickness,
-                 alpha=alpha, linestyle=linestyle, fill=fill, selectable=selectable,
-                 movable=movable, closed=closed, parent=self)
+                 alpha=alpha, linestyle=linestyle, fill=fill, selectable=False,
+                 selectThickness=selectThickness, selectColor=selectColor,
+                 movable=False, closed=closed, parent=self)
 
         #  and add it to our item group
         self.addToGroup(self.polygon)
 
         #  now set selectable/movable flags for the itemgroup
-        self.setFlag(QGraphicsItem.ItemIsSelectable, False)
+        self.setFlag(QGraphicsItem.ItemIsSelectable, selectable)
         self.setFlag(QGraphicsItem.ItemIsMovable, movable)
 
 
@@ -273,6 +285,7 @@ class QIVPolygon(QGraphicsItemGroup):
         self.setLabelVisible(labels, False)
 
 
+
     '''
     The following methods operate on the QIVPolygonItem object. See that
     class for calling details.
@@ -281,18 +294,23 @@ class QIVPolygon(QGraphicsItemGroup):
     def setColor(self, *args, **kwargs):
         self.polygon.setColor(*args, **kwargs)
 
+    def setSelectColor(self, *args, **kwargs):
+        self.polygon.setSelectColor(*args, **kwargs)
 
     def setFill(self, *args, **kwargs):
          self.polygon.setFill(*args, **kwargs)
 
+    def setSelected(self, *args):
+         self.polygon.setSelected(*args)
 
-    def invertColor(self, *args, **kwargs):
-        self.polygon.invertColor(*args, **kwargs)
+    def isSelected(self):
+        return self.polygon.isSelected()
 
+    def setThickness(self, *args):
+        self.polygon.setThickness(*args)
 
-    def setWidth(self, *args):
-        self.polygon.setWidth(*args)
-
+    def setSelectThickness(self, *args):
+        self.polygon.setSelectThickness(*args)
 
     def setAlpha(self, *args, **kwargs):
         self.polygon.setAlpha(*args, **kwargs)

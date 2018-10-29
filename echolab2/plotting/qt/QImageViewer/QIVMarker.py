@@ -54,10 +54,9 @@ class QIVMarker(QGraphicsItemGroup):
 
         #  get the brush, if needed
         if (self.markFill):
-            if (len(self.markFill) == 3):
-                markBrush = self.getBrush(self.markFill, self.markAlpha)
-            else:
-                markBrush = self.getBrush(self.markFill[0:3], self.markFill[3])
+            if (len(self.markFill) > 3):
+                self.markAlpha = self.markFill[3]
+            markBrush = self.getBrush(self.markFill, self.markAlpha)
 
         if (style.lower() == '+') or (style.lower() == 'x'):
             #  create a plus or x mark
@@ -243,6 +242,8 @@ class QIVMarker(QGraphicsItemGroup):
         self.labels.append(textItem)
         self.addToGroup(textItem)
 
+        self.prepareGeometryChange()
+
 
     def setLabelText(self, labels, text):
         '''
@@ -341,7 +342,7 @@ class QIVMarker(QGraphicsItemGroup):
         self.setLabelVisible(labels, False)
 
 
-    def setMarkColor(self, color):
+    def setColor(self, color):
         """
         Sets the marker color. Color is a 3 element list or tuple containing the RGB triplet.
         """
@@ -365,7 +366,7 @@ class QIVMarker(QGraphicsItemGroup):
             self.markItem.setPen(markPen)
 
 
-    def setMarkAlpha(self, alpha):
+    def setAlpha(self, alpha):
         """
         Set the alpha level (transparency) of the marker. Valid values
         are 0 (transparent) to 255 (solid)
@@ -425,4 +426,50 @@ class QIVMarker(QGraphicsItemGroup):
         brush = QBrush(brushColor)
 
         return brush
+
+
+    def setFill(self, color):
+        """
+        Sets the mark fill color. Color is a 3 element list or tuple containing
+        the RGB triplet specifying the color of the line or a QColor object.
+        Set color to None to disable fill.
+        """
+
+        #  set the brush for filling the polygon
+        if (color):
+            #  check if we've been given a QColor object to use as fill
+            if (fill.__class__.__name__.lower() == 'qcolor'):
+                #  we have a QColor object
+                self.markItem.setBrush(QBrush(color))
+            else:
+                #  must be a list - if alpha isn't explicitly supplied, use the outline value
+                if (len(color) == 3):
+                    fill.append(self.alpha)
+                brush = QBrush(QColor(color[0], color[1], color[2], color[3]))
+                self.markItem.setBrush(brush)
+        else:
+            #  None passed - means no fill
+            self.markItem.setBrush(QBrush())
+
+
+    def setThickness(self, thickness):
+        '''
+        setThickness sets the marks unselected line width
+        '''
+        #  update the thickness property
+        self.markThickness = thickness
+
+        #  call setSelected to update the pen depending on the select state
+        self.setSelected(self.selected)
+
+
+    def setSelectThickness(self, thickness):
+        '''
+        setSelectThickness sets the marks selected line width
+        '''
+        #  update the thickness property
+        self.selectThickness = thickness
+
+        #  call setSelected to update the pen depending on the select state
+        self.setSelected(self.selected)
 

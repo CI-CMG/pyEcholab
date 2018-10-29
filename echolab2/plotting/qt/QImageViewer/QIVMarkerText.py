@@ -70,7 +70,7 @@ class QIVMarkerText(QGraphicsSimpleTextItem):
         self.setFont(self.font)
 
         #  set the text position
-        #self.setPos(self.position, 1)
+        self.setPos(self.position, 1)
 
         #  and the text
         self.setText(text)
@@ -79,13 +79,7 @@ class QIVMarkerText(QGraphicsSimpleTextItem):
         self.setZValue(9999)
 
 
-    def setPos(self, position):
-        self.prepareGeometryChange()
-        self.position = position
-        self.update()
-
-
-    def setRealPos(self, position, scale):
+    def setPos(self, position, scale):
         '''
         setPos overrides the QGraphicsSimpleTextItem set position method and
         it alters the position based on the horizontal and vertical text alignment
@@ -158,7 +152,7 @@ class QIVMarkerText(QGraphicsSimpleTextItem):
         scale = 1.0 / self.view.transform().m11()
 
         #  set the scaled position of the text
-        self.setRealPos(self.position, scale)
+        self.setPos(self.position, scale)
 
         #  set the painter font and brush
         painter.setFont(self.font)
@@ -176,17 +170,9 @@ class QIVMarkerText(QGraphicsSimpleTextItem):
 
 
     def getPen(self, color, alpha, style, width):
-        """
-        Returns a pen set to the color, style, thickness and alpha level provided.
-        """
 
         #  return a pen
-
-        #  check if we've already be passed a qcolor object
-        if (color.__class__.__name__.lower().find('qcolor') == -1):
-            penColor = QColor(color[0], color[1], color[2], alpha)
-        else:
-            penColor = color
+        penColor = QColor(color[0], color[1], color[2], alpha)
         pen = QPen(penColor)
         pen.setWidthF(width)
         if style.lower() == '-':

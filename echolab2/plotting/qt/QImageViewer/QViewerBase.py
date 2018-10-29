@@ -125,6 +125,7 @@ from QIVMarkerText import QIVMarkerText
 from QIVHudText import QIVHudText
 from QIVMarker import QIVMarker
 from QIVPolygon import QIVPolygon
+from QIVPolygonItem import QIVPolygonItem
 
 class QViewerBase(QGraphicsView):
 
@@ -357,6 +358,8 @@ class QViewerBase(QGraphicsView):
         #  unset our state variable and our reference to the line
         self.dimensioning = False
         dimensionLine = self.dimensionLine
+
+        #  unset our internal reference to the line
         self.dimensionLine = None
 
         return dimensionLine
@@ -375,10 +378,13 @@ class QViewerBase(QGraphicsView):
         return dimLine
 
 
-    def startRubberBand(self, style, point):
+    def startRubberBand(self, point, color=[220,0,0], thickness=1.0, alpha=255,
+            linestyle='=', fill=None, name='QIVRubberBand'):
         """
-        Starts an interactive rubber band box/line/mline selection at the provided point.
-        The point must be in image coordinates as type QPointF().
+        Starts an interactive rubber band box selection at the provided point.
+        The point must be in image coordinates as type QPointF(). This method does
+        not use QRubberBand since it did not allow for fine control of it's visual
+        properties and instead uses QIVPolygonItem.
 
         Note that by default rubber band box selection is enabled when <shift><left-click>
         dragging. This can be disabled by setting the rubberBandKey property to None.
@@ -387,40 +393,55 @@ class QViewerBase(QGraphicsView):
 
             point - the starting location of the rubberband object at QPointF()
 
+            The other arguments are documented in the addPolygon method.
+
         """
 
-        self.rubberBand = QRubberBand(QRubberBand.Rectangle, self)
-        self.rubberBandOrigin = self.mapFromScene(point)
-        self.rubberBandRect = QRect(self.rubberBandOrigin, QSize())
+        #  create the rubberband object
+        self.rubberBand = QIVPolygonItem([], color=color, thickness=thickness,
+                 alpha=alpha, linestyle=linestyle, fill=fill, name=name)
+
+        #  set the origin
+        self.rubberBandOrigin = point
+
+        #  set the rubber band geometry
+        self.rubberBandRect = QRectF(self.rubberBandOrigin, self.rubberBandOrigin)
         self.rubberBand.setGeometry(self.rubberBandRect)
 
+        #  the the "am rubberbanding" state variable
         self.rubberBanding = True
-        self.rubberBand.show()
+
+        #  add it to our scene
+        self.scene.addItem(self.rubberBand)
+
+        #  add it to our list of scene items
+        self.sceneItems.append(self.rubberBand)
 
         return self.rubberBand
 
 
-    def endRubberBand(self, noHide=False):
+    def endRubberBand(self, hide=True):
         """
         Ends rubber band selection that has been started with startRubberBand and
-        returns the selection box as a QRectF. If the style is a line based style it
-        returns a QLineF.
+        returns the selection box as a QRectF.
 
-        Set noHide to True to keep the rubber band displayed on the screen.
+        Set hide to false to keep the rubber band box displayed on the screen.
         """
 
+        #  if we're "hiding" the rubber band box, remove it from the scene
+        if (hide):
+            self.removeItem(self.rubberBand)
+
+        #  get the bounding rectangle as QRectF
+        boxCoords = self.rubberBandRect
+
+        #  reset our rubber band box state variables
+        self.rubberBand = None
+        self.rubberBandRect = None
         self.rubberBanding = False
+        self.rubberBandOrigin = None
 
-        #  transform the box coordinates to image coordinates
-        boxCoords = self.rubberBandRect.getCoords()
-        rbCoordinates = QRectF(self.mapToScene(QPoint(boxCoords[0],boxCoords[1])),
-                               self.mapToScene(QPoint(boxCoords[2],boxCoords[3])))
-
-        if (not noHide):
-            self.rubberBand.hide()
-            self.rubberBand = None
-
-        return rbCoordinates
+        return boxCoords
 
 
     def addText(self, position, text, size=10, font='helvetica', italics=False, weight=-1,
@@ -475,12 +496,14 @@ class QViewerBase(QGraphicsView):
 
     def addPolygon(self, verts, color=[220,0,0], thickness=1.0, alpha=255,
             linestyle='=', fill=None, selectable=True, movable=False,
-            closed=True, name='QIVPolygon', noadd=False):
+            selectThickness=2.0, selectColor=None, closed=True,
+            name='QIVPolygon', noadd=False):
         """
         Add an arbitrary polygon to the scene. Polygons can be open and unfilled,
         closed and unfilled, or closed and filled.
 
-                verts (list)  - A list of [x,y] pairs or a list of QPointF objects
+                verts (list)  - A list of [x,y] pairs or a list of QPointF objects. You
+                                can also pass a QRectF or QRect object to draw a rectangle.
                 color (list)  - A 3 element list or tuple containing the RGB triplet
                                 specifying the color of the text.
             thickness (float) - A float specifying the line thickness. Note that thickness
@@ -513,9 +536,6 @@ class QViewerBase(QGraphicsView):
                                 some subclasses to allow them to group items before adding to the
                                 scene.
         """
-        #  return if we haven't been given any verts
-        if (len(verts) == 0):
-            return
 
         #  create the polygon object
         polygon = QIVPolygon(verts, color=color, thickness=thickness,
@@ -556,7 +576,7 @@ class QViewerBase(QGraphicsView):
         """
 
         #  addLine is just a simplified interface to addPolygon
-        return self.addPolygon(verts, color=color, thickness=thickness, alpha=alpha,
+        return QViewerBase.addPolygon(self, verts, color=color, thickness=thickness, alpha=alpha,
                     linestyle=linestyle, selectable=selectable, movable=movable,
                     closed=False)
 
@@ -756,7 +776,10 @@ class QViewerBase(QGraphicsView):
         zoom level (int).
         """
 
-        point = mark.mapToScene(mark.boundingRect().center())
+        #  get the center of the mark
+        point = mark.mapToScene(mark.pos())
+
+        #  and zoom to it
         self.zoomToPoint(point, zoomLevel)
 
 
@@ -766,7 +789,9 @@ class QViewerBase(QGraphicsView):
         """
 
         #  get the center of the mark
-        point = mark.mapToScene(mark.boundingRect().center())
+        point = mark.mapToScene(mark.pos())
+
+        #  and center the view on it
         self.centerOnPoint(point)
 
 
@@ -933,7 +958,7 @@ class QViewerBase(QGraphicsView):
         #  rubber banding...
         elif self.rubberBandKey and (self.currentKbKey == self.rubberBandKey) and (ev.button() == Qt.LeftButton):
             #  start a rubber band selection box
-            self.rubberBand = self.startRubberBand('box', clickLocation)
+            self.rubberBand = self.startRubberBand(clickLocation)
 
         else:
             #  This event isn't handled by automatically - emit a click event
@@ -968,6 +993,16 @@ class QViewerBase(QGraphicsView):
                     if (not item.isSelected()):
                         item.setSelected(True)
                         self.selectedItems.append(item)
+                #  was trying to implement "toggle" selection where if an item is currently
+                #  selected and we click it again it is deselected but this isn't working
+                #  and I have to leave it for now...
+#                    else:
+#                        item.setSelected(False)
+#                        try:
+#                            self.selectedItems.remove(item)
+#                        except:
+#                            pass
+
 
             #  call the emit method - we don't directly emit here in case a child class
             #  wants to transform the data before emitting it.
@@ -978,9 +1013,33 @@ class QViewerBase(QGraphicsView):
 
         if self.rubberBanding:
 
-            #  update the rubberband object
-            self.rubberBandRect = QRect(self.rubberBandOrigin, ev.pos())
+            #  we're rubberbanding, update the rubberband object
+
+            #  clamp the mouse position to the viewport
+            p2 = QPoint()
+            p2.setX(max(0, min(self.viewport().width(), ev.pos().x())))
+            p2.setY(max(0, min(self.viewport().height(), ev.pos().y())))
+
+            #  convert from viewport to scene(image) coordinates
+            p2 = QPointF(self.mapToScene(p2))
+
+            #  update the geometry - adjust vertex order based on relative location
+            #  to ensure consistent vertex ordering (needed for labeling)
+            rloc = p2 - self.rubberBandOrigin
+            if (rloc.x() > 0 and rloc.y() > 0):
+                self.rubberBandRect.setTopLeft(self.rubberBandOrigin)
+                self.rubberBandRect.setBottomRight(p2)
+            elif (rloc.x() < 0 and rloc.y() > 0):
+                self.rubberBandRect.setTopLeft(QPointF(p2.x(),self.rubberBandOrigin.y()))
+                self.rubberBandRect.setBottomRight(QPointF(self.rubberBandOrigin.x(),p2.y()))
+            elif (rloc.x() >0 and rloc.y() < 0):
+                self.rubberBandRect.setTopLeft(QPointF(self.rubberBandOrigin.x(),p2.y()))
+                self.rubberBandRect.setBottomRight(QPointF(p2.x(),self.rubberBandOrigin.y()))
+            else:
+                self.rubberBandRect.setTopLeft(p2)
+                self.rubberBandRect.setBottomRight(self.rubberBandOrigin)
             self.rubberBand.setGeometry(self.rubberBandRect)
+
 
         elif self.dimensionLine:
             #  update the dimension line
