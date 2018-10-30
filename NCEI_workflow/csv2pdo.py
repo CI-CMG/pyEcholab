@@ -179,7 +179,7 @@ new_n_samples = np.where(data.depth <= plot_bottom)[0].shape[0]
 
 
 # Create instance of MultifrequencyPlot
-plot = MultifrequencyPlot(logo=logo)
+plot = MultifrequencyPlot(logo=logo, output_dir='plots')
 print(logo)
 # Get title from csv file name'
 title = csv_file.split('/')[-1].split('.')[0].replace('_', ' ')

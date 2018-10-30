@@ -4,10 +4,11 @@ Developmental workflow for making NCEI multifrequency plots using PyEcholab
 """
 
 import numpy as np
+import datetime
 from ast import literal_eval
 from configparser import ConfigParser
-from scipy.interpolate import interp1d
 from scipy.ndimage.filters import gaussian_filter as gf
+
 from echolab2.instruments.EK60 import EK60
 from echolab2.processing.mask import Mask
 from echolab2.processing.line import Line
@@ -15,6 +16,12 @@ from echolab2.processing.batch_utils import FileAggregator as fa
 from echolab2.processing.align_pings import AlignPings
 from echolab2.processing.ncei_multifrequency import MultifrequencyData
 from echolab2.plotting.matplotlib.multifrequency_plotting import MultifrequencyPlot
+
+from echopy.mask_impulse import mask_in_ryan
+from echopy.mask_attenuated import mask_as_ryan as at_mask
+from echopy.mask_transient import mask_tn_fielding
+from echopy.estimate_background import estimate_bgn_derobertis_mod
+from echopy.mask_signal2noise import mask_s2n
 
 np.set_printoptions(threshold=np.inf)
 
@@ -44,6 +51,8 @@ def interp_positions(array):
                             array[~mask])
     return array
 
+
+start_time = datetime.datetime.now()
 
 config_file = 'ncei.conf'
 
@@ -97,19 +106,64 @@ for index in range(0, len(raw_files.file_bins)):
     # Create a dictionary of RawData objects from the channels in the data.
     raw_data = {}
     for channel in ek60.channel_id_map:
-        raw_data[channel] = ek60.get_raw_data(channel_number=channel)
+        raw = ek60.get_raw_data(channel_number=channel)
+        frequency = int(raw.frequency[0]/1000)
+        raw_data[frequency] = raw
 
     # Create dictionary of Sv ProcessedData objects. THe channels frequency (
     # in KHz) is the key.
     Sv = {}
-    for channel, data in raw_data.items():
-        frequency = int(data.frequency[0]/1000)
+    for frequency, data in raw_data.items():
         Sv[frequency] = data.get_Sv(heave_correct=True)
 
     # Get a list of channels for use by AlignPings
     channels = []
     for frequency, data in Sv.items():
         channels.append(data)
+
+    # Mask impulse noise.
+    m, thr = 5, 10 # (metres, decibels)
+    for freq in Sv:
+        print('Masking {0}kHz impulse noise'.format(freq))
+        mask, Svasked = mask_in_ryan(np.transpose(Sv[freq].data),
+                                                  Sv[freq].depth, m, thr)
+
+        Sv[freq].data = np.transpose(Svasked)
+
+    # Mask transient.
+    r0, n, thr = 100, 30, (3, 1)  # (metres, pings, decibels)
+    for freq in Sv:
+        # print(Sv[freq].data_atributes)
+
+        print('Masking {0} transients'.format(freq))
+        mask, Svmasked = mask_tn_fielding(np.transpose(Sv[freq].data),
+                                          Sv[freq].depth, r0, n, thr, jumps=12,
+                                          verbose=False)
+        Sv[freq].data =  np.transpose(Svmasked)
+
+    # Mask attenuated.
+    r0, r1, n, threshold = 100, 200, 30, -6  # (m, m, pings, dB)
+    for freq in Sv:
+        print('Masking {0}kHz attenuated signal'.format(freq))
+        mask, Svmasked = at_mask(np.transpose(Sv[freq].data),
+                                 Sv[freq].depth, r0, r1, n, threshold,
+                                 verbose=False)
+        Sv[freq].data = np.transpose(Svmasked)
+
+    # Remove background.
+    m, n, operation = 10, 20, 'percentile90' # (m, npings, str)
+    threshold = 3  # (decibels)
+    for freq in Sv:
+        print('Removing background from {0}kHz'.format(freq))
+        # estimate background noise.
+        bgn = estimate_bgn_derobertis_mod(
+                                np.transpose(Sv[freq].data), Sv[freq].depth,
+                                raw_data[freq].absorption_coefficient[0],
+                                m, n, operation=operation)
+
+        # Clean background noise.
+        mask120, Svclean = mask_s2n(np.transpose(Sv[freq].data), bgn, threshold)
+        Sv[freq].data = np.transpose(Svclean)
 
     # Align pings by deleting pings to make all channels match the channel
     # with fewest pings. Padding does not work when making NCEI plots because
@@ -119,11 +173,13 @@ for index in range(0, len(raw_files.file_bins)):
     # Get the bottom data from the 18kHz data. We need to get the indices of
     # the pings in the raw data that are still in the Sv data after time
     # aligning so teh bottom ping times match the data ping times.
-    xsorted = np.argsort(raw_data[1].ping_time)
-    ypos = np.searchsorted(raw_data[1].ping_time[xsorted], Sv[18].ping_time)
+    low_freq = min(list(raw_data.keys()))
+    xsorted = np.argsort(raw_data[low_freq].ping_time)
+    ypos = np.searchsorted(raw_data[low_freq].ping_time[xsorted],
+                           Sv[low_freq].ping_time)
     indices = xsorted[ypos]
 
-    raw_bottom = raw_data[1].get_bottom(heave_correct=True,
+    raw_bottom = raw_data[low_freq].get_bottom(heave_correct=True,
                                         return_indices=indices)
 
     # There might be random zero values for bottom. Replace with linear
@@ -135,7 +191,7 @@ for index in range(0, len(raw_files.file_bins)):
 
     # Mask for bottom and surface.
     masks = {}
-    for freq in Sv.keys():
+    for freq in Sv:
         # Create a mask.
         masks[freq] = Mask(like=Sv[freq])
 
@@ -159,7 +215,7 @@ for index in range(0, len(raw_files.file_bins)):
         Sv[freq][masks[freq]] = 2
 
     # Get a smoothed version of the data
-    smooth_data = smooth(Sv, sigma=3)
+    smooth_data = smooth(Sv, sigma=2)
 
     # Get positions interpolating against first frequency in Sv dictionary.
     # Because nav might start a few pings after data, interpolate to
@@ -178,3 +234,8 @@ for index in range(0, len(raw_files.file_bins)):
     # Plot the data.
     plot.plot(smooth_data, bottom=raw_bottom, title=title,
               day_night=True)
+
+end_time = datetime.datetime.now()
+
+print(start_time.strftime("%a, %d %B %Y %H:%M:%S"))
+print(end_time.strftime("%a, %d %B %Y %H:%M:%S"))
