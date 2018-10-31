@@ -116,3 +116,6 @@ venv.bak/
 #  chuck's IDE
 .idea/
 *.zip
+
+# Mac .DS_Store files
+.DS_Store
