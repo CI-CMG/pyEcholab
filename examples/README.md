@@ -60,13 +60,13 @@ Demonstrates plotting an echogram of Sv for each channel of a raw EK60 file.
 ## Jupyter Notebooks
 
 Jupyter Notebooks is a free, open source web application that supports placing live code, descriptive text, and visualizations all in one document. 
-These documents are interactive, meaning the code can be modified and run in the browser to see the new outputs.  
+These documents are interactive, meaning that the code can be modified and run in the browser to see the results.  
 
 To view these files, you will need to download jupyter notebooks.  If you have anaconda installed, as recommended for running PyEcholab2, then Jupyter Notebooks
 comes included.  
 
-To run Jupyter Notebooks, type jupyter notebook in the terminal.  A web browser will open, showing your home directory in Jupyter Notebooks.  Navigate to the 
-the Jupyter Notebook files on your machine from this browser and open them up.  Now you should be able to run and modify the file.
+To run Jupyter Notebooks, type *jupyter notebook* in the terminal.  A web browser will open, showing your home directory.  Navigate to the 
+the Jupyter Notebook files (.ipynb) on your machine from this browser and open them up.  Now you can run and modify the files in the browser.
 
 NCEI is working on hosting these files in a place that can be accessed without requiring a Jupyter Notebooks installation.
 
