@@ -17,15 +17,12 @@ import numpy as np
 from textwrap import wrap
 from datetime import timedelta, datetime
 import matplotlib.pylab as plt
+import matplotlib.dates as md
 import matplotlib.patches as mpatches
 from matplotlib.image import imread
 from matplotlib.colors import ListedColormap
 from matplotlib.ticker import FuncFormatter
-
-
 from echolab2.processing.ncei_multifrequency import MultifrequencyData
-
-
 
 
 class MultifrequencyPlot(object):
@@ -119,20 +116,8 @@ class MultifrequencyPlot(object):
         # self.fig, self.ax = plt.subplots(figsize=fig_size)
         self.fig = plt.figure(figsize=(18, 10), dpi=72)
 
-        self.ax = plt.gca()
-        # # Set borders around plot
-        # plt.subplots_adjust(left=0.08, bottom=0.11, right=0.9, top=0.875)
-
-        self.ax2 = None
-
-
-        # Style the ticks.
-        self.ax.tick_params('both', direction='in', length=5.0,
-                            labelsize=tick_size)
-
-        # Apply grid to x axis
-        if grid:
-            self.ax.grid(True, axis=grid, color='0.8')
+        # self.ax = plt.gca()
+        self.ax = plt.subplot(111)
 
     @staticmethod
     def color_convert(color_table):
@@ -166,7 +151,7 @@ class MultifrequencyPlot(object):
 
         self.data_object = data_object
 
-        #  this is a custom tick formatter for datetime64 values as floats
+        #  This is a custom tick formatter for datetime64 values as floats
         def format_datetime(x, pos=None):
             try:
                 dt = x.astype('datetime64[ms]').astype('object')
@@ -183,7 +168,6 @@ class MultifrequencyPlot(object):
                 raise TypeError('MultifrequencyPlot only works with '
                                 'MultifrequencyData objects')
 
-
         # Transform the data so it looks right with imshow.
         echogram_data = np.flipud(np.rot90(data_object.data, 1))
 
@@ -192,10 +176,12 @@ class MultifrequencyPlot(object):
         y_label = 'Depth (m)'
 
         # If bottom object is provided, set minimum y to 50 meters over max
-        # depth, otherwise use data extent.
+        # depth and trim data to same depth extent for consistent plotting,
+        # otherwise use full data extent.
         if bottom:
-            # max_depth = np.max(bottom.data) + 50
-            max_depth = yticks[-1]
+            max_depth = np.max(bottom.data) + 50
+            max_index = np.argmax(self.data_object.depth > max_depth)
+            echogram_data = echogram_data[:max_index, :]
         else:
             max_depth = yticks[-1]
 
@@ -208,29 +194,15 @@ class MultifrequencyPlot(object):
                        extent=[xticks[0], xticks[-1], max_depth, yticks[0]],
                        origin='upper')
 
-        #  set our custom x-axis formatter
-        self.ax.xaxis.set_major_formatter(FuncFormatter(format_datetime))
-
-        #  set the x axis label to the month-day-year of the first
-        #  datetime64 we have in the data. This will fail if there
-        #  are no valid times so we'll not label the axis if that happens
-        try:
-            x = self.ax.get_xticks()[0]
-            dt = x.astype('datetime64[ms]').astype('object')
-            x_label = 'Time in UTC (hour:min)\n{}'.format(dt.strftime(
-                "%m-%d-%Y"))
-        except:
-            x_label = ''
-        self.ax.set_xlabel(x_label, size=self.label_size, family=self.family)
-
-        #  set the Y axis label
-        self.ax.set_ylabel(y_label,  size=self.label_size, family=self.family)
+        # Set our custom x-axis formatter
+        # self.ax.xaxis.set_major_formatter(FuncFormatter(format_datetime))
+        self.ax.set_axis_off()
 
         # If title text is provided set title text to wrap is long and then
         # add title.
         if title:
-            title = "\n".join(wrap(title, 50))
-            self.ax.set_title(title, family=self.family,
+            display_title = "\n".join(wrap(title, 50))
+            self.ax.set_title(display_title, family=self.family,
                               size=self.title_size, weight='bold')
 
         # Plot logo image if a path to a logo image file was provided when
@@ -247,26 +219,77 @@ class MultifrequencyPlot(object):
         # plots behind the ticks and grid lines.
         if day_night:
             self.get_suncycle_data()
-            self.add_day_night_bar()
-            self.ax.set_zorder(self.ax_2.get_zorder() + 1)
-            self.ax.patch.set_visible(False)
+            bar_axis = self.add_day_night_bar()
+            # bar_z = bar_axis.get_zorder()
+            # # self.ax.set_zorder(bar_z + 1.0)
 
-        # #  there seems to be a bug in matplotlib where extra white space is
-        # #  added to the figure around the echogram if other elements are plotted
-        # #  on the echogram even if their data ranges fall *within* the echogram.
-        # #  This doesn't happen when we use ping number as the x axis but we
-        # #  don't want to use ping number becuase everything we plot on the echogram
-        # #  would have to be mapped to ping number. Weirdly what solves the issue
-        # #  is calling set_xlim/set_ylim without arguments which should only return
-        # #  the current limits but seems to fix this issue.
+        # There seems to be a bug in matplotlib where extra white space is
+        # added to the figure around the echogram if other elements are
+        # plotted on the echogram even if their data ranges fall *within* the
+        # echogram. This doesn't happen when we use ping number as the x
+        # axis but we don't want to use ping number becuase everything we
+        # plot on the echogram would have to be mapped to ping number.
+        # Weirdly what solves the issue is calling set_xlim/set_ylim without
+        # arguments which should only return the current limits but seems to
+        # fix this issue.
         # self.ax.set_xlim()
         # self.ax.set_ylim()
+
+        # Add third axis on top
+        tick_size = 16
+        grid = 'x'
+        print_x_ticks = data_object.ping_time.astype(
+                                         'datetime64[ms]').astype('object')
+
+        bounds = self.ax.get_position().bounds
+        self.ax_3 = self.fig.add_axes([bounds[0], bounds[1], bounds[2], bounds[3]])
+        self.ax_3.patch.set_visible(False)
+        self.ax_3.set_xlim(print_x_ticks[0], print_x_ticks[-1])
+        self.ax_3.set_ylim(max_depth, yticks[0])
+
+        # Style the ticks.
+        self.ax_3.tick_params('both', direction='in', length=5.0,
+                              labelsize=tick_size)
+
+        # Set major formatter for x (time) axis.
+        xfmt = md.DateFormatter('%H:%M')
+        self.ax_3.xaxis.set_major_formatter(xfmt)
+
+        xlocator = md.MinuteLocator(byminute=[0, 10, 20, 30, 40, 50],
+                                    interval=1)
+        self.ax_3.xaxis.set_major_locator(xlocator)
+
+
+        # Create the x axis labeel. If data are from same day, label lists
+        # day-month-year, otherwise label has start and end date of data.
+        try:
+            s = self.ax.get_xticks()[0]
+            e = self.ax.get_xticks()[1]
+            ds = s.astype('datetime64[ms]').astype('datetime64[D]').astype(
+                'object')
+            de = e.astype('datetime64[ms]').astype('datetime64[D]').astype(
+                'object')
+
+            if ds != de:
+                x_label = 'Time in UTC (hour:min)\n{} to {}'.format(
+                            ds.strftime("%d-%b-%Y"), de.strftime("%d-%b-%Y"))
+            else:
+                x_label = 'Time in UTC (hour:min)\n{}'.format(ds.strftime(
+                                                              "%d-%b-%Y"))
+        except:
+            x_label = ''
+
+        # Set the axis labels.
+        self.ax_3.set_xlabel(x_label, size=self.label_size, family=self.family)
+        self.ax_3.set_ylabel(y_label,  size=self.label_size, family=self.family)
+
+        # Apply grid to x axis
+        # if grid:
+        self.ax_3.grid(True, axis=grid, color='0.8')
 
         # Plot bottom line if provided.
         if bottom:
             self.plot_line(bottom, linewidth=3, color='black')
-
-
 
         # Export image if output=True.
         if output:
@@ -393,28 +416,31 @@ class MultifrequencyPlot(object):
         plot_data = np.zeros((bar_height, n_pings, 3))
         daytime = self.data_object.daytime
 
-
         # Set the RGB values for each pixel.
         plot_data[:, daytime == 1] = [1, 1, 1]
         plot_data[:, daytime == 0] = [0.5, 0.5, 0.5]
 
-        # Set axis ticks.
-        xticks = self.data_object.ping_time.astype('float')
-        yticks = self.data_object.depth
+        # # # Set axis ticks.
+        # xticks = self.data_object.ping_time.astype('float')
+        # yticks = self.data_object.depth
 
-        # get the bounds of current axes and set new axes to match lower left
+        # Get the bounds of current axes and set new axes to match lower left
         # corner and width  and set height to 0.3 of figure.
         bounds = self.ax.get_position().bounds
-        self.ax_2 = self.fig.add_axes([bounds[0], bounds[1], bounds[2], 0.03])
+
+        ax_2 = self.fig.add_axes([bounds[0], bounds[1], bounds[2], 0.03])
 
         # Plot the day/night data and then turn off the axis so its ticks do
         # not plot.
-        self.ax_2.imshow(plot_data, cmap='binary', aspect='auto',
+        ax_2.imshow(plot_data, cmap='binary', aspect='auto',
                     interpolation='none')
-        self.ax_2.set_axis_off()
+
+        ax_2.set_axis_off()
 
         # Plot the legend
         self.add_day_night_legend()
+
+        return ax_2
 
     def add_day_night_legend(self):
         white_patch = mpatches.Patch(color='white', label='Day')
@@ -450,6 +476,7 @@ class MultifrequencyPlot(object):
     def suncycle(self, lat, lon, sun_date):
 
         n = np.int(24 * 3600 / 30)
+
         lon = lon - np.dot(360, np.floor((lon + 180) / 360))
 
         # Get time since the beginning of the year in days.
@@ -460,7 +487,7 @@ class MultifrequencyPlot(object):
         time += fraction_of_day
         time = np.array([[time]])
 
-        # print("sun_date", sun_date)
+        # print("sun_date", sun_date)-
         # print("time", time)
         # m = 1
         # dt=1 /n
@@ -470,7 +497,7 @@ class MultifrequencyPlot(object):
         dec, jd, azm, rad = self.soradna(lat, lon, time,
                                          sun_date.astype('datetime64[Y]'))
         # NOTE azm is off by a bit at the beginning, dec is okay, jd is okay, rad is okay
-        print("rad", rad)
+        # print("rad", rad)
         if np.abs(rad) <= 1e-10:
             daytime = 0
         else:

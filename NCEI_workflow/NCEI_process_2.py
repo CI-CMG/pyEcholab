@@ -121,34 +121,34 @@ for index in range(0, len(raw_files.file_bins)):
     for frequency, data in Sv.items():
         channels.append(data)
 
-    # Mask impulse noise.
-    m, thr = 5, 10 # (metres, decibels)
-    for freq in Sv:
-        print('Masking {0}kHz impulse noise'.format(freq))
-        mask, Svasked = mask_in_ryan(np.transpose(Sv[freq].data),
-                                                  Sv[freq].depth, m, thr)
-
-        Sv[freq].data = np.transpose(Svasked)
-
-    # Mask transient.
-    r0, n, thr = 100, 30, (3, 1)  # (metres, pings, decibels)
-    for freq in Sv:
-        # print(Sv[freq].data_atributes)
-
-        print('Masking {0} transients'.format(freq))
-        mask, Svmasked = mask_tn_fielding(np.transpose(Sv[freq].data),
-                                          Sv[freq].depth, r0, n, thr, jumps=12,
-                                          verbose=False)
-        Sv[freq].data =  np.transpose(Svmasked)
-
-    # Mask attenuated.
-    r0, r1, n, threshold = 100, 200, 30, -6  # (m, m, pings, dB)
-    for freq in Sv:
-        print('Masking {0}kHz attenuated signal'.format(freq))
-        mask, Svmasked = at_mask(np.transpose(Sv[freq].data),
-                                 Sv[freq].depth, r0, r1, n, threshold,
-                                 verbose=False)
-        Sv[freq].data = np.transpose(Svmasked)
+    # # Mask impulse noise.
+    # m, thr = 5, 10 # (metres, decibels)
+    # for freq in Sv:
+    #     print('Masking {0}kHz impulse noise'.format(freq))
+    #     mask, Svasked = mask_in_ryan(np.transpose(Sv[freq].data),
+    #                                               Sv[freq].depth, m, thr)
+    #
+    #     Sv[freq].data = np.transpose(Svasked)
+    #
+    # # Mask transient.
+    # r0, n, thr = 100, 30, (3, 1)  # (metres, pings, decibels)
+    # for freq in Sv:
+    #     # print(Sv[freq].data_atributes)
+    #
+    #     print('Masking {0} transients'.format(freq))
+    #     mask, Svmasked = mask_tn_fielding(np.transpose(Sv[freq].data),
+    #                                       Sv[freq].depth, r0, n, thr, jumps=12,
+    #                                       verbose=False)
+    #     Sv[freq].data =  np.transpose(Svmasked)
+    #
+    # # Mask attenuated.
+    # r0, r1, n, threshold = 100, 200, 30, -6  # (m, m, pings, dB)
+    # for freq in Sv:
+    #     print('Masking {0}kHz attenuated signal'.format(freq))
+    #     mask, Svmasked = at_mask(np.transpose(Sv[freq].data),
+    #                              Sv[freq].depth, r0, r1, n, threshold,
+    #                              verbose=False)
+    #     Sv[freq].data = np.transpose(Svmasked)
 
     # Remove background.
     m, n, operation = 10, 20, 'percentile90' # (m, npings, str)
@@ -199,8 +199,8 @@ for index in range(0, len(raw_files.file_bins)):
         # place operators will change the existing line.)
         bot_line = raw_bottom - 3.0
 
-        # Now create a surface exclusion line at 10m RANGE.
-        surf_line = Line(ping_time=Sv[freq].ping_time, data=10)
+        # Now create a surface exclusion line at data=Xm RANGE.
+        surf_line = Line(ping_time=Sv[freq].ping_time, data=5)
 
         # Now apply that line to our mask.  We apply the value True BELOW our
         # line.  Note that we don't need to specify the value as True is the
@@ -212,7 +212,7 @@ for index in range(0, len(raw_files.file_bins)):
 
         # Now use this mask to set sample data from 0.5m above the bottom
         # downward to NaN.
-        Sv[freq][masks[freq]] = 2
+        Sv[freq][masks[freq]] = np.NaN
 
     # Get a smoothed version of the data
     smooth_data = smooth(Sv, sigma=2)
