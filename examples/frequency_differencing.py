@@ -37,7 +37,7 @@ ek60.read_raw(rawfiles, frequencies=[18000, 38000, 120000])
 print('Reading the bot files...')
 ek60.read_bot(botfiles)
 
-# Get the raw_data objects from the ek60 object.  We'll call get_raw_data
+# Get the RawData objects from the ek60 object.  We'll call get_raw_data
 # with no arguments to get a dict keyed by channel id of all the channels in
 # the data.
 raw_data = ek60.get_raw_data()
@@ -89,7 +89,7 @@ for freq in Sv_data.keys():
     Sv_data[freq][masks[freq]] = np.nan
 
 # Now lets compute some differences - the process_data class implements the
-# basic Python arithmetic operators so we can simply subtract process_data
+# basic Python arithmetic operators so we can simply subtract ProcessedData
 # objects like numeric objects.  Both,
 #
 # "regular": +, -, *, /  and  "in-place": +=, -=, *=, /=
@@ -152,25 +152,25 @@ diff_results[fish] = 18
 
 # Create a matplotlib figure to plot our echograms on.
 fig = figure()
-subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.90, wspace=None,
-                hspace=0.5)
+subplots_adjust(left=0.1, bottom=.1, right=0.98, top=.90, wspace=None,
+                hspace=1.5)
 
 # Plot the original data.
 ax = fig.add_subplot(4, 1, 1)
 # Use the view method to return a ProcessedData object that is a view into
 # our original data. We will plot all pings and samples 0-2000.
 v_data = Sv_data[18000].view((None, None, None),(0, 2000, None))
-eg = echogram.echogram(ax, v_data, threshold=[-70, -34])
+eg = echogram.Echogram(ax, v_data, threshold=[-70, -34])
 ax.set_title("Original 18 kHz Sv Data")
 
 ax = fig.add_subplot(4, 1, 2)
 v_data = Sv_data[38000].view((None, None, None), (0, 2000, None))
-eg = echogram.echogram(ax, v_data, threshold=[-70,-34])
+eg = echogram.Echogram(ax, v_data, threshold=[-70,-34])
 ax.set_title("Original 38 kHz Sv Data")
 
 ax = fig.add_subplot(4, 1, 3)
 v_data = Sv_data[120000].view((None, None, None), (0, 2000, None))
-eg = echogram.echogram(ax, v_data, threshold=[-70, -34])
+eg = echogram.Echogram(ax, v_data, threshold=[-70, -34])
 ax.set_title("Original 120 kHz Sv Data")
 
 
@@ -179,7 +179,7 @@ ax = fig.add_subplot(4, 1, 4)
 v_results = diff_results.view((None, None, None), (0, 2000, None))
 # note that we set the threshold to something that will work with the values
 # we assigned to our results.
-eg = echogram.echogram(ax, v_results, threshold=[0, 20])
+eg = echogram.Echogram(ax, v_results, threshold=[0, 20])
 ax.set_title('Differencing results')
 
 # Display the results.

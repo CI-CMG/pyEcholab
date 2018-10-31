@@ -7,7 +7,7 @@ specified raw file.
 
 NOTE! This example is reaching into the EK60RawData objects directly to pull
 out power.  Normally you would call EK60.raw_data.get_power() to get the
-power data in a processed_data object but this example was written before the
+power data in a ProcessedData object but this example was written before the
 get_power method existed and still (I think) has some worth as an example.
 """
 
@@ -44,7 +44,7 @@ fig = plt.figure(figsize=(7, 7))
 # Plot power from the specified ping from all channels.
 for channel_id in ek60.channel_ids:
 
-    # Get a reference to the raw_data for this channel.
+    # Get a reference to the RawData object for this channel.
     raw_data = ek60.get_raw_data(channel_id=channel_id)
 
     # Get a color for this channel.

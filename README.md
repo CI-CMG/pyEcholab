@@ -8,7 +8,7 @@ These instructions will get you a copy of the project up and running on your loc
 
 ### Prerequisites
 
-pyEcholab2 requires Python 2.7 or Python 3.x as well as Numpy > ..... 
+pyEcholab2 requires Python 2.7 or Python 3.x as well as Numpy, SciPy, pytz, and matplotlib for plotting.
 
 ```
 Give examples

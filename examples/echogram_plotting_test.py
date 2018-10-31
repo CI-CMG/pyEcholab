@@ -37,7 +37,7 @@ n_lines = int((ranges[-1] / (sample_thickness_m * 10)) + 0.5)
 
 # Create a matplotlib figure to plot our echograms on.
 fig_1 = figure()
-eg = echogram.echogram(fig_1, fake_Sv, threshold=[0, 20])
+eg = echogram.Echogram(fig_1, fake_Sv, threshold=[0, 20])
 eg.axes.set_title("Echogram Plot Test")
 
 for i in range(n_lines):

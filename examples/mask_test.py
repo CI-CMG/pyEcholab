@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """This is an example exercising masks.
 
-This example script demonstrates the use of masks for modifying and
-thresholding data.  Specifically, it demonstrates processes such as creating
-masks, copying and changing values in a mask, and plotting masks.
+This script demonstrates the use of masks for modifying and thresholding
+data.  Specifically, it demonstrates processes such as creating masks,
+copying and changing values in a mask, and plotting masks.
 """
 
 from matplotlib.pyplot import figure, show, subplots_adjust
@@ -19,7 +19,7 @@ rawfiles = ['./data/EK60/PC1106-D20110830-T052815.raw',
 ek60 = EK60.EK60()
 ek60.read_raw(rawfiles)
 
-# Get a reference to the raw_data object.
+# Get a reference to the RawData object.
 raw_data_38 = ek60.get_raw_data(channel_number=2)
 print(raw_data_38)
 
@@ -72,17 +72,17 @@ Sv[sample_mask] = -999
 
 # Create a matplotlib figure to plot our echograms on.
 fig = figure()
-subplots_adjust(left=0.075, bottom=.05, right=0.98,
-        top=.90, wspace=None, hspace=0.5)
+subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.90, wspace=None,
+                hspace=0.5)
 
 # Plot the original data.
 ax1 = fig.add_subplot(2, 1, 1)
-eg = echogram.echogram(ax1, orig_Sv, threshold=[-70, -34])
+eg = echogram.Echogram(ax1, orig_Sv, threshold=[-70, -34])
 ax1.set_title("Original Sv Data")
 
 # Plot the data we modified.
 ax2 = fig.add_subplot(2, 1, 2)
-eg = echogram.echogram(ax2, Sv, threshold=[-70, -34])
+eg = echogram.Echogram(ax2, Sv, threshold=[-70, -34])
 ax2.set_title('Modified Sv data')
 
 # Display the results.
@@ -118,17 +118,17 @@ synth_data[mask_3] = 15
 
 # Create a matplotlib figure to plot our echograms on.
 fig = figure()
-subplots_adjust(left=0.075, bottom=.05, right=0.98,
-        top=.90, wspace=None, hspace=0.5)
+subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.90, wspace=None,
+                hspace=0.5)
 
 # Plot the original data.
-ax1 = fig.add_subplot(2,1,1)
-eg = echogram.echogram(ax1, orig_Sv, threshold=[-70,-34])
+ax1 = fig.add_subplot(2, 1, 1)
+eg = echogram.Echogram(ax1, orig_Sv, threshold=[-70, -34])
 ax1.set_title("Original Sv Data")
 
 # Plot the data we modified.
-ax2 = fig.add_subplot(2,1,2)
-eg = echogram.echogram(ax2, synth_data, threshold=[0,20])
+ax2 = fig.add_subplot(2, 1, 2)
+eg = echogram.Echogram(ax2, synth_data, threshold=[0, 20])
 ax2.set_title('Threshold results')
 
 # Display the results.

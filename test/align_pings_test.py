@@ -10,7 +10,8 @@ from matplotlib.pyplot import figure, show, subplots_adjust, get_cmap
 from echolab2.processing.batch_utils import FileAggregator as fa
 from echolab2.processing.align_pings import AlignPings
 from echolab2.instruments.EK60 import EK60
-from echolab2.plotting.matplotlib.echogram import echogram
+#from echolab2.plotting.matplotlib.echogram import echogram
+from echolab2.plotting.matplotlib import echogram
 
 if sys.version_info[0] == 3:
     from io import StringIO

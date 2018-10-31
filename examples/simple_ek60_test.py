@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
-"""A simple ek60 test.
+"""A simple ek60 reader test.
 
-This example script demonstrates simple file reading and data plotting of ek60
-data.  In general, the script reads files passed to it, stores the data in
-a data object, parses specific pieces of information from the data,
-and generates plots.  More specifically, this script demonstrates processes
-such as retrieving specific types of data (power, Sv, angles) from specified
-channels/frequencies, appending and inserting data from different sample
-intervals, and plotting multiple echograms on multiple matplotlib figures.
+This script demonstrates simple file reading and plotting of ek60 data.  In
+general, the script reads files passed to it, stores data in a data object,
+parses information from the data, and generates plots.  Specifically,
+this script demonstrates processes such as retrieving values from the data (
+power, Sv, and angles from specified channels/frequencies), appending and
+inserting data from different sample intervals, and using matplotlib to
+plot echograms.
 """
 
 from matplotlib.pyplot import figure, show, subplots_adjust, get_cmap
@@ -21,13 +21,13 @@ from echolab2.plotting.matplotlib import echogram
 
 # The descriptions below apply to reading these 2 files in the following order.
 rawfiles = ['./data/EK60/DY1201_EK60-D20120214-T231011.raw',
-            './data/EK60/DY1706_EK60-D20170609-T005736.raw']
+               './data/EK60/DY1706_EK60-D20170609-T005736.raw']
 
 # Create a matplotlib figure to plot our echograms on.
 fig = figure()
 # Set some properties for the sub plot layout.
-subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.93, wspace=None,
-                hspace=0.5)
+subplots_adjust(left=0.11, bottom=0.1, right=0.98, top=.93, wspace=None,
+                hspace=0.9)
 
 # Create an instance of the EK60 instrument. This is the top level object used
 # to interact with EK60 and  data sources.
@@ -84,12 +84,12 @@ print(raw_data_38_1)
 # Create an axis.
 ax_1 = fig.add_subplot(3, 1, 1)
 # Create an echogram to plot up the raw sample data.
-echogram_2 = echogram.echogram(ax_1, raw_data_38_1, 'power')
-ax_1.set_title("Raw power as stored in raw_data object")
+echogram_2 = echogram.Echogram(ax_1, raw_data_38_1, 'power')
+ax_1.set_title("Raw power as stored in RawData object")
 
 
 # At this point, we have a 1662x1059 array with data recorded at two different
-# sample intervals.  When we convert this data to return a processed_data
+# sample intervals.  When we convert this data to return a ProcessedData
 # object, we have to resample to a constant sample interval.  By default,
 # the get_* methods will resample to the shortest sample interval (highest
 # resolution) in the data that is being returned.  In our case, that will
@@ -113,7 +113,7 @@ ax_1.set_title("Raw power as stored in raw_data object")
 # passed into them using the return_indices keyword.
 
 
-# Call get_power to get a processed data object that contains power data.  We
+# Call get_power to get a ProcessedData object that contains power data.  We
 # provide no arguments so we get all pings ordered by time.
 processed_power_1 = raw_data_38_1.get_power()
 # That should be 1662 pings by 1988 samples.
@@ -122,7 +122,7 @@ print(processed_power_1)
 # Create an axis.
 ax_2 = fig.add_subplot(3, 1, 2)
 # Create an echogram which will display on our newly created axis.
-echogram_2 = echogram.echogram(ax_2, processed_power_1)
+echogram_2 = echogram.Echogram(ax_2, processed_power_1)
 ax_2.set_title("Power data in time order")
 
 # Now request Sv data in time order.
@@ -133,7 +133,7 @@ print(Sv)
 # Create another axis.
 ax_3 = fig.add_subplot(3, 1, 3)
 # Create an echogram which will display on our newly created axis.
-echogram_3 = echogram.echogram(ax_3, Sv, threshold=[-70,-34])
+echogram_3 = echogram.Echogram(ax_3, Sv, threshold=[-70,-34])
 ax_3.set_title("Sv data in time order")
 
 # Show our figure.
@@ -142,7 +142,7 @@ show()
 # Create another matplotlib figure.
 fig = figure()
 # Set some properties for the sub plot layout.
-subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.93, wspace=None,
+subplots_adjust(left=0.1, bottom=0.1, right=0.98, top=.93, wspace=None,
                 hspace=0.5)
 
 angle_cmap = get_cmap('plasma')
@@ -155,13 +155,13 @@ print(angles_athwart)
 # Create another axis.
 ax_1 = fig.add_subplot(2, 1, 1)
 # Create an echogram which will display on our newly created axis.
-echogram_3 = echogram.echogram(ax_1, angles_along, cmap=angle_cmap)
+echogram_3 = echogram.Echogram(ax_1, angles_along, cmap=angle_cmap)
 ax_1.set_title("angles_alongship data in time order")
 
 # Create another axis.
 ax_2 = fig.add_subplot(2, 1, 2)
 # Create an echogram which will display on our newly created axis.
-echogram_3 = echogram.echogram(ax_2, angles_athwart, cmap=angle_cmap)
+echogram_3 = echogram.Echogram(ax_2, angles_athwart, cmap=angle_cmap)
 ax_2.set_title("angles_athwartship data in time order")
 
 # Show our figure.

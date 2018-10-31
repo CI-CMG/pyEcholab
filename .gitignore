@@ -115,3 +115,4 @@ venv.bak/
 
 #  chuck's IDE
 .idea/
+*.zip
