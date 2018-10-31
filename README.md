@@ -1,6 +1,6 @@
 # pyEcholab2
 
-Python package for reading, writing, processing, and plotting data from Simrad/Kongsberg sonar systems.
+pyEcholab2 is a python package for reading, writing, processing, and plotting data from Simrad/Kongsberg sonar systems.
 
 ## Getting Started
 
@@ -8,15 +8,21 @@ These instructions will get you a copy of the project up and running on your loc
 
 ### Prerequisites
 
-pyEcholab2 requires Python 2.7 or Python 3.x as well as Numpy, SciPy, pytz, and matplotlib for plotting.
+pyEcholab2 requires Python 2.7 or Python 3.x. We recommend using an
+[Anaconda](https://www.anaconda.com/download/) based Python
+distribution
 
-```
-Give examples
-```
+pyEcholab2 uses the following packages:
 
-### Installing
+* [matplotlib](https://matplotlib.org/) for plotting echograms.
+* [numpy](http://www.numpy.org/) for large, multi-dimensional arrays.
+* [scipy](https://www.scipy.org/) for scientific computing.
+* [pytz](http://pytz.sourceforge.net/) for cross platform timezone calculations .
+* [basemap](https://matplotlib.org/basemap/) for plotting on maps (see [nmea example](https://github.com/CI-CMG/PyEcholab2/blob/master/examples/nmea_example.py)).
 
-A step by step series of examples that tell you have to get a development env running
+### Installation
+
+A step by step series of examples that tell you how to get a development env running
 
 Say what the step will be
 
@@ -45,25 +51,19 @@ Data used for running the examples and verifying the results of the conversion a
 
 ## Authors
 
-* **Rick Towler** - Alaska Fisheries Science Center
-* **Pamme Crandall** - ????
+* **Rick Towler** - NOAA/NMFS, Alaska Fisheries Science Center
+* **Charles Anderson** - Cooperative Institute for Research in Environmental Sciences (CIRES) & NOAA's National Centers for Environmental Information (NCEI)
+* **Veronica Martinez** - CIRES/NCEI
+* **Pamme Crandall** - CIRES/NCEI
 
 ## License
 
-     National Oceanic and Atmospheric Administration
-         National Centers for Environmental Information
-         Alaskan Fisheries Science Center
-         Southwest Fisheries Science Center
-         Northeast Fisheries Science Center
-
-  THIS SOFTWARE AND ITS DOCUMENTATION ARE CONSIDERED TO BE IN THE PUBLIC DOMAIN
-  AND THUS ARE AVAILABLE FOR UNRESTRICTED PUBLIC USE. THEY ARE FURNISHED "AS IS."
-  THE AUTHORS, THE UNITED STATES GOVERNMENT, ITS INSTRUMENTALITIES, OFFICERS,
-  EMPLOYEES, AND AGENTS MAKE NO WARRANTY, EXPRESS OR IMPLIED, AS TO THE USEFULNESS
-  OF THE SOFTWARE AND DOCUMENTATION FOR ANY PURPOSE. THEY ASSUME NO RESPONSIBILITY
-  (1) FOR THE USE OF THE SOFTWARE AND DOCUMENTATION; OR (2) TO PROVIDE TECHNICAL
-  SUPPORT TO USERS.
+This software is licensed under the MIT License - see the
+[LICENSE](LICENSE) file for details
 
 ## Acknowledgments
 
 * This work was funded by the National Marine Fisheries Service Office of Science and Technology.
+
+## Contact
+[wcd.info@noaa.gov](mailto:wcd.info@noaa.gov)
