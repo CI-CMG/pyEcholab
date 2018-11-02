@@ -19,7 +19,7 @@ pyEcholab2 uses the following packages:
 * [numpy](http://www.numpy.org/) for large, multi-dimensional arrays.
 * [pytz](http://pytz.sourceforge.net/) for cross platform timezone calculations.
 
-&nbsp;&nbsp**_Optional_**
+&nbsp;&nbsp;**_Optional_**
 * [PyQT4](https://wiki.python.org/moin/PyQt4) for GUI applications (see [example](https://github.com/CI-CMG/PyEcholab2/blob/master/examples/qt_echogram_viewer.py)).
 * [basemap](https://matplotlib.org/basemap/) for plotting on maps (see [example](https://github.com/CI-CMG/PyEcholab2/blob/master/examples/nmea_example.py)).
 
@@ -56,7 +56,7 @@ Data used for running the examples and verifying the results of the conversion a
 
 * **Rick Towler** - _NOAA/NMFS, Alaska Fisheries Science Center_
 * **Charles Anderson** - _Cooperative Institute for Research in Environmental Sciences (CIRES) located at  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;NOAA's National Centers for Environmental Information (NCEI)_
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;NOAA's National Centers for Environmental Information (NCEI)_
 * **Veronica Martinez** - _CIRES located at NCEI_
 * **Pamme Crandall** - _CIRES located at NCEI_
 
