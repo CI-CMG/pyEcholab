@@ -14,12 +14,12 @@ distribution
 
 pyEcholab2 uses the following packages:  
 
-&nbsp;&nbsp;<u>**Required**</u>
+&nbsp;&nbsp;__**Required**_
 * [matplotlib](https://matplotlib.org/) for plotting echograms.
 * [numpy](http://www.numpy.org/) for large, multi-dimensional arrays.
 * [pytz](http://pytz.sourceforge.net/) for cross platform timezone calculations.
 
-&nbsp;&nbsp;<u>**Optional**</u>
+&nbsp;&nbsp__**Optional**_
 * [PyQT4](https://wiki.python.org/moin/PyQt4) for GUI applications (see [example](https://github.com/CI-CMG/PyEcholab2/blob/master/examples/qt_echogram_viewer.py)).
 * [basemap](https://matplotlib.org/basemap/) for plotting on maps (see [example](https://github.com/CI-CMG/PyEcholab2/blob/master/examples/nmea_example.py)).
 
@@ -54,11 +54,11 @@ Data used for running the examples and verifying the results of the conversion a
 
 ## Authors
 
-* **Rick Towler** - NOAA/NMFS, Alaska Fisheries Science Center
-* **Charles Anderson** - Cooperative Institute for Research in Environmental Sciences (CIRES) located at  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;NOAA's National Centers for Environmental Information (NCEI)
-* **Veronica Martinez** - CIRES located at NCEI
-* **Pamme Crandall** - CIRES located at NCEI
+* **Rick Towler** - _NOAA/NMFS, Alaska Fisheries Science Center__
+* **Charles Anderson** - _Cooperative Institute for Research in Environmental Sciences (CIRES) located at  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;NOAA's National Centers for Environmental Information (NCEI)__
+* **Veronica Martinez** - _CIRES located at NCEI__
+* **Pamme Crandall** - _CIRES located at NCEI__
 
 ## License
 
