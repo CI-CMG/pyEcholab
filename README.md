@@ -21,7 +21,7 @@ pyEcholab2 uses the following packages:
 
 &nbsp;&nbsp;**_Optional_**
 * [PyQT4](https://wiki.python.org/moin/PyQt4) for GUI applications (see [example](https://github.com/CI-CMG/PyEcholab2/blob/master/examples/qt_echogram_viewer.py)).
-* [basemap](https://matplotlib.org/basemap/) for plotting on maps (see [example](https://github.com/CI-CMG/PyEcholab2/blob/master/examples/nmea_example.py)).
+* [basemap](https://matplotlib.org/basemap/) for plotting on maps (only used in [nmea example](https://github.com/CI-CMG/PyEcholab2/blob/master/examples/nmea_example.py) and currently only works with matplotlib 1.5.0rc3, basemap 1.0.8, and pyproj 1.9.5.1).
 
 ### Installation
 
