@@ -12,13 +12,16 @@ pyEcholab2 requires Python 2.7 or Python 3.x. We recommend using an
 [Anaconda](https://www.anaconda.com/download/) based Python
 distribution
 
-pyEcholab2 uses the following packages:
+pyEcholab2 uses the following packages:  
 
+&nbsp;&nbsp;<u>**Required**</u>
 * [matplotlib](https://matplotlib.org/) for plotting echograms.
 * [numpy](http://www.numpy.org/) for large, multi-dimensional arrays.
-* [scipy](https://www.scipy.org/) for scientific computing.
-* [pytz](http://pytz.sourceforge.net/) for cross platform timezone calculations .
-* [basemap](https://matplotlib.org/basemap/) for plotting on maps (see [nmea example](https://github.com/CI-CMG/PyEcholab2/blob/master/examples/nmea_example.py)).
+* [pytz](http://pytz.sourceforge.net/) for cross platform timezone calculations.
+
+&nbsp;&nbsp;<u>**Optional**</u>
+* [PyQT4](https://wiki.python.org/moin/PyQt4) for GUI applications (see [example](https://github.com/CI-CMG/PyEcholab2/blob/master/examples/qt_echogram_viewer.py)).
+* [basemap](https://matplotlib.org/basemap/) for plotting on maps (see [example](https://github.com/CI-CMG/PyEcholab2/blob/master/examples/nmea_example.py)).
 
 ### Installation
 
@@ -52,9 +55,10 @@ Data used for running the examples and verifying the results of the conversion a
 ## Authors
 
 * **Rick Towler** - NOAA/NMFS, Alaska Fisheries Science Center
-* **Charles Anderson** - Cooperative Institute for Research in Environmental Sciences (CIRES) & NOAA's National Centers for Environmental Information (NCEI)
-* **Veronica Martinez** - CIRES/NCEI
-* **Pamme Crandall** - CIRES/NCEI
+* **Charles Anderson** - Cooperative Institute for Research in Environmental Sciences (CIRES) located at  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;NOAA's National Centers for Environmental Information (NCEI)
+* **Veronica Martinez** - CIRES located at NCEI
+* **Pamme Crandall** - CIRES located at NCEI
 
 ## License
 
