@@ -110,6 +110,9 @@ venv.bak/
 *.out
 *.evi
 
+# Instrument data directories in examples/data
+/examples/data/*/
+
 #  MATLAB data files
 *.mat
 
