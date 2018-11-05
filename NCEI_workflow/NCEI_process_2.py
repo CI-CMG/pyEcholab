@@ -110,8 +110,8 @@ for index in range(0, len(raw_files.file_bins)):
         frequency = int(raw.frequency[0]/1000)
         raw_data[frequency] = raw
 
-    # Create dictionary of Sv ProcessedData objects. THe channels frequency (
-    # in KHz) is the key.
+    # Create dictionary of Sv ProcessedData objects. The channels
+    # frequency (\in KHz) is the key.
     Sv = {}
     for frequency, data in raw_data.items():
         Sv[frequency] = data.get_Sv(heave_correct=True)
@@ -200,7 +200,7 @@ for index in range(0, len(raw_files.file_bins)):
         bot_line = raw_bottom - 3.0
 
         # Now create a surface exclusion line at data=Xm RANGE.
-        surf_line = Line(ping_time=Sv[freq].ping_time, data=5)
+        surf_line = Line(ping_time=Sv[freq].ping_time, data=3)
 
         # Now apply that line to our mask.  We apply the value True BELOW our
         # line.  Note that we don't need to specify the value as True is the
@@ -233,7 +233,7 @@ for index in range(0, len(raw_files.file_bins)):
 
     # Plot the data.
     plot.plot(smooth_data, bottom=raw_bottom, title=title,
-              day_night=True)
+               day_night=True)
 
 end_time = datetime.datetime.now()
 
