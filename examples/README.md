@@ -1,12 +1,10 @@
 # Example Code
 
-This folder contains examples of how to use pyEcholab2 to read, write, process, and plot sonar data.  Both python (.py) and Jupyter Notebook (.ipynb) files are available for most examples.
+This folder contains examples of how to use pyEcholab to read, write, process, and plot sonar data.  Both python (.py) and Jupyter Notebook (.ipynb) files are available for most examples.
 
 ## Get the Data
-Test data for running the examples and verifying the results of the conversion and integration functions can be downloaded from here:
-```
-Add instructions
-```
+See the README in the examples/data folder for instructions on how to get test data to run these examples.
+
 
 ## Example Descriptions
 
@@ -62,7 +60,7 @@ Demonstrates plotting an echogram of Sv for each channel of a raw EK60 file.
 Jupyter Notebooks is a free, open source web application that supports placing live code, descriptive text, and visualizations all in one document. 
 These documents are interactive, meaning that the code can be modified and run in the browser to see the results.  
 
-To view these files, you will need to download jupyter notebooks.  If you have anaconda installed, as recommended for running pyEcholab2, then Jupyter Notebooks
+To view these files, you will need to download jupyter notebooks.  If you have anaconda installed, as recommended for running pyEcholab, then Jupyter Notebooks
 comes included.  
 
 To run Jupyter Notebooks, type *jupyter notebook* in the terminal.  A web browser will open, showing your home directory.  Navigate to the 
