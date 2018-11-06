@@ -65,7 +65,8 @@ export PYTHONPATH=$PYTHONPATH:~/<where_you_want_the_code>
 ```
 
 ### Data
-Raw files used by the example scripts need to be downloaded seperately to the examples/data folder before running. They can be downloaded from the NCEI FTP server: *ftp://ftp.ngdc.noaa.gov/pub/outgoing/mgg/wcd/pyEcholab_data/examples/*. On Unix based systems, this can easily achieved as follows:
+Raw files used by the example scripts need to be downloaded seperately to the examples/data folder before running. They can be downloaded from the NCEI FTP server: *ftp://ftp.ngdc.noaa.gov/pub/outgoing/mgg/wcd/pyEcholab_data/examples/*.  
+On Unix based systems, this can easily achieved as follows:
 
 ```
 cd ~/<where_you_want_the_code>/examples/data
