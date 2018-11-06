@@ -30,15 +30,21 @@ Water-column echosounder data are becoming increasingly available and are used f
 
 ## Getting Started
 
-These instructions will get you a copy of the project up and running on your local machine for development and testing purposes.
+
+pyEcholab and its core libraryecholab2 are currently hosted in this GitHub
+repository (https://github.com/CI-CMG/PyEcholab) and are not currently 
+available from any of the Python package management systems.
+Download to your machine by cloning the git repository.
+
+```
+mkdir ~/<where_you_want_the_code>
+cd ~/<where_you_want_the_code>
+git clone https://github.com/CI-CMG/pyEcholab.git
+```
 
 ### Prerequisites
 
-pyEcholab2 requires Python 2.7 or Python 3.x. We recommend using an
-[Anaconda](https://www.anaconda.com/download/) based Python
-distribution
-
-pyEcholab2 uses the following packages:  
+pyEcholab2 requires Python 2.7 or Python 3.6.x (testing is more complete in the 3.6 evironment). For those not familiar with building Python environments, we recommend using an [Anaconda](https://www.anaconda.com/download/) Python distribution which includes all needed packages except basemap. The following packages are needed If you use your own Python installation: 
 
 &nbsp;&nbsp;**_Required_**
 * [matplotlib](https://matplotlib.org/) for plotting echograms.
@@ -51,38 +57,32 @@ pyEcholab2 uses the following packages:
 
 ### Installation
 
-A step by step series of examples that tell you how to get a development env running
-
-Say what the step will be
-
-```
-Give the example
-```
-
-And repeat
+Once you have pyEcholab cloned to your machine, you need to tell Python where to find the package. Your Python development environment may provide a way to do this, if not, the following can be used at a bash prompt or added to
+your shell initialisation file:
 
 ```
-until finished
+export PYTHONPATH=$PYTHONPATH:~/<where_you_want_the_code>
 ```
 
-End with an example of getting some data out of the system or using it for a little demo
+### Data
+Raw files used by the example scripts need to be downloaded seperately to the examples/data folder before running. They can be downloaded from the [NCEI FTP server](ftp://ftp.ngdc.noaa.gov/pub/outgoing/mgg/wcd/pyEcholab_data/examples/). On Unix based systems, this can easily achieved as follows:
 
-## Data
-*Note that these files are not shared publicly and will need to be moved before making this project public.*
-Data used for running the examples and verifying the results of the conversion and integration functions. Place new files for testing into the Test Data Directory
+```
+cd ~/<where_you_want_the_code>/examples/data
+make
+```
 
-[Test Data Directory](https://drive.google.com/drive/u/0/folders/0BzfkO6wrXhxYOHVLOWVKUlJBYmc)
+### Examples
+Numerous example files are provided to introduce users to pyEcholab. These examples exist as both Python scripts and Jupyter Notebooks. The examples are heavily commented to explain each step.
 
-[Test Data](https://drive.google.com/open?id=1SYbK2eDGSEtrGbH4G82cw2aq-lklLxKS)
-
-[Example Data](https://drive.google.com/open?id=1pwJ9fCetW1nG0BDVuuSL0zi3VxhWo9xX)
-
+## Getting Involved
+The pyEcholab project is designed to encourage members of the acoustic community to contribute back to the project. The basic architecture and use of standardized ProcessedData, Mask and Line objects provide a "plug and play" framework for the development of additional processing, analysis, plotting and export modules. Please contact the pyEcholab team at [wcd.info@noaa.gov](mailto:wcd.info@noaa.gov) for more information.
 
 ## Authors
 
 * **Rick Towler** - _NOAA/NMFS, Alaska Fisheries Science Center_
 * **Charles Anderson** - _Cooperative Institute for Research in Environmental Sciences (CIRES) located at  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;NOAA's National Centers for Environmental Information (NCEI)_
+NOAA's National Centers for Environmental Information (NCEI)_
 * **Veronica Martinez** - _CIRES located at NCEI_
 * **Pamme Crandall** - _CIRES located at NCEI_
 
