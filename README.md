@@ -50,6 +50,7 @@ pyEcholab2 requires Python 2.7 or Python 3.6.x (testing is more complete in the 
 * [matplotlib](https://matplotlib.org/) for plotting echograms.
 * [numpy](http://www.numpy.org/) for large, multi-dimensional arrays.
 * [pytz](http://pytz.sourceforge.net/) for cross platform timezone calculations.
+* [future](https://pypi.org/project/future/) compatibility layer between Python 2 and Python 3.
 
 &nbsp;&nbsp;**_Optional_**
 * [PyQT4](https://wiki.python.org/moin/PyQt4) for GUI applications (see [example](https://github.com/CI-CMG/PyEcholab2/blob/master/examples/qt_echogram_viewer.py)).
