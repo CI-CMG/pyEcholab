@@ -2,7 +2,6 @@
 """This example script demonstrates plotting echograms using fake data."""
 
 import numpy as np
-import datetime
 from matplotlib.pyplot import figure, show
 from echolab2.processing import processed_data, line
 from echolab2.plotting.matplotlib import echogram

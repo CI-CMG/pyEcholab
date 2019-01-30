@@ -153,7 +153,7 @@ Sv = raw_data.get_sv()
 # wouldn't want to and often can't interpolate them all.  There is a keyword
 # that allows you to specify these without having them defined in the class
 # but we'll ignore that right now.  The interpolate method returns a
-# dictionary containing ling times and corresponding values for specified
+# dictionary containing ping times and corresponding values for specified
 # parameters.
 #
 # So, let's try to interpolate the RMC message which contains lat/lon.

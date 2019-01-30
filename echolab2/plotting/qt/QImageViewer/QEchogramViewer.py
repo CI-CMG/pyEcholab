@@ -266,7 +266,8 @@ class QEchogramViewer(QViewerBase):
         if (not useXY):
             verts = self.axesToPixels(verts)
 
-        return super(QEchogramViewer, self).addLine([verts[0][0], verts[0][1], verts[1][0], verts[1][1]], **kwargs)
+        #return super(QEchogramViewer, self).addLine([verts[0][0], verts[0][1], verts[1][0], verts[1][1]], **kwargs)
+        return super(QEchogramViewer, self).addLine(verts, **kwargs)
 
 
     def addMark(self, position, useXY=False, name='QEGMarker', **kwargs):
@@ -460,6 +461,10 @@ class QEchogramViewer(QViewerBase):
         the number of seconds from midnight on 1-1-1970. Serialized time is used
         internally to map time axes from time to a pixel value.
         '''
+
+        #  convert datetime to numpy datetime64
+        if (isinstance(times, datetime.datetime)):
+            times = numpy.datetime64(times)
 
         epoch = numpy.datetime64('1970-01-01')
         serialTime = (times - epoch)

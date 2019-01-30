@@ -32,6 +32,59 @@ import numpy as np
 from ..ping_data import PingData
 
 
+def empty_like(obj, name=None, color=None, linestyle=None,
+        linewidth=None):
+    """Creates an empty line object.
+
+    empty_like creates an empty line (where data values are NaN) that
+    is the same length as the provided line or processed data object.
+    If a line object is passed, the name and color attributes are copied if not
+    explicitly provided. If a processed data object is passed the returned
+    line will have the default line attributes if not explicitly provided.
+
+    Args:
+        obj (Line or ProcessedData object): The Line or ProcessedData object
+        instance that is the template for the new object being created.
+        name (str): Optional name for the new Line object.
+        color (): Optional color for the new Line object.
+        linestyle(str): Optional linestyle is a string that defines the style of the line.
+        linewidth(float): Optional linewidth is a float the defines the width of the line.
+
+    Returns:
+        New empty instance of Line object with name and color ether
+        copied from Line object passed in or using optional parameters
+        passed to method.
+    """
+    # Create a new line object to return.
+    new_line = Line(ping_time=obj.ping_time.copy())
+
+    # Check if new properties were provided, otherwise copy from original.
+    if color:
+        new_line.color = color
+    else:
+        if isinstance(obj, Line):
+            new_line.color = obj.color
+    if name:
+        new_line.name = name
+    else:
+        if isinstance(obj, Line):
+            new_line.name = obj.name
+    if linestyle:
+        new_line.linestyle = linestyle
+    else:
+        if isinstance(obj, Line):
+            new_line.linestyle = obj.linestyle
+    if linewidth:
+        new_line.linewidth = linewidth
+    else:
+        if isinstance(obj, Line):
+            new_line.linewidth = obj.linewidth
+
+    # Set the data array to NaNs.
+    new_line.data = np.full(new_line.ping_time.shape[0], np.nan)
+
+    return new_line
+
 class Line(PingData):
     #   TODO: Review attributes in this docstring
     """The line class implements lines based on ping_time and depth/range values.
@@ -43,10 +96,10 @@ class Line(PingData):
         ping_time: ping_time is a datetime object that defines the time the
             ping was recorded.
         data: data is a numpy array which contains the float data.
-        color: color is a list which defines the color of the lines.
-        name: name is a string.
-        linestyle: linestyle is a string that defines the style of the lines.
-        linewidth: linewidth is a float the defines the width of the lines.
+        color: color is a list which defines the color of the line.
+        name (string): name or label for the line is a string.
+        linestyle: linestyle is a string that defines the style of the line.
+        linewidth: linewidth is a float the defines the width of the line.
     """
 
     def __init__(self, ping_time=None, data=None, color=[0.58, 0.0, 0.83],
@@ -55,8 +108,6 @@ class Line(PingData):
 
         Creates and sets several internal properties.
         """
-
-
         super(Line, self).__init__()
 
         # Set the ping time.
@@ -95,41 +146,7 @@ class Line(PingData):
         self._data_attributes += ['data']
 
 
-    def empty_like(self, line_obj, name=None, color=None):
-        """Creates an empty line object.
 
-        Empty_like creates an empty line (where data values are NaN) that
-        is the same length as the provided line object. The name and
-        color attributes are copied if not explicitly provided.
-
-        Args:
-            line_obj (Line object): The Line object instance that is the
-            template for the new object being created.
-            name (str): Optional name for the new Line object.
-            color (): Optional color for the new Line object.
-
-        Returns:
-            New empty instance of Line object with name and color ether
-            copied from Line object passed in ur using optional parameters
-            passed to method.
-        """
-        # Create a new line object to return.
-        new_line = Line(ping_time=line_obj.ping_time.copy())
-
-        # Check if new properties were provided, otherwise copy from original.
-        if color:
-            new_line.color = color
-        else:
-            new_line.color = line_obj.color
-        if name:
-            new_line.name = name
-        else:
-            new_line.name = line_obj.name
-
-        # Set the data array to NaNs.
-        new_line.data = np.full(new_line.ping_time.shape[0], np.nan)
-
-        return new_line
 
 
     def interpolate(self, new_times):
@@ -191,7 +208,7 @@ class Line(PingData):
             Line object that is the result of adding "other" to the Line object.
         """
         other_data = self._setup_numeric(other)
-        new_line = self.empty_like(self)
+        new_line = empty_like(self)
 
         if isinstance(other, Line):
             other_data = other.data
@@ -253,7 +270,7 @@ class Line(PingData):
         """
 
         other_data = self._setup_numeric(other)
-        new_line = self.empty_like(self)
+        new_line = empty_like(self)
         if isinstance(other, Line):
             other_data = other.data
         else:
@@ -312,7 +329,7 @@ class Line(PingData):
         """
 
         other_data = self._setup_numeric(other)
-        new_line = self.empty_like(self)
+        new_line = empty_like(self)
         if isinstance(other, Line):
             other_data = other.data
         else:
@@ -371,7 +388,7 @@ class Line(PingData):
             New Line object that is the original Line object divided bu other.
         """
         other_data = self._setup_numeric(other)
-        new_line = self.empty_like(self)
+        new_line = empty_like(self)
         if isinstance(other, Line):
             other_data = other.data
         else:
@@ -429,7 +446,7 @@ class Line(PingData):
             New Line object that is the original Line raided to "other".
         """
         other_data = self._setup_numeric(other)
-        new_line = self.empty_like(self)
+        new_line = empty_like(self)
         if isinstance(other, Line):
             other_data = other.data
         else:

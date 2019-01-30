@@ -11,6 +11,8 @@ class QEnhancedImage():
 
         #  define the default public properties
         self.sourceData = None
+        self.enhancedData = None
+        self.keepEnhanced = False
         self.enableBrightnessContrast = False
         self.brightness = 0.0
         self.autoContrast = False
@@ -48,6 +50,7 @@ class QEnhancedImage():
         #  read the image data into our "source" array which stores the original unmodified data
         filename = os.path.normpath(str(filename))
         self.sourceData = []
+        self.enhancedData = None
         self.sourceData = cv2.imread(str(filename), cv2.IMREAD_UNCHANGED)
 
         try:
@@ -81,6 +84,7 @@ class QEnhancedImage():
         """
 
         self.sourceData = None
+        self.enhancedData = None
         self.sourceData = qimage2ndarray.byte_view(image)
 
         #  determine if this is a color or mono image
@@ -307,6 +311,11 @@ class QEnhancedImage():
 
         #  convert to pixmap
         pixmap = QtGui.QPixmap().fromImage(qimage)
+
+        #  if keepEnhanced is set, we keep a copy of the enhanced image that
+        #  can be used for further processing by the user if needed
+        if (self.keepEnhanced):
+            self.enhancedData = imageData
 
         return pixmap
 

@@ -28,11 +28,13 @@
 
 """
 
+from future.utils import implements_iterator
 import numpy as np
 from ..ping_data import PingData
-from echolab2.processing import mask
+from ..processing import mask
 
 
+@implements_iterator
 class ProcessedData(PingData):
     """The ProcessedData class defines the horizontal and vertical axes of
     the data.
@@ -61,13 +63,18 @@ class ProcessedData(PingData):
         sample_thickness: a float defining the vertical extent of the samples
             in meters. It is calculated as thickness = sample interval(s) *
             sound speed(m/s) / 2.
-        sample_offset: The number of samples this data
-        range: An array of floats defining the ranges of the individual samples
-            in the sample data array. Initially this is range relative to the
-            transducer face but you can change this.
-        depth: Depth is range relative to the surface.
+        sample_offset: The sample number of the first sample in the data array.
+            This is typically 0, but can be larger if the data is a subset extracted
+            from a larger array.
 
-        *Either* depth or range will be present.
+        *Either* depth or range will be present:
+
+        range: An array of floats defining the distance of the individual samples
+            in meters from the transducer face.
+        depth: An array of floats defining the distance of the individual samples
+            in meters from the surface. Depth is range with the transducer offset
+            and (optionally) heave compensation applied.
+
 
         This class inherits the following attributes from sample_data:
 
@@ -131,10 +138,10 @@ class ProcessedData(PingData):
         # Data contains the 2d sample data.
         self.data = None
 
-        #    TODO: finish comment
         # is_log should be set to True if the data contained within it is in log
         # form, and False otherwise. This is handled internally if you use the
-        # to_log and to_linear methods, but if you are manipulating the
+        # to_log and to_linear methods, but if you are manipulating the data
+        # manually you should set this state value accordingly.
         self.is_log = False
 
         # Sample thickness is the vertical extent of the samples in meters.  It
@@ -215,6 +222,23 @@ class ProcessedData(PingData):
         # We are now coexisting in harmony - call parent's insert.
         super(ProcessedData, self).replace( obj_to_insert, ping_number=None,
                 ping_time=None, insert_after=True, index_array=None)
+
+
+    def get_v_axis(self):
+        """Returns a reference to the vertical axis data along with the type in the form:
+            [[vertical axis data], vertical axis type as string]]
+        for example:
+            [[1,2,3,4], 'range']
+        """
+        if hasattr(self, 'range'):
+            #  this is range based data
+            return [getattr(self, 'range'), 'range']
+        elif hasattr(self, 'depth'):
+             #  this is depth based data
+            return [getattr(self, 'depth'), 'depth']
+        else:
+            #  we don't seem to have either range or depth
+            return [[], 'none']
 
 
     def insert(self, obj_to_insert, ping_number=None, ping_time=None,
@@ -757,6 +781,24 @@ class ProcessedData(PingData):
 
         # Set the sample data to the provided value(s).
         self.data[sample_mask] = other_data
+
+
+    def __iter__(self):
+        """ProcessedData objects are iterable
+        """
+        self._iter_idx = 0
+        return self
+
+
+    def __next__(self):
+        """ProcessedData objects are iterable and return a vector containing
+        a pings worth of data per iteration.
+        """
+        self._iter_idx += 1
+        if (self._iter_idx > self.n_pings):
+            raise StopIteration
+        else:
+            return self.data[self._iter_idx - 1,:]
 
 
     def __getitem__(self, key):
