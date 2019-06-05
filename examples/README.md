@@ -70,5 +70,10 @@ comes included.
 To run Jupyter Notebooks, type *jupyter notebook* in the terminal.  A web browser will open, showing your home directory.  Navigate to the 
 the Jupyter Notebook files (.ipynb) on your machine from this browser and open them up.  Now you can run and modify the files in the browser.
 
+There are also static versions of some of these jupyter notebook files in html format.  These show the code and their outputs in a static view.
+To view these html files, download them to your computer and open it in a browser.
+
 NCEI is working on hosting these files in a place that can be accessed without requiring a Jupyter Notebooks installation.
+
+
 
