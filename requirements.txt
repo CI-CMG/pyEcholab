@@ -1,0 +1,9 @@
+numpy
+matplotlib
+jupyter
+notebook
+pytz
+future
+PyQT4
+basemap
+cartopy
