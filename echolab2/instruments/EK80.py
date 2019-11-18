@@ -13,9 +13,17 @@
 # ASSUME NO RESPONSIBILITY (1) FOR THE USE OF THE SOFTWARE AND DOCUMENTATION;
 # OR (2) TO PROVIDE TECHNICAL SUPPORT TO USERS.
 
+
+"""
+
+https://www.idtools.com.au/gpu-accelerated-fft-compatible-numpy/
+"""
+
+
 import os
 import datetime
 import numpy as np
+import xml.etree.ElementTree as ET
 from pytz import timezone
 from .util.simrad_raw_file import RawSimradFile, SimradEOF
 from .util.nmea_data import nmea_data
@@ -24,10 +32,10 @@ from ..processing.processed_data import ProcessedData
 from ..processing import line
 
 
-class EK60(object):
-    """This class is the 'file reader' class for Simrad EK60 instrument files.
+class EK80(object):
+    """This class is the 'file reader' class for Simrad EK80 instrument files.
 
-    The Ek60 class can read in one or more EK60 files and generates a RawData
+    The EK80 class can read in one or more EK80 files and generates a RawData
     class instance for each unique channel ID in the files. The class also
     contains numerous methods used to extract the raw sample data from one
     channel, or create ProcessedData objects containing.
@@ -190,6 +198,12 @@ class EK60(object):
         self._file_channel_map = []
 
 
+        self.configuration = {}
+        self.filters = {}
+        self.reader_state = {}
+
+
+
     def read_bot(self, bot_files):
         """Passes a list of .bot filenames to read_raw.
 
@@ -216,7 +230,7 @@ class EK60(object):
                 end_time=self.end_time)
 
 
-    def read_raw(self, raw_files, power=None, angles=None,
+    def read_raw(self, raw_files, power=None, angles=None, complex=None,
                  max_sample_count=None, start_time=None, end_time=None,
                  start_ping=None, end_ping=None, frequencies=None,
                  channel_ids=None, time_format_string='%Y-%m-%d %H:%M:%S',
@@ -233,6 +247,7 @@ class EK60(object):
                 read.
             power (bool): Controls whether power data is stored
             angles (bool): Controls whether angle data is stored
+            comoplex (bool): Controls whether complex data is stored
             max_sample_count (int): Specify the max sample count to read
                 if your data of interest is less than the total number of
                 samples contained in the instrument files.
@@ -253,7 +268,7 @@ class EK60(object):
                 read.
             time_format_string (str): String containing the format of the
                 start and end time arguments. Format is used to create datetime
-                objects start and end time strings
+                objects from the start and end time strings
             incremental (bool): A value of True indicates object will read
                 files incrementally. Otherwise, files are read in their
                 entirety.
@@ -307,92 +322,84 @@ class EK60(object):
         # Iterate through the list of .raw files to read.
         for filename in raw_files:
 
-            # Read data from the file and add to self.raw_data.  Then read the
-            # configuration datagrams.  The CON0 datagram will come first.  If
-            # this is an ME70 .raw file, the CON1 datagram will follow.
+            # Read data from the file and add to self.raw_data.
             with RawSimradFile(filename, 'r') as fid:
 
-                # Read the CON0 configuration datagram.
+                # Read the XML0 configuration datagram.
                 config_datagram = fid.read(1)
                 config_datagram['timestamp'] = \
                         np.datetime64(config_datagram['timestamp'], '[ms]')
                 if n_files == 0:
                     self.start_time = config_datagram['timestamp']
 
-                # Create a mapping of channel numbers to channel IDs for all
-                # transceivers in the file.
-                self._file_channel_map = [None] * \
-                    config_datagram['transceiver_count']
-                for idx in config_datagram['transceivers'].keys():
-                    self._file_channel_map[idx-1] = \
-                        config_datagram['transceivers'][idx]['channel_id']
 
-                # Check if reading an ME70 file with a CON1 datagram.
-                next_datagram = fid.peek()
-                if next_datagram == 'CON1':
-                    CON1_datagram = fid.read(1)
-                else:
-                    CON1_datagram = None
 
-                # Check if a RawData object for this channel needs to be
-                # created.
+                self._file_channel_map = []
                 self._channel_map = {}
-                for channel in config_datagram['transceivers']:
-                    # Get the channel ID.
-                    channel_id = config_datagram['transceivers'][channel][
-                        'channel_id']
 
-                    # Check if we are reading this channel.
-                    if (self.read_channel_ids and channel_id not in
-                            self.read_channel_ids):
-                        # There are specific channel IDs specified and this
-                        # is *NOT* one of them, so continue.
-                        continue
+                #  parse the Transceiver section
+                for t in root.iter('Transceiver'):
+                    #  parse the Transceiver section
+                    transceiver_xml = t.attrib
+                    #  parse the Channel section
+                    for c in t.iter('Channel'):
+                        channel_xml = c.attrib
+                        channel_id = channel_xml['ChannelID']
 
-                    # Check if we are reading this frequency.
-                    frequency = config_datagram['transceivers'][channel][
-                        'frequency']
-                    if self.read_frequencies and frequency not in \
-                            self.read_frequencies:
-                        # There are specific frequencies specified and this
-                        # is *NOT* one of them, so continue.
-                        continue
+                        # Check if we are reading this channel.
+                        if (self.read_channel_ids and channel_id not in
+                                self.read_channel_ids):
+                            # There are specific channel IDs specified and this
+                            # is *NOT* one of them, so continue.
+                            continue
 
-                    # Check if a RawData object exists for this channel.  If
-                    # not, create it, add it to the list of channel_ids,
-                    # and update the public channel id map.
-                    if channel_id not in self.raw_data:
-                        self.raw_data[channel_id] = RawData(channel_id,
-                                store_power=self.read_power,
-                                store_angles=self.read_angles,
-                                max_sample_number=self.read_max_sample_count)
+                        #  parse the Transducer section
+                        for td in t.iter('Transducer'):
+                            xducer1_xml = td.attrib
+                            #  now look thru the Transducers for transducer install data for this channel/transducer combo
+                            for t in root.iter('Transducers'):
+                                for c in t.iter('Transducer'):
+                                    if (td.attrib['SerialNumber'] == c.attrib['TransducerSerialNumber']):
+                                        xducer2_xml = c.attrib
 
-                        self.channel_ids.append(channel_id)
+                        #  check if we are reading this frequency.
+                        frequency = xducer1_xml['Frequency']
+                        if self.read_frequencies and frequency not in \
+                                self.read_frequencies:
+                            # There are specific frequencies specified and this
+                            # is *NOT* one of them, so continue.
+                            continue
 
-                        self.n_channels += 1
-                        self.channel_id_map[self.n_channels] = channel_id
+                        #  parse the header
+                        for h in root.iter('Header'):
+                            header_xml = h.attrib
 
-                    # Update the internal mapping of channel number to
-                    # channel ID used when reading the datagrams.  This
-                    # mapping is only valid for the current file that is
-                    # being read.
-                    self._channel_map[channel] = channel_id
+                        # Check if a RawData object exists for this channel.  If
+                        # not, create it, add it to the list of channel_ids,
+                        # and update the public channel id map.
+                        if channel_id not in self.raw_data:
+                            self.raw_data[channel_id] = RawData(channel_id,
+                                    store_power=self.read_power,
+                                    store_angles=self.read_angles,
+                                    max_sample_number=self.read_max_sample_count)
 
-                    # Create a channel_metadata object to store this channel's
-                    # configuration and rawfile metadata.
-                    metadata = ChannelMetadata(filename,
-                                config_datagram['transceivers'][channel],
-                                config_datagram['survey_name'],
-                                config_datagram['transect_name'],
-                                config_datagram['sounder_name'],
-                                config_datagram['version'],
-                                self.raw_data[channel_id].n_pings,
-                                config_datagram['timestamp'],
-                                extended_configuration=CON1_datagram)
+                            self.channel_ids.append(channel_id)
 
-                    # Update the channel_metadata property of the RawData
-                    # object.
-                    self.raw_data[channel_id].current_metadata = metadata
+                            self.n_channels += 1
+                            self.channel_id_map[self.n_channels] = channel_id
+
+                        # Create a channel_metadata object to store this channel's metadata.
+                        metadata = ChannelMetadata(filename, header_xml, transceiver_xml,
+                                channel_xml, xducer1_xml, xducer2_xml,
+                                self.raw_data[channel_id].n_pings, config_datagram['timestamp'])
+
+                        # Update the channel_metadata property of the RawData
+                        # object.
+                        self.raw_data[channel_id].current_metadata = metadata
+
+
+                #  There doesn't seem to be anything in the ConfiguredSensors section of the
+                #  header so we'll skip for now.
 
                 # Read the rest of the datagrams.
                 self._read_datagrams(fid, self.read_incremental)
@@ -2169,15 +2176,14 @@ class RawData(PingData):
 class ChannelMetadata(object):
     """
     The ChannelMetadata class stores the channel configuration data as well as
-    some metadata about the file. One of these is created for each channel for
-    every .raw file read.
+    some metadata about the transceiver and file. One of these is created for each
+    channel for every transceiver in every .raw file read.
 
     References to instances of these objects are stored in the RawData class.
     """
 
-    def __init__(self, file, config_datagram, survey_name, transect_name,
-                 sounder_name, version, start_ping, start_time,
-                 extended_configuration=None):
+    def __init__(self, file, header_xml, transceiver_xml, channel_xml, xducer1_xml,
+            xducer2_xml, start_ping, start_time):
 
         # Split the filename.
         file = os.path.normpath(file).split(os.path.sep)
@@ -2192,57 +2198,168 @@ class ChannelMetadata(object):
         self.start_time = start_time
         self.end_time = None
 
-        # We will replicate the ConfigurationHeader struct here, since there
-        # is no better place to store it.
-        self.survey_name = ''
-        self.transect_name = ''
-        self.sounder_name = ''
-        self.version = ''
+        #  populate with data
+        self.set_header(header_xml)
+        self.set_transceiver_metadata(transceiver_xml)
+        self.set_channel_metadata(channel_xml)
+        self.set_transducer_metadata(xducer1_xml, xducer2_xml)
 
-        # Store the ME70 extended configuration XML string.
-        self.extended_configuration = extended_configuration
 
-        # The GPT firmware version used when recording this data.
-        self.gpt_firmware_version = config_datagram['gpt_software_version']
+    def set_header(self, header_el):
 
-        # The beam type for this channel - split or single.
-        self.beam_type = config_datagram['beam_type']
+        self.copyright = header_el['Copyright']
+        self.application_name = header_el['ApplicationName']
+        self.application_version = header_el['Version']
+        self.file_format_version = header_el['FileFormatVersion']
+        self.time_bias = header_el['TimeBias']
 
-        # The channel frequency in Hz.
-        self.frequency_hz = config_datagram['frequency']
 
-        # The system gain when the file was recorded.
-        self.gain = config_datagram['gain']
+    def get_header(self):
 
-        # Beam calibration properties.
-        self.equivalent_beam_angle = config_datagram['equivalent_beam_angle']
-        self.beamwidth_alongship = config_datagram['beamwidth_alongship']
-        self.beamwidth_athwartship = config_datagram['beamwidth_athwartship']
-        self.angle_sensitivity_alongship = config_datagram[
-            'angle_sensitivity_alongship']
-        self.angle_sensitivity_athwartship = config_datagram[
-            'angle_sensitivity_athwartship']
-        self.angle_offset_alongship = config_datagram['angle_offset_alongship']
-        self.angle_offset_athwartship = config_datagram[
-            'angle_offset_athwartship']
+        header = {'Copyright':self.copyright,
+                  'ApplicationName':self.application_name,
+                  'Version':self.application_version,
+                  'FileFormatVersion':self.file_format_version,
+                  'TimeBias':self.time_bias,
+                   }
 
-        # Transducer installation/orientation parameters.
-        self.pos_x = config_datagram['pos_x']
-        self.pos_y = config_datagram['pos_y']
-        self.pos_z = config_datagram['pos_z']
-        self.dir_x = config_datagram['dir_x']
-        self.dir_y = config_datagram['dir_y']
-        self.dir_z = config_datagram['dir_z']
+        return header
 
-        # The possile pulse lengths for the recording system.
-        self.pulse_length_table = config_datagram['pulse_length_table']
-        self.spare2 = config_datagram['spare2']
-        # The gains set for each of the system pulse lengths.
-        self.gain_table = config_datagram['gain_table']
-        self.spare3 = config_datagram['spare3']
-        # The sa correction values set for each pulse length.
-        self.sa_correction_table = config_datagram['sa_correction_table']
-        self.spare4 = config_datagram['spare4']
+
+    def set_transceiver_metadata(self, transceiver_el):
+
+        self.transceiver_name = transceiver_el['TransceiverName']
+        self.ethernet_address = transceiver_el['EthernetAddress']
+        self.ip_address = transceiver_el['IPAddress']
+        self.transceiver_version = transceiver_el['Version']
+        self.transceiver_software_version = transceiver_el['TransceiverSoftwareVersion']
+        self.transceiver_number = int(transceiver_el['TransceiverNumber'])
+        self.market_segment = transceiver_el['MarketSegment']
+        self.transceiver_type = transceiver_el['TransceiverType']
+        self.serial_number = transceiver_el['SerialNumber']
+        self.impedance = int(transceiver_el['Impedance'])
+
+
+    def get_transceiver_metadata(self):
+
+        transceiver = {'TransceiverName':self.transceiver_name,
+                        'EthernetAddress':self.ethernet_address,
+                        'IPAddress':self.ip_address,
+                        'Version':self.transceiver_version,
+                        'TransceiverSoftwareVersion':self.transceiver_software_version,
+                        'TransceiverNumber':str(self.transceiver_number),
+                        'MarketSegment':self.market_segment,
+                        'TransceiverType':self.transceiver_type,
+                        'SerialNumber':self.serial_number,
+                        'Impedance':str(self.impedance)
+                        }
+
+        return transceiver
+
+
+    def set_channel_metadata(self, chan_el):
+
+        self.channel_id = chan_el['ChannelID']
+        self.channel_id_short = chan_el['ChannelIdShort']
+        self.max_tx_power_transceiver = int(chan_el['MaxTxPowerTransceiver'])
+        self.pulse_duration = []
+        for p in chan_el['PulseDuration'].split(';'):
+            self.pulse_duration.append(float(p))
+        self.sample_interval = []
+        for p in chan_el['SampleInterval'].split(';'):
+            self.sample_interval.append(float(p))
+        self.hw_channel_configuration = chan_el['HWChannelConfiguration']
+
+
+    def get_channel_metadata(self):
+
+        pulse_duration = ';'.join(str(pd) for pd in self.pulse_duration)
+        sample_interval = ';'.join(str(si) for si in self.sample_interval)
+
+        channel = {'ChannelID':self.channel_id,
+                   'ChannelIdShort':self.channel_id_short,
+                   'MaxTxPowerTransceiver':self.max_tx_power_transceiver,
+                   'PulseDuration':pulse_duration,
+                   'SampleInterval':sample_interval,
+                   'HWChannelConfiguration':self.hw_channel_configuration
+                   }
+
+        return channel
+
+
+    def set_transducer_metadata(self, td1_el, td2_el):
+
+        self.transducer_name = td1_el['TransducerName']
+        self.transducer_serial_number = td1_el['SerialNumber']
+        self.transducer_frequency = float(td1_el['Frequency'])
+        self.transducer_freq_min = float(td1_el['FrequencyMinimum'])
+        self.transducer_freq_max = float(td1_el['FrequencyMaximum'])
+        self.transducer_beam_type = int(td1_el['BeamType'])
+        self.gain = []
+        for p in td1_el['Gain'].split(';'):
+            self.gain.append(float(p))
+        self.sa_correction = []
+        for p in td1_el['SaCorrection'].split(';'):
+            self.sa_correction.append(float(p))
+        self.max_tx_power_transducer = float(td1_el['MaxTxPowerTransducer'])
+        self.equivalent_beam_angle = float(td1_el['EquivalentBeamAngle'])
+        self.beamwidth_alongship = float(td1_el['BeamWidthAlongship'])
+        self.beamwidth_athwartship = float(td1_el['BeamWidthAthwartship'])
+        self.angle_sensitivity_alongship = float(td1_el['AngleSensitivityAlongship'])
+        self.angle_sensitivity_athwartship = float(td1_el['AngleSensitivityAthwartship'])
+        self.angle_offset_alongship = float(td1_el['AngleOffsetAlongship'])
+        self.angle_offset_athwartship = float(td1_el['AngleOffsetAthwartship'])
+        self.directivity_drop = float(td1_el['DirectivityDropAt2XBeamWidth'])
+
+
+        self.transducer_mounting = td2_el['TransducerMounting']
+        self.transducer_custom_name = td2_el['TransducerCustomName']
+        self.transducer_orientation = td2_el['TransducerOrientation']
+        self.transducer_offset_x = float(td2_el['TransducerOffsetX'])
+        self.transducer_offset_y = float(td2_el['TransducerOffsetY'])
+        self.transducer_offset_z = float(td2_el['TransducerOffsetZ'])
+        self.transducer_alpha_x = float(td2_el['TransducerAlphaX'])
+        self.transducer_alpha_y = float(td2_el['TransducerAlphaY'])
+        self.transducer_alpha_z = float(td2_el['TransducerAlphaZ'])
+
+
+    def get_transducer_metadata(self):
+
+        gain = ';'.join(str(pd) for pd in self.gain)
+        sa_correction = ';'.join(str(si) for si in self.sa_correction)
+
+        td1 = {'TransducerName':self.transducer_name,
+                'SerialNumber':self.transducer_serial_number,
+                'Frequency':str(self.transducer_frequency),
+                'FrequencyMinimum':str(self.transducer_freq_min),
+                'FrequencyMaximum':str(self.transducer_freq_max),
+                'BeamType':self.transducer_beam_type,
+                'Gain':gain,
+                'SaCorrection':sa_correction,
+                'MaxTxPowerTransducer':str(self.max_tx_power_transducer),
+                'EquivalentBeamAngle':str(self.equivalent_beam_angle),
+                'BeamWidthAlongship':str(self.beamwidth_alongship),
+                'BeamWidthAthwartship':str(self.beamwidth_athwartship),
+                'AngleSensitivityAlongship':str(self.angle_sensitivity_alongship),
+                'AngleSensitivityAthwartship':str(self.angle_sensitivity_athwartship),
+                'AngleOffsetAlongship':str(self.angle_offset_alongship),
+                'AngleOffsetAthwartship':str(self.angle_offset_athwartship),
+                'DirectivityDropAt2XBeamWidth':str(self.directivity_drop),
+                }
+
+        td2 = {'TransducerMounting': self.transducer_mounting,
+                'TransducerCustomName': self.transducer_custom_name,
+                'TransducerOrientation': self.transducer_orientation,
+                'TransducerOffsetX': str(self.transducer_offset_x),
+                'TransducerOffsetY': str(self.transducer_offset_y),
+                'TransducerOffsetZ': str(self.transducer_offset_z),
+                'TransducerAlphaX': str(self.transducer_alpha_x),
+                'TransducerAlphaY': str(self.transducer_alpha_y),
+                'TransducerAlphaZ': str(self.transducer_alpha_z)
+                }
+
+        return (td1,td2)
+
 
 
 class CalibrationParameters(object):

@@ -14,9 +14,9 @@
 #  SUPPORT TO USERS.
 
 '''
-.. module:: echolab.instruments.util.raw_file
+.. module:: echolab2.instruments.util.simrad_raw_file
 
-    :synopsis:  A low-level interface for SIMRAD EK60/ER60 raw files
+    :synopsis:  A low-level interface for SIMRAD ".raw" formatted files
 
     Provides the RawSimradFile class, a low-level object for
         interacting with SIMRAD RAW formated datafiles.
@@ -34,7 +34,7 @@
 $Id$
 '''
 
-from io import FileIO, SEEK_SET, SEEK_CUR, SEEK_END
+from io import BufferedReader, FileIO, SEEK_SET, SEEK_CUR, SEEK_END
 import struct
 import logging
 from . import parsers
@@ -89,7 +89,7 @@ class DatagramReadError(Exception):
         return ' '.join(errstr)
 
 
-class RawSimradFile(FileIO):
+class RawSimradFile(BufferedReader):
     '''
     A low-level extension of the built in python file object allowing the reading/writing
     of SIMRAD RAW files on datagram by datagram basis (instead of at the byte level)
@@ -102,11 +102,23 @@ class RawSimradFile(FileIO):
                       'TAG': parsers.SimradAnnotationParser(),
                       'NME': parsers.SimradNMEAParser(),
                       'BOT': parsers.SimradBottomParser(),
-                      'DEP': parsers.SimradDepthParser()}
+                      'DEP': parsers.SimradDepthParser(),
+                      'XML': parsers.SimradXMLParser(),
+                      'FIL': parsers.SimradFILParser(),
+                      'MRU': parsers.SimradMRUParser(),
+                      }
 
 
-    def __init__(self, name, mode='rb', closefd=True, return_raw=False):
-        FileIO.__init__(self, name, mode=mode, closefd=closefd)
+    def __init__(self, name, mode='rb', closefd=True, return_raw=False, buffer_size=1024*1024):
+
+        #  9-28-18 RHT: Changed RawSimradFile to implement BufferedReader instead of
+        #  io.FileIO to increase performance.
+
+        #  create a raw file object for the buffered reader
+        fio = FileIO(name, mode=mode, closefd=closefd)
+
+        #  initialize the superclass
+        BufferedReader.__init__(self, fio, buffer_size=buffer_size)
         self._current_dgram_offset = 0
         self._total_dgram_count = None
         self._return_raw = return_raw
@@ -122,7 +134,7 @@ class RawSimradFile(FileIO):
         Seeks a file by bytes instead of datagrams.
         '''
 
-        FileIO.seek(self, bytes_, whence)
+        BufferedReader.seek(self, bytes_, whence)
 
 
     def _tell_bytes(self):
@@ -130,7 +142,7 @@ class RawSimradFile(FileIO):
         Returns the file pointer position in bytes.
         '''
 
-        return FileIO.tell(self)
+        return BufferedReader.tell(self)
 
 
     def _read_dgram_size(self):
@@ -215,7 +227,7 @@ class RawSimradFile(FileIO):
         Reads raw bytes from the file
         '''
 
-        return FileIO.read(self, k)
+        return BufferedReader.read(self, k)
 
 
     def _read_next_dgram(self):

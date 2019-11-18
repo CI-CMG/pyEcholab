@@ -4,7 +4,7 @@ These tools were originally developed for displaying images and were extended to
 work with echogram data.
 
 Controls:
-    <CTRL> + Mouse Wheel zooms in.out
+    <CTRL> + Mouse Wheel zooms in/out
     <ALT> + Click and drag will pan
 
 
