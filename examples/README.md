@@ -75,5 +75,9 @@ To view these html files, download them to your computer and open it in a browse
 
 NCEI is working on hosting these files in a place that can be accessed without requiring a Jupyter Notebooks installation.
 
+## Cloud Tutorials
 
+Water-column sonar data archived at the NOAA National Centers for Environmental Information is now hosted in Amazon's AWS cloud as part of the AWS Public Dataset program.
+Tutorials are available to demonstrate how to access this data and process them using pyEcholab.
 
+For more information on the AWS S3 bucket, visit: [https://registry.opendata.aws/ncei-wcsd-archive/](https://registry.opendata.aws/ncei-wcsd-archive/)
