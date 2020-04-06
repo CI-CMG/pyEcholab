@@ -5,10 +5,11 @@ NOAA Alaska Fisheries Science Center
 rick.towler@noaa.gov
 """
 
-from PyQt4.QtCore import *
-from PyQt4.QtGui import *
-from QIVPolygonItem import QIVPolygonItem
-from QIVMarkerText import QIVMarkerText
+from PyQt5.QtCore import *
+from PyQt5.QtGui import *
+from PyQt5.QtWidgets import *
+from .QIVPolygonItem import QIVPolygonItem
+from .QIVMarkerText import QIVMarkerText
 
 class QIVPolygon(QGraphicsItemGroup):
     """

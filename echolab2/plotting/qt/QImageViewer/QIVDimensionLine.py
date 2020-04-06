@@ -5,9 +5,10 @@ NOAA Alaska Fisheries Science Center
 rick.towler@noaa.gov
 """
 
-from PyQt4.QtCore import *
-from PyQt4.QtGui import *
-from QIVMarkerText import QIVMarkerText
+from PyQt5.QtCore import *
+from PyQt5.QtGui import *
+from PyQt5.QtWidgets import *
+from .QIVMarkerText import QIVMarkerText
 
 class QIVDimensionLine(QGraphicsItemGroup):
 
@@ -111,6 +112,8 @@ class QIVDimensionLine(QGraphicsItemGroup):
         #textItem.setMarkerLabel(True)
         self.labels.append(textItem)
         self.addToGroup(textItem)
+        
+        self.prepareGeometryChange()
 
 
     def setLabelText(self, labels, text):

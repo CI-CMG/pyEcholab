@@ -4,12 +4,10 @@ import os
 import cv2
 import numpy as np
 import qimage2ndarray
-from PyQt5 import QtGui
-from PyQt5.QtCore import *
+from PyQt4 import QtGui
+from PyQt4.QtCore import *
 
 class QEnhancedImage(QObject):
-
-    imageData = pyqtSignal(QtGui.QImage)
 
     def __init__(self, maxQueued=3):
 
@@ -18,11 +16,11 @@ class QEnhancedImage(QObject):
         #  define the default public properties
         self.sourceData = None
         self.enhancedData = None
-        self.imageData_ = None
+        self.imageData = None
         self.enableBrightnessContrast = False
         self.brightness = 0.0
         self.autoContrast = False
-        self.autoContrastTileSize = 63
+        self.autoContrastTileSize = 31
         self.autoContrastClipLimit = 3.0
         self.manualContrast = True
         self.contrast = 0.0
@@ -36,9 +34,18 @@ class QEnhancedImage(QObject):
         self.manualColor = True
         self.colorCorrection = [0.0,0.0,0.0]
         self.isColor = False
-        self.transform = QtGui.QTransform()
+        self.transform = QtGui.QMatrix()
         self.enhancementsEnabled = False
         self.subsampleIdx = None
+        self.maxQueued = maxQueued
+        self.queuedImages = []
+        self.contrastCLAHE = None
+        self.colorCLAHE = None
+
+
+    def startProcessing(self):
+
+        print("NUNYA")
 
         #  create the Contrast Limited Adaptive Histogram Equalization (CLAHE) objects
         self.contrastCLAHE = cv2.createCLAHE(clipLimit=self.autoContrastClipLimit,
@@ -46,27 +53,80 @@ class QEnhancedImage(QObject):
         self.colorCLAHE = cv2.createCLAHE(clipLimit=self.adaptiveColorClipLimit,
                 tileGridSize=(self.adaptiveColorTileSize,self.adaptiveColorTileSize))
 
+        #  start a timer event to load the help image
+        self.queueTimer = QTimer(self)
+        self.connect(self.queueTimer, SIGNAL("timeout()"), self.processQueue)
+        self.queueTimer.start(10)
+
+
+    def stopProcessing(self):
+
+        self.queueTimer.stop()
+        self.contrastCLAHE = None
+        self.colorCLAHE = None
+        self.queuedImages = []
+
+        self.emit(SIGNAL("finished"))
+
+
+    def processQueue(self):
+        """
+        slot called to load a new image.
+
+        type can be:
+            'file'
+            'qpixmap'
+            'qimage'
+            'mat'
+        """
+
+        if (len(self.queuedImages) > 0):
+
+            image, type = self.queuedImages.pop(0)
+
+            type = str(type).lower()
+            if (type == 'file'):
+                self.loadFile(image)
+            elif (type == 'qpixmap'):
+                self.fromQPixmap(image)
+            elif (type == 'qimage'):
+                self.fromQImage(image)
+            elif (type == 'mat'):
+                self.fromMat(image)
+            else:
+                pass
+
+
+    def loadImage(self, image, type):
+
+        #  trim our queue if required
+        if ((self.maxQueued > 0) and (len(self.queuedImages) > self.maxQueued)):
+            self.queuedImages.pop(0)
+
+        #  add this image to the queue to process
+        self.queuedImages.append([image, type])
+
 
     def loadFile(self, filename):
         """
         read an image from disk using OpenCv
         """
         #  unset the imageData property
-        self.imageData_ = None
+        self.imageData = None
+
+        #  read the image data into our "source" array which stores the original unmodified data
+        filename = os.path.normpath(str(filename))
+        self.sourceData = cv2.imread(str(filename), cv2.IMREAD_UNCHANGED)
 
         try:
-            #  read the image data into our "source" array which stores the original unmodified data
-            filename = os.path.normpath(str(filename))
-            self.sourceData = cv2.imread(filename, cv2.IMREAD_UNCHANGED)
-
             #  determine if this is a color or mono image
             if (len(self.sourceData.shape) == 3):
                 self.isColor = True
             else:
                 self.isColor = False
+
         except:
-            #  there was an issue loading the file
-            raise IOError('Unable to load image file: ' + filename)
+            self.emit(SIGNAL("imageError"), 'Unable to load ' + str(filename))
 
         #  generate our pixmap of this image
         self.updateImage()
@@ -87,7 +147,7 @@ class QEnhancedImage(QObject):
         """
         Set the image to the provided QImage
         """
-        self.imageData_ = None
+        self.imageData = None
         self.sourceData = qimage2ndarray.byte_view(image)
 
         #  determine if this is a color or mono image
@@ -153,7 +213,7 @@ class QEnhancedImage(QObject):
             self.subsampleIdx = None
 
         #  reset the imageData property to force processing
-        self.imageData_ = None
+        self.imageData = None
 
 
     def setContrast(self, contrast):
@@ -162,23 +222,23 @@ class QEnhancedImage(QObject):
             self.contrast = 0.0
         else:
             self.contrast = float(contrast)
-        self.imageData_ = None
+        self.imageData = None
 
 
     def setBrightness(self, brightness):
 
         self.brightness = float(brightness)
-        self.imageData_ = None
+        self.imageData = None
 
 
     def setColorCorrection(self, R=0.0, G=0.0, B=0.0):
 
         #  store color correction values as BGR
         self.colorCorrection = [float(B), float(G), float(R)]
-        self.imageData_ = None
+        self.imageData = None
 
 
-    def setAdaptiveParameters(self, clipLimit=1.0, tileSize=(63,63)):
+    def setAdaptiveParameters(self, clipLimit=1.0, tileSize=(16,16)):
         """
         creates a new Contrast Limited Adaptive Histogram Equalization (CLAHE)
         object with the given clip limit and tile size. CLAHE is used for
@@ -232,7 +292,7 @@ class QEnhancedImage(QObject):
         self.enhancementsEnabled = self.enableBrightnessContrast or self.enableColorCorrection
 
         #  assume that something has changed and set imageData to None to force an update
-        self.imageData_ = None
+        self.imageData = None
 
 
     def getParameters(self):
@@ -273,17 +333,17 @@ class QEnhancedImage(QObject):
         '''
 
         #  check if we have already processed this data
-        if (self.imageData_ is None):
+        if (self.imageData is None):
             #  first make sure we have some data to process
             if (self.sourceData is None):
                 return
 
             #  get our source data
-            self.imageData_ = np.copy(self.sourceData)
+            self.imageData = np.copy(self.sourceData)
 
             #  for backward compatibility, set the enhancedData property - we used to
             #  not store this data by default but we do now so just get a reference to it
-            self.enhancedData = self.imageData_
+            self.enhancedData = self.imageData
 
             #  apply contrast and brightness corrections
             if (self.enableBrightnessContrast):
@@ -292,7 +352,7 @@ class QEnhancedImage(QObject):
                     #  are done at the same time manual color corrections are done
                     doManualCorrections = True
                 else:
-                    self.imageData_ = self.doAutoContrast(self.imageData_)
+                    self.imageData = self.doAutoContrast(self.imageData)
                     doManualCorrections = False
 
                 #  check if we need to apply brightness
@@ -304,33 +364,33 @@ class QEnhancedImage(QObject):
             #  apply color corrections
             if (self.enableColorCorrection and self.isColor):
                 if (self.autoWhiteBalance):
-                    self.imageData_ = self.white_balance(self.imageData_)
+                    self.imageData = self.white_balance(self.imageData)
 
                 if (self.manualColor):
                     #  if manual corrections are applied just set the state var because these
                     #  are done at the same time manual brightness and contrast are done
                     doManualCorrections = True
                 else:
-                    self.imageData_ = self.doAutoColorBalance(self.imageData_)
+                    self.imageData = self.doAutoColorBalance(self.imageData)
 
             #  if needed, apply the "manual" corrections
             if (doManualCorrections):
-                self.imageData_ = self.applyManualCorrections(self.imageData_)
+                self.imageData = self.applyManualCorrections(self.imageData)
 
             #  apply subsampling mask if needed
             if (self.subsampleIdx):
-                self.imageData_ = self.applySubsamplingRect(self.imageData_)
+                self.imageData = self.applySubsamplingRect(self.imageData)
 
         #  convert our image data into a QImage - swap the B&R channels so the OpenCV BGR data
         #  is converted to RGB for display by Qt.
-        qimage = qimage2ndarray.array2qimage(self.imageData_).rgbSwapped()
+        qimage = qimage2ndarray.array2qimage(self.imageData).rgbSwapped()
 
         #  transform the image if needed
         if (not self.transform.isIdentity()):
             qimage = qimage.transformed(self.transform)
 
         #  emit the processed image data as a QImage
-        self.imageData.emit(qimage)
+        self.emit(SIGNAL("imageData"), qimage)
 
 
     def applySubsamplingRect(self, imageData):

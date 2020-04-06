@@ -19,7 +19,7 @@ def compare_dicts(a, b):
 if (0):
 
     #  this is a CW file - EK60 on EK80
-    filename = 'D:/Data/EK60 on EK80/D20180205-T233434.raw'
+    filename = 'U:/Data/EK60 on EK80/D20180205-T233434.raw'
     fid =  RawSimradFile(filename, 'r')
 
     #  first datagram is a config datagram
@@ -44,10 +44,33 @@ if (0):
 
 
 
-elif (0):
+elif(0):
+    #  this is a BB file - EK80 on EK80
+    filename = 'U:/Data/EK80 on EK80/DY1801_EK80-D20180205-T200007.raw'
+    #filename = 'D:/Data/EK60 on EK80/D20180214-T214028.raw'
+    fid =  RawSimradFile(filename, 'r')
+
+    for i in range(100):
+        #  first datagram is a config datagram
+        datagram = fid.read(1)
+
+        if (datagram['type'] == 'XML0'):
+            print(datagram['timestamp'], datagram['type'], datagram['subtype'])
+        elif (datagram['type'] == 'NME0'):
+            print(datagram['timestamp'], datagram['type'], datagram['nmea_type'])
+        elif (datagram['type'].startswith('RAW')):
+            if datagram['type'] == 'RAW0':
+                print(datagram['timestamp'], datagram['type'], "channel:", datagram['channel'])
+            else:
+                print(datagram['timestamp'], datagram['type'], "channel:", datagram['channel_id'])
+        else:
+            print(datagram['timestamp'], datagram['type'])
+
+
+elif (1):
 
     #  this is a BB file - EK80 on EK80
-    filename = 'D:/Data/EK80 on EK80/DY1801_EK80-D20180205-T200007.raw'
+    filename = 'U:/Data/EK80 on EK80/DY1801_EK80-D20180205-T200007.raw'
     fid =  RawSimradFile(filename, 'r')
 
     #  first datagram is a config datagram
@@ -81,7 +104,7 @@ elif (0):
     RAW3_datagram = fid.read(1)
 
 
-elif (1):
+elif (0):
 
     #  this is a CW file - EK60 on EK80
     filename = 'D:/Data/EK60 on EK80/D20180205-T233434.raw'
@@ -98,7 +121,7 @@ elif (1):
     #  first datagram is a config datagram
     config_datagram_FM = fid.read(1)
 
-    compare_dicts(config_datagram_CW, config_datagram_FM):
+    compare_dicts(config_datagram_CW, config_datagram_FM)
 
 
 root = ET.fromstring(param_datagram)

@@ -112,17 +112,14 @@ rick.towler@noaa.gov
 """
 
 import os
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
-from PyQt5.QtOpenGL import *
-from .QViewerBase import QViewerBase
-from .QEnhancedImage import QEnhancedImage
-from .imageAdjustmentsDlg_simple import imageAdjustmentsDlg_simple
+from PyQt4.QtCore import *
+from PyQt4.QtGui import *
+from PyQt4.QtOpenGL import *
+from QViewerBase import QViewerBase
+from QEnhancedImage import QEnhancedImage
+from imageAdjustmentsDlg import imageAdjustmentsDlg
 
 class QImageViewer(QViewerBase):
-
-    imageUpdate = pyqtSignal()
 
     def __init__(self, parent=None, useGL=False, backgroundColor=[50,50,50],
             maxQueued=3):
@@ -135,27 +132,39 @@ class QImageViewer(QViewerBase):
         #  create an "enhanced image" object which will load images and apply
         #  adjustments before display.
         self.image = QEnhancedImage(maxQueued=maxQueued)
-        self.image.imageData.connect(self.updatePixmap)
-        self.imageUpdate.connect(self.image.updateImage)
+        self.imageThread = QThread()
+        self.image.moveToThread(self.imageThread)
+
+        self.connect(self.image, SIGNAL('imageData'), self.updatePixmap)
+        self.connect(self.image, SIGNAL('imageError'), self.imageError)
+        self.image.connect(self, SIGNAL('imageLoad'), self.image.loadImage)
+        self.image.connect(self, SIGNAL('imageUpdate'), self.image.updateImage)
+        self.image.connect(self.imageThread, SIGNAL('started()'), self.image.startProcessing)
+        self.imageThread.connect(self.image, SIGNAL('finished()'), self.imageThread.quit)
+        self.imageThread.connect(self.imageThread, SIGNAL('finished()'), self.imageThread.deleteLater)
+        self.imageThread.start()
 
         #   Create the dialog that allows the user to adjust image settings
-        self.adjustmentDialog = imageAdjustmentsDlg_simple()
+        self.adjustmentDialog = imageAdjustmentsDlg()
         try:
             self.adjustmentDialog.setWindowIcon(QIcon('resources' + os.sep + 'equalizer.png'))
         except:
             pass
-        self.adjustmentDialog.imageAdjustments.connect(self.imageAdjusted)
+        self.connect(self.adjustmentDialog, SIGNAL('imageAdjustments(PyQt_PyObject)'), self.imageAdjusted)
 
         #  set up the context menu signal
         self.enableContextMenu()
 
+
+    def imageError(self, error):
+        print(error)
 
     def enableContextMenu(self):
         """
         enableContextMenu enables the QImageViewer custom context menu
         """
         self.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.customContextMenuRequested[QPoint].connect(self.showContextMenu)
+        self.connect(self, SIGNAL("customContextMenuRequested(QPoint)"), self.showContextMenu);
 
 
     def disableContextMenu(self):
@@ -163,7 +172,7 @@ class QImageViewer(QViewerBase):
         disableContextMenu disables the QImageViewer custom context menu
         """
         self.setContextMenuPolicy(Qt.NoContextMenu)
-        self.customContextMenuRequested[QPoint].disconnect(self.showContextMenu)
+        self.disconnect(self, SIGNAL("customContextMenuRequested(QPoint)"), self.showContextMenu);
 
 
     def imageAdjusted(self, parameters):
@@ -178,7 +187,7 @@ class QImageViewer(QViewerBase):
 
         #  emit the imageUpdate signal to trigger QEnhancedImage to process the
         #  image and emit the results
-        self.imageUpdate.emit()
+        self.emit(SIGNAL('imageUpdate'))
 
 
     def setRotation(self, rotation):
@@ -231,7 +240,7 @@ class QImageViewer(QViewerBase):
 
         menu = QMenu(self)
         action = QAction('Adjust image properties...', self)
-        action.triggered.connect(self.showAdjustmentsDialog)
+        self.connect(action, SIGNAL('triggered()'), self.showAdjustmentsDialog)
         menu.addAction(action)
         menu.exec_(self.mapToGlobal(pos));
 
@@ -266,7 +275,8 @@ class QImageViewer(QViewerBase):
         else:
             self.adjustmentDialog.enableColorCorrection(False)
 
-        #  Convert the QImage to a QPixmap for display
+        # QEnhancedImage runs in a separate thread and Qpixmaps are not safe
+        #  outside the GUI thread so we emit a QImage and convert it to a pixmap here
         self.imgPixmap = QPixmap().fromImage(qimage)
 
         #  update the pixmap
@@ -282,11 +292,9 @@ class QImageViewer(QViewerBase):
 
     def saveImage(self, filename, quality=-1):
         """
-        saveImage saves the currently displayed image to a file. The file type is
-        determined from the file exension.
+        saveImage saves the currently displayed image to a file
         """
 
-        #  use the save method of QPixmap
         self.imgPixmap.save(filename, quality=quality)
 
 
@@ -294,9 +302,9 @@ class QImageViewer(QViewerBase):
         """
         Set the QImageViewer image to the image specified by the provided filename.
         """
-
-        #  load the image from file
-        self.image.loadFile(filename)
+        print("NOONAN")
+        #  load the image
+        self.emit(SIGNAL('imageLoad'), filename, 'file')
 
 
     def setImageFromPixmap(self, pixmap):
@@ -304,8 +312,8 @@ class QImageViewer(QViewerBase):
         Set the QImageViewer image to the provided QPixmap
         """
 
-        #  set the image from the provided QPixmap
-        self.image.fromQPixmap(pixmap)
+        #  load the image
+        self.emit(SIGNAL('imageLoad'), pixmap, 'qpixmap')
 
 
     def setImageFromImage(self, image):
@@ -313,8 +321,8 @@ class QImageViewer(QViewerBase):
         Set the QImageViewer image to the provided QImage
         """
 
-        #  set the image from the provided QImage
-        self.image.fromQImage(image)
+        #  load the image
+        self.emit(SIGNAL('imageLoad'), image, 'qimage')
 
 
     def setImageFromMat(self, imageData, normalize=False):
@@ -336,5 +344,5 @@ class QImageViewer(QViewerBase):
         masked pixels, and QImage.Format_RGB32 otherwise.
         """
 
-        #  set the image from the provided numpy array
-        self.image.fromMat(imageData, normalize=normalize)
+        #  load the image
+        self.emit(SIGNAL('imageLoad'), imageData, 'mat')

@@ -1,8 +1,8 @@
 
 import os
 import numpy
-from PyQt4.QtCore import *
-from PyQt4.QtGui import *
+from PyQt5 import QtCore,QtWidgets
+from PyQt5.QtCore import  pyqtSlot
 from .ui import ui_echogram_viewer
 
 class echogram_viewer(QMainWindow, ui_echogram_viewer.Ui_echogram_viewer):
@@ -36,17 +36,17 @@ class echogram_viewer(QMainWindow, ui_echogram_viewer.Ui_echogram_viewer):
 
         self.update_echogram(p_data, plot_attribute)
 
-
+    @pyqtSlot(object, 'QPointF', int, object, list)
     def echogramClick(self, imageObj, clickLoc, button, modifier, items):
         pass
 #        if (items):
 #            print("Picked:",items)
 
-
+    @pyqtSlot(object, 'QPointF', int, object, list)
     def echogramUnClick(self, imageObj, clickLoc, button, modifier, items):
         pass
 
-
+    @pyqtSlot(object, 'QPointF', object, list, list)
     def echogramMouseInWidget(self, imageObj, location, modifier, draggedItems, items):
 
 #        if (items):

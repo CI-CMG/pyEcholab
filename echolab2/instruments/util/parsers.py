@@ -90,13 +90,13 @@ class _SimradDatagramParser(object):
 
         return type_, version
 
-    def from_string(self, raw_string):
+    def from_string(self, raw_string, bytes_read):
 
         header = raw_string[:4]
         if (sys.version_info.major > 2):
             header = header.decode()
         id_, version = self.validate_data_header(header)
-        return self._unpack_contents(raw_string, version=version)
+        return self._unpack_contents(raw_string, bytes_read, version=version)
 
     def to_string(self, data={}):
 
@@ -148,7 +148,7 @@ class SimradDepthParser(_SimradDatagramParser):
                 }
         _SimradDatagramParser.__init__(self, "DEP", headers)
 
-    def _unpack_contents(self, raw_string, version):
+    def _unpack_contents(self, raw_string, bytes_read, version):
         '''
 
         '''
@@ -162,6 +162,7 @@ class SimradDepthParser(_SimradDatagramParser):
                 data[field] = data[field].decode()
 
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
+        data['bytes_read'] = bytes_read
 
         if version == 0:
             data_fmt    = '=3f'
@@ -241,7 +242,7 @@ class SimradBottomParser(_SimradDatagramParser):
                 }
         _SimradDatagramParser.__init__(self, "BOT", headers)
 
-    def _unpack_contents(self, raw_string, version):
+    def _unpack_contents(self, raw_string, bytes_read, version):
         '''
 
         '''
@@ -255,6 +256,7 @@ class SimradBottomParser(_SimradDatagramParser):
                 data[field] = data[field].decode()
 
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
+        data['bytes_read'] = bytes_read
 
         if version == 0:
             depth_fmt    = '=%dd' %(data['transceiver_count'],)
@@ -318,7 +320,7 @@ class SimradAnnotationParser(_SimradDatagramParser):
         _SimradDatagramParser.__init__(self, "TAG", headers)
 
 
-    def _unpack_contents(self, raw_string, version):
+    def _unpack_contents(self, raw_string, bytes_read, version):
         '''
 
         '''
@@ -332,6 +334,7 @@ class SimradAnnotationParser(_SimradDatagramParser):
                 data[field] = data[field].decode()
 
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
+        data['bytes_read'] = bytes_read
 
 #        if version == 0:
 #            data['text'] = raw_string[self.header_size(version):].strip('\x00')
@@ -407,7 +410,7 @@ class SimradNMEAParser(_SimradDatagramParser):
         _SimradDatagramParser.__init__(self, "NME", headers)
 
 
-    def _unpack_contents(self, raw_string, version):
+    def _unpack_contents(self, raw_string, bytes_read, version):
         '''
         Parses the NMEA string provided in raw_string
 
@@ -426,6 +429,7 @@ class SimradNMEAParser(_SimradDatagramParser):
                 data[field] = data[field].decode()
 
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
+        data['bytes_read'] = bytes_read
 
         if version == 0:
             if (sys.version_info.major > 2):
@@ -512,7 +516,7 @@ class SimradMRUParser(_SimradDatagramParser):
         _SimradDatagramParser.__init__(self, "MRU", headers)
 
 
-    def _unpack_contents(self, raw_string, version):
+    def _unpack_contents(self, raw_string, bytes_read, version):
         '''
         Unpacks the data in raw_string into dictionary containing MRU data
 
@@ -531,6 +535,7 @@ class SimradMRUParser(_SimradDatagramParser):
                 data[field] = data[field].decode()
 
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
+        data['bytes_read'] = bytes_read
 
         return data
 
@@ -589,11 +594,20 @@ class SimradXMLParser(_SimradDatagramParser):
                             ready for writing to disk
     '''
 
-    #  define the XML parsing options - there is a dictionary for various xml datagram types.
-    #  when parsing that xml datagram, these dictionaries are used to inform the parser about
+    #  define the XML parsing options - here we define dictionaries for various xml datagram
+    #  types. When parsing that xml datagram, these dictionaries are used to inform the parser about
     #  type conversion, name wrangling, and delimiter. If a field is missing, the parser
     #  assumes no conversion: type will be string, default mangling, and that there is only 1
     #  element.
+    #
+    #  the dicts are in the form:
+    #       'XMLParamName':[converted type,'fieldname', 'parse char']
+    #
+    #  For example: 'PulseDurationFM':[float,'pulse_duration_fm',';']
+    #
+    #  will result in a return dictionary field named 'pulse_duration_fm' that contains a list
+    #  of float values parsed from a string that uses ';' to separate values. Empty strings
+    #  for fieldname and/or parse char result in the default action for those parsing steps.
 
     channel_parsing_options = {'MaxTxPowerTransceiver':[int,'',''],
                                'PulseDuration':[float,'',';'],
@@ -663,7 +677,6 @@ class SimradXMLParser(_SimradDatagramParser):
                                 }
 
 
-
     def __init__(self):
         headers = {0: [('type', '4s'),
                         ('low_date', 'L'),
@@ -674,7 +687,7 @@ class SimradXMLParser(_SimradDatagramParser):
         _SimradDatagramParser.__init__(self, "XML", headers)
 
 
-    def _unpack_contents(self, raw_string, version):
+    def _unpack_contents(self, raw_string, bytes_read, version):
         '''
         Parses the NMEA string provided in raw_string
 
@@ -757,6 +770,7 @@ class SimradXMLParser(_SimradDatagramParser):
                 data[field] = data[field].decode()
 
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
+        data['bytes_read'] = bytes_read
 
         if version == 0:
             if (sys.version_info.major > 2):
@@ -938,10 +952,9 @@ class SimradFILParser(_SimradDatagramParser):
         _SimradDatagramParser.__init__(self, 'FIL', headers)
 
 
-    def _unpack_contents(self, raw_string, version):
+    def _unpack_contents(self, raw_string, bytes_read, version):
 
         data = {}
-        #round6 = lambda x: round(x, ndigits=6)
         header_values = struct.unpack(self.header_fmt(version), raw_string[:self.header_size(version)])
 
         for indx, field in enumerate(self.header_fields(version)):
@@ -952,6 +965,7 @@ class SimradFILParser(_SimradDatagramParser):
                 data[field] = data[field].decode('latin_1')
 
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
+        data['bytes_read'] = bytes_read
 
         if version == 1:
             #  clean up the channel ID
@@ -961,7 +975,6 @@ class SimradFILParser(_SimradDatagramParser):
             indx = self.header_size(version)
             block_size = data['n_coefficients'] * 8
             data['coefficients'] = np.fromstring(raw_string[indx:indx + block_size], dtype='complex64')
-
 
         return data
 
@@ -1177,7 +1190,7 @@ class SimradConfigParser(_SimradDatagramParser):
                                        ]
                                     }
 
-    def _unpack_contents(self, raw_string, version):
+    def _unpack_contents(self, raw_string, bytes_read, version):
 
         data = {}
         round6 = lambda x: round(x, ndigits=6)
@@ -1191,6 +1204,7 @@ class SimradConfigParser(_SimradDatagramParser):
                 data[field] = data[field].decode('latin_1')
 
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
+        data['bytes_read'] = bytes_read
 
         if version == 0:
 
@@ -1427,7 +1441,7 @@ class SimradRawParser(_SimradDatagramParser):
                     }
         _SimradDatagramParser.__init__(self, 'RAW', headers)
 
-    def _unpack_contents(self, raw_string, version):
+    def _unpack_contents(self, raw_string, bytes_read, version):
 
         header_values = struct.unpack(self.header_fmt(version), raw_string[:self.header_size(version)])
 
@@ -1439,6 +1453,7 @@ class SimradRawParser(_SimradDatagramParser):
                 data[field] = data[field].decode()
 
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
+        data['bytes_read'] = bytes_read
 
         if version == 0:
 

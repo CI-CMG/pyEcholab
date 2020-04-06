@@ -7,13 +7,13 @@
     <x>0</x>
     <y>0</y>
     <width>414</width>
-    <height>660</height>
+    <height>500</height>
    </rect>
   </property>
   <property name="minimumSize">
    <size>
     <width>316</width>
-    <height>660</height>
+    <height>500</height>
    </size>
   </property>
   <property name="windowTitle">
@@ -291,150 +291,6 @@
         <property name="text">
          <string>Automatic White Balance</string>
         </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QRadioButton" name="ccSimpleBalance">
-        <property name="font">
-         <font>
-          <weight>50</weight>
-          <bold>false</bold>
-         </font>
-        </property>
-        <property name="text">
-         <string>Auto Levels</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QGroupBox" name="gbAutoCC">
-        <property name="enabled">
-         <bool>false</bool>
-        </property>
-        <property name="title">
-         <string/>
-        </property>
-        <layout class="QFormLayout" name="formLayout_3">
-         <item row="0" column="0">
-          <widget class="QLabel" name="label_6">
-           <property name="minimumSize">
-            <size>
-             <width>125</width>
-             <height>0</height>
-            </size>
-           </property>
-           <property name="font">
-            <font>
-             <weight>50</weight>
-             <bold>false</bold>
-            </font>
-           </property>
-           <property name="text">
-            <string>Saturation Level</string>
-           </property>
-          </widget>
-         </item>
-         <item row="0" column="1">
-          <widget class="QSlider" name="ccSatLevel">
-           <property name="enabled">
-            <bool>false</bool>
-           </property>
-           <property name="minimum">
-            <number>1</number>
-           </property>
-           <property name="maximum">
-            <number>16</number>
-           </property>
-           <property name="pageStep">
-            <number>2</number>
-           </property>
-           <property name="value">
-            <number>6</number>
-           </property>
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-           <property name="tickPosition">
-            <enum>QSlider::TicksAbove</enum>
-           </property>
-           <property name="tickInterval">
-            <number>4</number>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </widget>
-      </item>
-      <item>
-       <widget class="QRadioButton" name="ccAdaptive">
-        <property name="font">
-         <font>
-          <weight>50</weight>
-          <bold>false</bold>
-         </font>
-        </property>
-        <property name="text">
-         <string>Adaptive Equalization</string>
-        </property>
-        <property name="checked">
-         <bool>false</bool>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QGroupBox" name="gbAdaptiveCC">
-        <property name="enabled">
-         <bool>false</bool>
-        </property>
-        <property name="title">
-         <string/>
-        </property>
-        <layout class="QFormLayout" name="formLayout_2">
-         <property name="fieldGrowthPolicy">
-          <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
-         </property>
-         <item row="0" column="0">
-          <widget class="QLabel" name="label_5">
-           <property name="minimumSize">
-            <size>
-             <width>80</width>
-             <height>0</height>
-            </size>
-           </property>
-           <property name="font">
-            <font>
-             <weight>50</weight>
-             <bold>false</bold>
-            </font>
-           </property>
-           <property name="text">
-            <string>Clip Limit</string>
-           </property>
-          </widget>
-         </item>
-         <item row="0" column="1">
-          <widget class="QSlider" name="ccClipLimit">
-           <property name="minimum">
-            <number>5</number>
-           </property>
-           <property name="maximum">
-            <number>30</number>
-           </property>
-           <property name="value">
-            <number>10</number>
-           </property>
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-           <property name="tickPosition">
-            <enum>QSlider::TicksAbove</enum>
-           </property>
-           <property name="tickInterval">
-            <number>5</number>
-           </property>
-          </widget>
-         </item>
-        </layout>
        </widget>
       </item>
       <item>

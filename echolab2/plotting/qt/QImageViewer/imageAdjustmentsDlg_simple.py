@@ -1,13 +1,16 @@
 
-from PyQt4.QtCore import *
-from PyQt4.QtGui import *
-from ui import ui_imageAdjustmentsDlg
+from PyQt5.QtCore import *
+from PyQt5.QtGui import *
+from PyQt5.QtWidgets import *
+from .ui import ui_imageAdjustmentsDlg_simple
 
-class imageAdjustmentsDlg(QDialog, ui_imageAdjustmentsDlg.Ui_imageAdjustmentsDlg):
+class imageAdjustmentsDlg_simple(QDialog, ui_imageAdjustmentsDlg_simple.Ui_imageAdjustmentsDlg):
+
+    imageAdjustments = pyqtSignal(object)
 
     def __init__(self, cameraName=None, parent=None):
         #  initialize the GUI
-        super(imageAdjustmentsDlg, self).__init__(parent)
+        super(imageAdjustmentsDlg_simple, self).__init__(parent)
         self.setupUi(self)
 
         self.camera = ''
@@ -20,30 +23,26 @@ class imageAdjustmentsDlg(QDialog, ui_imageAdjustmentsDlg.Ui_imageAdjustmentsDlg
             self.setWindowTitle("Image Adjustments:" + cameraName)
 
         #  set up signals for the brightness and contrast controls
-        self.connect(self.gbBrightnessContrast, SIGNAL("clicked(bool)"), self.stateChanged)
-        self.connect(self.bcAutomatic, SIGNAL("clicked()"), self.setBCMode)
-        self.connect(self.bcClipLimit, SIGNAL("valueChanged(int)"), self.stateChanged)
-        self.connect(self.bcManual, SIGNAL("clicked()"), self.setBCMode)
-        self.connect(self.contrastSlider, SIGNAL("valueChanged(int)"), self.stateChanged)
-        self.connect(self.brightnessSlider, SIGNAL("valueChanged(int)"), self.stateChanged)
-        self.connect(self.pbBCReset, SIGNAL("clicked()"), self.resetBandC)
+        self.gbBrightnessContrast.clicked.connect(self.stateChanged)
+        self.bcAutomatic.clicked.connect(self.setBCMode)
+        self.bcManual.clicked.connect(self.setBCMode)
+        self.pbBCReset.clicked.connect(self.resetBandC)
+        self.bcClipLimit.valueChanged[int].connect(self.stateChanged)
+        self.contrastSlider.valueChanged[int].connect(self.stateChanged)
+        self.brightnessSlider.valueChanged[int].connect(self.stateChanged)
 
         #  set up signals for the color correction controls
-        self.connect(self.gbColorCorrection, SIGNAL("clicked(bool)"), self.stateChanged)
-        self.connect(self.cbAWB, SIGNAL("clicked(bool)"), self.stateChanged)
-        self.connect(self.ccSimpleBalance, SIGNAL("clicked()"), self.setCCMode)
-        self.connect(self.ccSatLevel, SIGNAL("valueChanged(int)"), self.stateChanged)
-        self.connect(self.ccAdaptive, SIGNAL("clicked()"), self.setCCMode)
-        self.connect(self.ccClipLimit, SIGNAL("valueChanged(int)"), self.stateChanged)
-        self.connect(self.ccManual, SIGNAL("clicked()"), self.setCCMode)
-        self.connect(self.redSlider, SIGNAL("valueChanged(int)"), self.stateChanged)
-        self.connect(self.greenSlider, SIGNAL("valueChanged(int)"), self.stateChanged)
-        self.connect(self.blueSlider, SIGNAL("valueChanged(int)"), self.stateChanged)
-        self.connect(self.pbColorReset, SIGNAL("clicked()"), self.resetColor)
+        self.gbColorCorrection.clicked.connect(self.stateChanged)
+        self.pbColorReset.clicked.connect(self.resetColor)
+        self.cbAWB.clicked.connect(self.stateChanged)
+        self.ccManual.clicked.connect(self.setCCMode)
+        self.redSlider.valueChanged[int].connect(self.stateChanged)
+        self.greenSlider.valueChanged[int].connect(self.stateChanged)
+        self.blueSlider.valueChanged[int].connect(self.stateChanged)
 
         #  set up the apply/cancel signals
-        self.connect(self.pbCancel, SIGNAL("clicked()"), self.cancelClicked)
-        self.connect(self.pbApply, SIGNAL("clicked()"), self.applyClicked)
+        self.pbCancel.clicked.connect(self.cancelClicked)
+        self.pbApply.clicked.connect(self.applyClicked)
 
         #  set the initial GUI state
         self.setBCMode()
@@ -73,9 +72,6 @@ class imageAdjustmentsDlg(QDialog, ui_imageAdjustmentsDlg.Ui_imageAdjustmentsDlg
         """
 
         #  enable/disable controls accordingly
-        self.gbAutoCC.setEnabled(self.ccSimpleBalance.isChecked())
-        self.ccSatLevel.setEnabled(self.ccSimpleBalance.isChecked())
-        self.gbAdaptiveCC.setEnabled(self.ccAdaptive.isChecked())
         self.gbManualCC.setEnabled(self.ccManual.isChecked())
 
         #  emit the state changed signal
@@ -112,7 +108,7 @@ class imageAdjustmentsDlg(QDialog, ui_imageAdjustmentsDlg.Ui_imageAdjustmentsDlg
 
         #  only emit state changes when we're not updating all of the settings at once
         if (not self.updatingState):
-            self.emit(SIGNAL('imageAdjustments(PyQt_PyObject)'), self.getState())
+             self.imageAdjustments.emit(self.getState())
 
 
     def resetBandC(self):
@@ -144,9 +140,6 @@ class imageAdjustmentsDlg(QDialog, ui_imageAdjustmentsDlg.Ui_imageAdjustmentsDlg
         self.redSlider.setValue(0)
         self.greenSlider.setValue(0)
         self.blueSlider.setValue(0)
-        self.ccManual.setChecked(True)
-        self.ccSatLevel.setValue(8)
-        self.ccClipLimit.setValue(30)
         self.updatingState = False
 
         #  and emit the new state
@@ -154,12 +147,13 @@ class imageAdjustmentsDlg(QDialog, ui_imageAdjustmentsDlg.Ui_imageAdjustmentsDlg
 
 
     def setState(self, state):
+        """
+        setState sets the state of our GUI elements given a state dictionary
+        """
 
         #  save the initial state so if the user cancels the dialog we can restore it
         self.initialState = self.getState()
 
-        #  set the "updatingState" bool to ensure we don't emit any signals until
-        #  we've set all of our properties
         self.updatingState = True
 
         #  update the contrast and brightness settings
@@ -174,17 +168,12 @@ class imageAdjustmentsDlg(QDialog, ui_imageAdjustmentsDlg.Ui_imageAdjustmentsDlg
         #  update the color settings
         self.gbColorCorrection.setChecked(state['ColorCorrectionEnabled'])
         self.cbAWB.setChecked(state['AutoWhiteBalance'])
-        self.ccSimpleBalance.setChecked(state['AutoLevels'])
-        self.ccSatLevel.setValue(int(round(state['AutoLevelsSatLimit'] * 1000)))
-        self.ccAdaptive.setChecked(state['AdaptiveEq'])
-        self.ccClipLimit.setValue(int(round(state['AutoCCClipLimit'] * 10)))
         self.ccManual.setChecked(state['ManualColor'])
         self.redSlider.setValue(state['R'])
         self.greenSlider.setValue(state['G'])
         self.blueSlider.setValue(state['B'])
         self.setCCMode()
 
-        #  now that we're done, unset the updating property
         self.updatingState = False
 
         #  and emit our state signal
@@ -192,6 +181,11 @@ class imageAdjustmentsDlg(QDialog, ui_imageAdjustmentsDlg.Ui_imageAdjustmentsDlg
 
 
     def getState(self):
+        """
+        getState creates a dict containing the states of our dialog elements.
+        Note that we still maintain the additional fields used by the "non simple"
+        version of this dialog for compatibility reasons.
+        """
 
         #  construct the state dictionary
         state = {'BrightnessContrastEnabled':self.gbBrightnessContrast.isChecked(),
@@ -202,10 +196,10 @@ class imageAdjustmentsDlg(QDialog, ui_imageAdjustmentsDlg.Ui_imageAdjustmentsDlg
                  'Contrast':float(self.contrastSlider.value()) / 100.,
                  'ColorCorrectionEnabled':self.gbColorCorrection.isChecked(),
                  'AutoWhiteBalance':self.cbAWB.isChecked(),
-                 'AutoLevels':self.ccSimpleBalance.isChecked(),
-                 'AutoLevelsSatLimit':float(self.ccSatLevel.value()) / 1000.,
-                 'AdaptiveEq':self.ccAdaptive.isChecked(),
-                 'AutoCCClipLimit':float(self.ccClipLimit.value()) / 10.,
+                 'AutoLevels':False,
+                 'AutoLevelsSatLimit':0.006,
+                 'AdaptiveEq':False,
+                 'AutoCCClipLimit':3.,
                  'ManualColor':self.ccManual.isChecked(),
                  'R':self.redSlider.value(),
                  'G':self.greenSlider.value(),

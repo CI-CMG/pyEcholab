@@ -117,17 +117,28 @@ rick.towler@noaa.gov
 
 """
 
-from PyQt4.QtCore import *
-from PyQt4.QtGui import *
-from PyQt4.QtOpenGL import *
-from QIVDimensionLine import QIVDimensionLine
-from QIVMarkerText import QIVMarkerText
-from QIVHudText import QIVHudText
-from QIVMarker import QIVMarker
-from QIVPolygon import QIVPolygon
-from QIVPolygonItem import QIVPolygonItem
+from PyQt5.QtCore import *
+from PyQt5.QtGui import *
+from PyQt5.QtWidgets import *
+from PyQt5.QtOpenGL import *
+from .QIVDimensionLine import QIVDimensionLine
+from .QIVMarkerText import QIVMarkerText
+from .QIVHudText import QIVHudText
+from .QIVMarker import QIVMarker
+from .QIVPolygon import QIVPolygon
+from .QIVPolygonItem import QIVPolygonItem
 
 class QViewerBase(QGraphicsView):
+
+    #  define PyQt Signals
+    mouseWheel = pyqtSignal(object, object)
+    mouseRelease = pyqtSignal(object, 'QPointF', int, object, list)
+    mousePress = pyqtSignal(object, 'QPointF', int, object, list)
+    mouseMove = pyqtSignal(object, 'QPointF', object, list, list)
+    rubberBand = pyqtSignal(object, 'QRect', list)
+    keyRelease = pyqtSignal(object, object)
+    keyPress = pyqtSignal(object, object)
+    imageData = pyqtSignal('QImage')
 
     def __init__(self, parent=None, useGL=False, backgroundColor=[50,50,50]):
         super(QViewerBase, self).__init__(parent)
@@ -378,7 +389,7 @@ class QViewerBase(QGraphicsView):
         return dimLine
 
 
-    def startRubberBand(self, point, color=[220,0,0], thickness=1.0, alpha=255,
+    def startRubberBand(self, point, color=[220,0,0], thickness=4.0, alpha=255,
             linestyle='=', fill=None, name='QIVRubberBand'):
         """
         Starts an interactive rubber band box selection at the provided point.
@@ -398,7 +409,7 @@ class QViewerBase(QGraphicsView):
         """
 
         #  create the rubberband object
-        self.rubberBand = QIVPolygonItem([], color=color, thickness=thickness,
+        self.rubberBandObj = QIVPolygonItem([], color=color, thickness=thickness,
                  alpha=alpha, linestyle=linestyle, fill=fill, name=name)
 
         #  set the origin
@@ -406,18 +417,18 @@ class QViewerBase(QGraphicsView):
 
         #  set the rubber band geometry
         self.rubberBandRect = QRectF(self.rubberBandOrigin, self.rubberBandOrigin)
-        self.rubberBand.setGeometry(self.rubberBandRect)
+        self.rubberBandObj.setGeometry(self.rubberBandRect)
 
         #  the the "am rubberbanding" state variable
         self.rubberBanding = True
 
         #  add it to our scene
-        self.scene.addItem(self.rubberBand)
+        self.scene.addItem(self.rubberBandObj)
 
         #  add it to our list of scene items
-        self.sceneItems.append(self.rubberBand)
+        self.sceneItems.append(self.rubberBandObj)
 
-        return self.rubberBand
+        return self.rubberBandObj
 
 
     def endRubberBand(self, hide=True):
@@ -430,13 +441,13 @@ class QViewerBase(QGraphicsView):
 
         #  if we're "hiding" the rubber band box, remove it from the scene
         if (hide):
-            self.removeItem(self.rubberBand)
+            self.removeItem(self.rubberBandObj)
 
         #  get the bounding rectangle as QRectF
         boxCoords = self.rubberBandRect
 
         #  reset our rubber band box state variables
-        self.rubberBand = None
+        self.rubberBandObj = None
         self.rubberBandRect = None
         self.rubberBanding = False
         self.rubberBandOrigin = None
@@ -641,7 +652,7 @@ class QViewerBase(QGraphicsView):
         """
 
         self.zoomLevel = 0
-        self.setMatrix(QMatrix())
+        self.setTransform(QTransform())
 
 
     def fillExtent(self, verticalOnly=False, horizontalOnly=False, useScene=False):
@@ -861,26 +872,27 @@ class QViewerBase(QGraphicsView):
         elif self.rubberBandKey and self.rubberBanding:
 
             #  end the rubber band selection
-            rubberBandRect = self.endRubberBand()
+            rubberBandRect = self.endRubberBand().toRect()
 
             #  check if the user selected anything
-            items = self.items(self.rubberBandRect)
+            if (rubberBandRect):
+                items = self.items(rubberBandRect)
 
-            #  filter the selected items
-            items = self.filterSelectedItems(items)
+                #  filter the selected items
+                items = self.filterSelectedItems(items)
 
-            #  If we're handling selections deal with the selection states of our marks
-            if self.doSelections:
+                #  If we're handling selections deal with the selection states of our marks
+                if self.doSelections:
 
-                for item in self.selectedItems:
-                    item.setSelected(False)
-                for item in items:
-                    item.setSelected(True)
-                    self.selectedItems = items
+                    for item in self.selectedItems:
+                        item.setSelected(False)
+                    for item in items:
+                        item.setSelected(True)
+                        self.selectedItems = items
 
-            #  call the emit method - we don't directly emit here in case a child class
-            #  wants to transform the data before emitting it.
-            self.emitRubberbandSelection(rubberBandRect, items)
+                #  call the emit method - we don't directly emit here in case a child class
+                #  wants to transform the data before emitting it.
+                self.emitRubberbandSelection(rubberBandRect, items)
 
         else:
             #  This event isn't handled by automatically - emit a release event
@@ -958,7 +970,7 @@ class QViewerBase(QGraphicsView):
         #  rubber banding...
         elif self.rubberBandKey and (self.currentKbKey == self.rubberBandKey) and (ev.button() == Qt.LeftButton):
             #  start a rubber band selection box
-            self.rubberBand = self.startRubberBand(clickLocation)
+            self.rubberBandObj = self.startRubberBand(clickLocation)
 
         else:
             #  This event isn't handled by automatically - emit a click event
@@ -1038,7 +1050,7 @@ class QViewerBase(QGraphicsView):
             else:
                 self.rubberBandRect.setTopLeft(p2)
                 self.rubberBandRect.setBottomRight(self.rubberBandOrigin)
-            self.rubberBand.setGeometry(self.rubberBandRect)
+            self.rubberBandObj.setGeometry(self.rubberBandRect)
 
 
         elif self.dimensionLine:
@@ -1120,7 +1132,7 @@ class QViewerBase(QGraphicsView):
         emitting them.
         """
         #  emit the mousePressEvent signal
-        self.emit(SIGNAL("mousePressEvent"), self, clickLocation, button, currentKbKey, items)
+        self.mousePress.emit(self, clickLocation, button, currentKbKey, items)
 
 
     def emitMouseMoveEvent(self, location, currentKbKey, draggedItems, items):
@@ -1130,7 +1142,7 @@ class QViewerBase(QGraphicsView):
         emitting them.
         """
         #  emit the mouseMoveEvent signal
-        self.emit(SIGNAL("mouseMoveEvent"), self, location, currentKbKey, draggedItems, items)
+        self.mouseMove.emit(self, location, currentKbKey, draggedItems, items)
 
 
     def emitReleaseEvent(self, clickLocation, button, currentKbKey, items):
@@ -1140,7 +1152,7 @@ class QViewerBase(QGraphicsView):
         emitting them.
         """
         #  emit the mouseReleaseEvent signal
-        self.emit(SIGNAL("mouseReleaseEvent"), self, clickLocation, button, currentKbKey, items)
+        self.mouseRelease.emit(self, clickLocation, button, currentKbKey, items)
 
 
     def emitRubberbandSelection(self, rubberBandRect, items):
@@ -1150,7 +1162,7 @@ class QViewerBase(QGraphicsView):
         emitting them.
         """
         #  emit the rubberband selection signal
-        self.emit(SIGNAL("rubberBandSelection"), self, rubberBandRect, items)
+        self.rubberBand.emit(self, rubberBandRect, items)
 
 
     def keyPressEvent(self, ev):
@@ -1175,7 +1187,7 @@ class QViewerBase(QGraphicsView):
             #  enable zoom mode
             self.__zooming = True
         else:
-            self.emit(SIGNAL("keyPressEvent"), self, ev)
+            self.keyPress.emit(self, ev)
 
 
     def keyReleaseEvent(self, ev):
@@ -1203,7 +1215,7 @@ class QViewerBase(QGraphicsView):
             #  disable zoom mode
             self.__zooming = False
         else:
-            self.emit(SIGNAL("keyReleaseEvent"), self, ev)
+            self.keyRelease.emit(self, ev)
 
 
 
@@ -1216,14 +1228,14 @@ class QViewerBase(QGraphicsView):
         #  Check if we're in auto Zoom mode
         if self.__zooming:
             #  we're zooming
-            if (ev.delta() > 0):
+            if (ev.angleDelta().y() > 0):
                 self.zoom(ev.pos(), 1)
             else:
                 self.zoom(ev.pos(), -1)
 
         else:
             #  not zooming - pass wheel event on
-            self.emit(SIGNAL("wheelEvent"), self, ev)
+            self.mouseWheel.emit(self, ev)
 
 
     def rotate(self, point, rotation):
