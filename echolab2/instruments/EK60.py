@@ -12,6 +12,28 @@
 # THE USEFULNESS OF THE SOFTWARE AND DOCUMENTATION FOR ANY PURPOSE.  THEY
 # ASSUME NO RESPONSIBILITY (1) FOR THE USE OF THE SOFTWARE AND DOCUMENTATION;
 # OR (2) TO PROVIDE TECHNICAL SUPPORT TO USERS.
+'''
+.. module:: echolab2.instruments.EK60
+
+    :synopsis:  A high-level interface for reading SIMRAD ".raw" formatted
+                files written by the Simrad EK60, ES60, ES70, ME70 sonar
+                systems
+
+
+| Developed by:  Zac Berkowitz <zac.berkowitz@gmail.com> under contract for
+| National Oceanic and Atmospheric Administration (NOAA)
+| Alaska Fisheries Science Center (AFSC)
+| Midwater Assesment and Conservation Engineering Group (MACE)
+|
+| Authors:
+|       Zac Berkowitz <zac.berkowitz@gmail.com>
+|       Rick Towler   <rick.towler@noaa.gov>
+| Maintained by:
+|       Rick Towler   <rick.towler@noaa.gov>
+
+$Id$
+'''
+
 
 import os
 import datetime
@@ -1112,21 +1134,14 @@ class RawData(PingData):
 
         # Check if we need to store angle data.
         if sample_datagram['mode'] != 1 and self.store_angles:
-            # First extract the alongship and athwartship angle data.  The low
-            # 8 bits are the athwartship values and the upper 8 bits are
-            # alongship.
-            alongship_e = (sample_datagram['angle'][
-                           start_sample:self.sample_count[this_ping]] >>
-                           8).astype('int8')
-            athwartship_e = (sample_datagram['angle'][
-                             start_sample:self.sample_count[this_ping]] &
-                             0xFF).astype('int8')
 
             # Convert from indexed to electrical angles.
-            alongship_e = alongship_e.astype(self.sample_dtype) * \
-                          self.INDEX2ELEC
-            athwartship_e = athwartship_e.astype(self.sample_dtype) * \
-                            self.INDEX2ELEC
+            alongship_e = sample_datagram['angle'] \
+                [start_sample:self.sample_count[this_ping], 1] \
+                .astype(self.sample_dtype) * self.INDEX2ELEC
+            athwartship_e = sample_datagram['angle'] \
+                [start_sample:self.sample_count[this_ping], 0] \
+                .astype(self.sample_dtype) * self.INDEX2ELEC
 
             # Check if we need to pad or trim our sample data.
             sample_pad = sample_dims - athwartship_e.shape[0]

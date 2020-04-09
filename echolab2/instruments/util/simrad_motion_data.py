@@ -12,7 +12,17 @@
 #  OF THE SOFTWARE AND DOCUMENTATION FOR ANY PURPOSE. THEY ASSUME NO RESPONSIBILITY
 #  (1) FOR THE USE OF THE SOFTWARE AND DOCUMENTATION; OR (2) TO PROVIDE TECHNICAL
 #  SUPPORT TO USERS.
-
+"""
+| Developed by:  Rick Towler   <rick.towler@noaa.gov>
+| National Oceanic and Atmospheric Administration (NOAA)
+| Alaska Fisheries Science Center (AFSC)
+| Midwater Assesment and Conservation Engineering Group (MACE)
+|
+| Author:
+|       Rick Towler   <rick.towler@noaa.gov>
+| Maintained by:
+|       Rick Towler   <rick.towler@noaa.gov>
+"""
 
 import numpy as np
 

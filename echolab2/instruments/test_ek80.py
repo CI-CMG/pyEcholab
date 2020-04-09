@@ -1,3 +1,11 @@
+'''
+Simple script for developing the RawSimradFile EK80 parser.
+
+Not intended for distribution
+
+'''
+
+
 import xml.etree.ElementTree as ET
 from util.simrad_raw_file import RawSimradFile
 
@@ -14,7 +22,28 @@ def compare_dicts(a, b):
 
 
 
-#  simple script for developing the RawSimradFile EK80 parser
+#  verify RAW3 datatype bits for various file types
+if (1):
+    #  complex - full resolution
+    #  should be 32-bit samples
+    #filename = 'C:/EK80 Test Data/complex/DY2000_EK80_Cal-D20200126-T060729.raw'
+    #fid =  RawSimradFile(filename, 'r')
+
+    #  complex - full resolution
+    #  should be 32-bit samples
+    filename = 'C:/EK80 Test Data/reduced/DY2000_EK80_Cal-D20200126-T061004.raw'
+    fid =  RawSimradFile(filename, 'r')
+
+
+    #  first datagram is a config datagram
+    config_datagram = fid.read(1)
+
+    #  skip over FIL/XML/NME/MRU datagrams
+    datagram = fid.read(1)
+    while (datagram['type'] != 'RAW3'):
+        datagram = fid.read(1)
+    print(datagram)
+
 
 if (0):
 

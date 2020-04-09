@@ -26,8 +26,9 @@
 | Alaska Fisheries Science Center (AFSC)
 | Midwater Assesment and Conservation Engineering Group (MACE)
 |
-| Author:
+| Authors:
 |       Zac Berkowitz <zac.berkowitz@gmail.com>
+|       Rick Towler   <rick.towler@noaa.gov>
 | Maintained by:
 |       Rick Towler   <rick.towler@noaa.gov>
 
@@ -37,7 +38,7 @@ $Id$
 from io import BufferedReader, FileIO, SEEK_SET, SEEK_CUR, SEEK_END
 import struct
 import logging
-from . import parsers
+from . import simrad_parsers
 
 __all__ = ['RawSimradFile']
 
@@ -97,15 +98,15 @@ class RawSimradFile(BufferedReader):
     Calls to the read method return parse datagrams as dicts.
     '''
     #: Dict object with datagram header/python class key/value pairs
-    DGRAM_TYPE_KEY = {'RAW': parsers.SimradRawParser(),
-                      'CON': parsers.SimradConfigParser(),
-                      'TAG': parsers.SimradAnnotationParser(),
-                      'NME': parsers.SimradNMEAParser(),
-                      'BOT': parsers.SimradBottomParser(),
-                      'DEP': parsers.SimradDepthParser(),
-                      'XML': parsers.SimradXMLParser(),
-                      'FIL': parsers.SimradFILParser(),
-                      'MRU': parsers.SimradMRUParser(),
+    DGRAM_TYPE_KEY = {'RAW': simrad_parsers.SimradRawParser(),
+                      'CON': simrad_parsers.SimradConfigParser(),
+                      'TAG': simrad_parsers.SimradAnnotationParser(),
+                      'NME': simrad_parsers.SimradNMEAParser(),
+                      'BOT': simrad_parsers.SimradBottomParser(),
+                      'DEP': simrad_parsers.SimradDepthParser(),
+                      'XML': simrad_parsers.SimradXMLParser(),
+                      'FIL': simrad_parsers.SimradFILParser(),
+                      'MRU': simrad_parsers.SimradMRUParser(),
                       }
 
 

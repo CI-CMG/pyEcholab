@@ -13,6 +13,26 @@
 # ASSUME NO RESPONSIBILITY (1) FOR THE USE OF THE SOFTWARE AND DOCUMENTATION;
 # OR (2) TO PROVIDE TECHNICAL SUPPORT TO USERS.
 
+'''
+.. module:: echolab2.instruments.EK*0
+
+    :synopsis:  A high-level interface for reading SIMRAD ".raw" formatted
+                files written by the Simrad EK80 WBES system
+
+
+| Developed by:  Zac Berkowitz <zac.berkowitz@gmail.com> under contract for
+| National Oceanic and Atmospheric Administration (NOAA)
+| Alaska Fisheries Science Center (AFSC)
+| Midwater Assesment and Conservation Engineering Group (MACE)
+|
+| Authors:
+|       Zac Berkowitz <zac.berkowitz@gmail.com>
+|       Rick Towler   <rick.towler@noaa.gov>
+| Maintained by:
+|       Rick Towler   <rick.towler@noaa.gov>
+
+$Id$
+'''
 
 """
 
@@ -108,15 +128,17 @@ class EK80(object):
         # specifying them when calling the read and append methods.
 
         # Set store_angles to true to store angle data if any of the data files
-        # contain data recorded from EK60 GPTs.
+        # contain data recorded from EK60 GPTs or WBT data saved in the reduced
+        # power/angle format.
         self.store_angles = True
 
         # Set store_power to true to store power data if any of the data files
-        # contain data recorded from EK60 GPTs.
+        # contain data recorded from EK60 GPTs or WBT data saved in the reduced
+        # power/angle format.
         self.store_power = True
 
         # Set store_complex to true to store complex data if any of the data files
-        # contain data recorded from EK80 WBTs.
+        # contain data recorded from EK80 WBTs saved as complex samples.
         self.store_complex = True
 
         # Specify the maximum sample count to read.  This property can be used
@@ -218,8 +240,9 @@ class EK80(object):
 
 
     def read_raw(self, *args, **kwargs):
-        """Reads one or more Simrad EK80 .raw files. Overwrites existing
-        data in memory.
+        """Reads one or more Simrad EK80 .raw files into memory. Overwrites
+        existing data (if any). The data are stored in an EK80.RawData object.
+
 
         Args:
             raw_files (list): List containing full paths to data files to be
@@ -267,7 +290,8 @@ class EK80(object):
                  channel_ids=None, time_format_string='%Y-%m-%d %H:%M:%S',
                  incremental=None, start_sample=None, end_sample=None,
                  progress_callback=None):
-        """Reads one or more Simrad EK60 ES60/70 .raw files.
+        """Reads one or more Simrad EK80 .raw files and appends the data to any
+        existing data. The data are ordered as read.
 
 
         Args:
@@ -359,7 +383,7 @@ class EK80(object):
             #  set the cumulative_bytes var
             cumulative_bytes = self._config['bytes_read']
 
-            #  create a state var to track when we're done reading.
+            #  create a variable to track when we're done reading.
             finished = False
 
             #  and read datagrams until we're done
@@ -503,14 +527,16 @@ class EK80(object):
 
         #  FIL datagrams store parameters used to recreate the FM transmit pulse
         if new_datagram['type'].startswith('FIL'):
-            #  TODO: Once I figure out how filters are used, these filter
-            #  dicts should become filter objects which actually implement
-            #  the filters instead of simply storing the data.
+
 
             #  check if we have an existing dict for this channel
             if (new_datagram['channel_id'] not in self._filters.keys()):
                 #  nope, create it
                 self._filters[new_datagram['channel_id']] = {}
+
+                #  and update the current_filters attribute of this chan's raw data
+                self.raw_data[new_datagram['channel_id']].current_filters = \
+                    self._filters[new_datagram['channel_id']]
 
             #  add/update the filter parameters for this filter stage
             self._filters[new_datagram['channel_id']][new_datagram['stage']] = \
@@ -726,22 +752,19 @@ class raw_data(ping_data):
 
         The raw_data class stores raw echosounder data from a single channel
         recorded using the Kongsberg EK80 application. This class supports
-        both EK60 GPTs (and similar) as well as EK80 WBT's operated using
-        EK80 software.
+        both EK60 GPTs running on EK80 software as well as EK80 WBT's operated
+        using the EK80 software.
 
         NOTE: power is *always* stored in log form. If you manipulate power
-            values directly, make sure they are stored in log form.
+              values directly, make sure they are stored in log form.
 
-        If rolling is True, arrays of size (n_pings, n_samples) are created
-        for power and angle data upon instantiation and are filled with NaNs.
-        These arrays are fixed in size and if a ping is added beyond the
-        "width" of the array the array is "rolled left", and the new ping is
-        added at the end of the array. This feature is to support future
-        development of streaming data sources such as telegram broadcasts and
-        the client/server interface.
+        The data arrays are not created upon instantiation. They will be created
+        when the first ping is appended using the append_ping method.
 
-        chunk_width specifies the number of columns to add to data arrays when
-        they fill up when rolling == False.
+        If rolling is True, and both the n_pings and n_samples arguments are
+        provided, arrays of size (n_pings, n_samples) are created upon
+        instantiation. Otherwise, the data arrays are created
+
 
         Args:
             channel_id (str): The channel ID of channel whose data are stored
@@ -771,37 +794,32 @@ class raw_data(ping_data):
         # necessary to hold additional data (False).
         self.rolling_array = bool(rolling)
 
+        # If rolling is set, ensure we have been passed n_samples
+        if self.rolling_array and n_samples < 1:
+            raise ValueError('The n_samples argument must be defined and ' +
+                    'greater than 0 when rolling == True.')
+
         # The channel ID is the unique identifier of the channel stored in
         # the object.
         self.channel_id = channel_id
-
-        # Assume we are EK60 style data if the first char of the channel id is
-        # "G". Need to verify that all EK,ME,ES hardware identify as "GPT..."
-        # EK80 hardware identify as "WBT..." We use this to make a few
-        # assumptions about what kind of data we'll need to store.
-        if (channel_id[0].lower() == 'g'):
-            self.is_EK60_on_EK80 = True
-        else:
-            self.is_EK60_on_EK80 = True
 
         # Specify the horizontal size (columns) of the array allocation size.
         self.chunk_width = n_pings
 
         # Keep note if we should store the power, angle, or complex data.
-        self.store_power = store_power
-        self.store_angles = store_angles
-        self.store_complex = store_angles
+        self.store_power = bool(store_power)
+        self.store_angles = bool(store_angles)
+        self.store_complex = bool(store_complex)
 
         # Max_sample_number can be set to an integer specifying the maximum
         # number of samples that will be stored in the sample data arrays.
+        # Samples beyond this will be discarded.
         self.max_sample_number = max_sample_number
 
         # Data_attributes is an internal list that contains the names of all
         # of the class's "data" properties. The echolab2 package uses this
         # attribute to generalize various functions that manipulate these
-        # data.  Here we *extend* the list that is defined in the parent
-        # class.  We don't add the bottom data attributes here.  Those are only
-        # added if .bot or .out files are read.
+        # data.  Here we *extend* the list that is defined in the parent class.
         self._data_attributes += ['configuration',
                                   'environment',
                                   'motion',
@@ -814,35 +832,16 @@ class raw_data(ping_data):
                                   'transmit_power',
                                   'sample_count']
 
-
-#                                  'complex',
-#                                  'power',
-#                                  'angles_alongship_e',
-#                                  'angles_athwartship_e']
-#
 #        # Check if the detected_bottom attribute exists and create it if it
 #        # does not.
 #        if not hasattr(self, 'detected_bottom'):
 #            data = np.full(self.ping_time.shape[0], np.nan)
 #            self.add_attribute('detected_bottom', data)
 
-
-        self._npings
-
-        # If we're using a fixed data array size, we can allocate the arrays
-        # now, and since we assume rolling arrays will be used in a visual or
-        # interactive application, we initialize the arrays so they can be
-        # displayed.
-        if self.rolling_array:
-            self._create_arrays(n_pings, n_samples, initialize=True)
-
-            # Initialize the ping counter to indicate that our data arrays
-            # have been allocated.
-            self.n_pings = 0
-
-        # If we're not using fixed arrays, we will initialize them when
-        # append_ping is called for the first time. Until then, the raw_data
-        # object will not contain the data properties.
+        #  initialize the attributes that store the most recent async data vars
+        self.current_config = None
+        self.current_environment = None
+        self.current_motion = None
 
 
     def empty_like(self, n_pings):
@@ -857,7 +856,7 @@ class raw_data(ping_data):
                 samples and depth/range values) will be the same as this object.
         """
 
-        # Create an instance of echolab2.EK60.raw_data and set the same basic
+        # Create an instance of echolab2.EK80.raw_data and set the same basic
         # properties as this object.  Return the empty processed_data object.
         empty_obj = raw_data(self.channel_id, n_pings=n_pings,
                              n_samples=self.n_samples,
@@ -921,39 +920,28 @@ class raw_data(ping_data):
 
 
     def append_ping(self, sample_datagram, config_datagram, environment_datagram,
-            start_sample=None, end_sample=None):
+            motion_datagram, start_sample=None, end_sample=None):
         """Adds a "pings" worth of data to the object.
 
-        This method should accept the parsed values from the sample
-        datagram.  It will handle the details of managing the array sizes,
-        resizing as needed (or rolling in the case of a fixed size). Append
-        ping also updates the RawFileData object's end_ping and end_time
-        values for the current file.
+        This method extracts data from the provided sample_datagram dict and
+        inserts it into the data arrays. Managing the data array sizes is the
+        bulk of what this method does:
 
-        Managing the data array sizes is the bulk of what this method does. It
-        will either resize the array if rolling == False or roll the array if it
-        is full and rolling == True.
+        If the raw_data.rolling_array attribute is false, columns are added to
+        the data arrays as needed. To reduce overhead, the arrays are extended in
+        chunks, not on a ping by ping basis. If the recording range or the pulse
+        length changes requiring additional rows to be added, the data arrays will be
+        resized to accomodate the maximum number of samples being stored. Existing
+        samples are padded with NaNs as required. This vertical resize does not
+        occur in chunks and the data are copied each time samples are added.
+        This can have significant performance impacts in very specific cases.
 
-        The data arrays will change size in 2 ways:
+        If raw_data.rolling_array is true, the data arrays are not resized but
+        the data within the arrays is "rolled" or shifted left and the column at
+        index 0 is moved to index n_pings - 1. Additional samples are discarded
+        and pings with fewer samples are padded with NaNs as required.
 
-            Adding pings will add columns (or roll the array if all of the
-            columns are filled and rolling == true.) This can easily be
-            handled by allocating columns in chunks using the resize method
-            of the numpy array and maintaining an index into the *next*
-            available column (self.n_pings). Empty pings can be left
-            uninitialized (if that is possible with resize) or set to NaN if
-            it is free. If it takes additional steps to set to NaN, then just
-            leave them at the default value.
-
-            Changing the recording range or pulse length will either require
-            adding rows (if there are more samples) or padding (if there are
-            fewer). If rows are added to the array, existing pings will need
-            to be padded with NaNs.
-
-        If rolling == True, we will never resize the array. If a ping has more
-        samples than the array has allocated, the extra samples will be
-        dropped. In all cases, if a ping has fewer samples than the array has
-        allocated it should be padded with NaNs.
+        This method is typically only called by the EK80 class when reading a raw file.
 
         Args:
             sample_datagram (dict): The dictionary containing the parsed RAW datagram.
@@ -961,61 +949,49 @@ class raw_data(ping_data):
                                     datagram that goes with this RAW data.
             environment_datagram (dict): A dictionary containing the latest parsed XML
                                     environment datagram.
+            motion_datagram (dict): The dictionary containing the parsed MRU motion
+                                    datagram.
             start_sample (int):
             end_sample (int):
         """
-
-        if (self.is_EK60_on_EK80):
-            # Determine the number of samples in this ping.
-            if sample_datagram['angle'] is not None:
-                angle_samps = sample_datagram['angle'].shape[0]
-            else:
-                angle_samps = -1
-            if sample_datagram['power'] is not None:
-                power_samps = sample_datagram['power'].shape[0]
-            else:
-                power_samps = -1
+        #  determine if and how many samples are currently stored
+        n_complex = 0
+        if sample_datagram['angle']:
+            create_angles = True
+            angle_samps = sample_datagram['angle'].shape[0]
         else:
-            if sample_datagram['complex'] is not None:
-                complex_samps = sample_datagram['complex'].shape[0]
-            else:
-                complex_samps = -1
+            create_angles = False
+            angle_samps = -1
+        if sample_datagram['power']:
+            create_power = True
+            power_samps = sample_datagram['power'].shape[0]
+        else:
+            create_power = False
+            power_samps = -1
+        if sample_datagram['complex']:
+            create_complex = True
+            complex_samps = sample_datagram['complex'].shape[0]
+            n_complex = sample_datagram['complex'].shape[1]
+        else:
+            create_complex = False
+            complex_samps = -1
 
-        # If this is our first ping,
+        #  If this is the first ping to be stored, perform some bookkeeping
+        #  and create the data arrays
         if self.n_pings == -1:
+            #  determine the initial number of samples in our arrays
             if self.max_sample_number:
                 n_samples = self.max_sample_number
             else:
                 n_samples = max([angle_samps, power_samps, complex_samps])
 
-            if sample_datagram['power']:
-                #  we have power data - create the initial array and add the attribute
-                data = np.empty((self.chunk_width, n_samples),
-                    dtype=self.sample_dtype, order='C')
-                self.add_attribute('power', data)
+            #  set the initial sample offset
+            self.sample_offset = sample_datagram['offset']
 
-            if sample_datagram['angle']:
-                #  we have angle data - create the initial array and add the attribute
-                data = np.empty((self.chunk_width, n_samples),
-                    dtype=self.sample_dtype, order='C')
-                self.add_attribute('angles_alongship_e', data)
-                data = np.empty((self.chunk_width, n_samples),
-                    dtype=self.sample_dtype, order='C')
-                self.add_attribute('angles_athwartship_e', data)
-
-            if sample_datagram['angle']:
-
-
-
-
-            if self.rolling_array == False:
-
-            else:
-                number_pings = self.chunk_width
-
-
-            # Create the initial data arrays.
-            self._create_arrays(self.chunk_width, number_samples)
+            #  Initialize the data arrays
+            self._create_arrays(self.chunk_width, n_samples, initialize=False,
+                    create_power=create_power, create_angles=create_angles,
+                    create_complex=create_complex, n_complex=n_complex)
 
             # Initialize the ping counter to indicate that our data arrays
             # have been allocated.
@@ -1042,7 +1018,7 @@ class raw_data(ping_data):
                                            0:self.max_sample_number]
             if power_samps > 0:
                 sample_datagram['complex'] = sample_datagram['complex'][
-                                           0:self.max_sample_number]
+                                           0:self.max_sample_number:]
 
         # Create 2 variables to store our current array size.
         ping_dims = self.ping_time.size
@@ -1087,6 +1063,30 @@ class raw_data(ping_data):
 
                 # Roll our array 1 ping.
                 self._roll_arrays(1)
+
+        #  update the asyncronous data vars if required
+        if config_datagram != self.current_config:
+            self.current_config = config_datagram
+        if environment_datagram != self.current_environment:
+            self.current_environment = environment_datagram
+        if motion_datagram != self.current_motion:
+            self.current_motion = motion_datagram
+
+        self.configuration[this_ping] = self.current_config
+        self.environment[this_ping] = self.current_environment
+        self.motion[this_ping] = self.current_motion
+
+        #  the rest of the arrays store syncronous ping data
+        self.channel_mode = np.empty((n_pings), np.int32)
+        self.pulse_form = np.empty((n_pings), np.int32)
+        self.frequency = np.empty((n_pings), np.float32)
+        self.pulse_duration = np.empty((n_pings), np.float32)
+        self.sample_interval = np.empty((n_pings), np.float32)
+        self.slope = np.empty((n_pings), np.float32)
+        self.transmit_power = np.empty((n_pings), np.float32)
+        self.sample_count = np.empty((n_pings), np.float32)
+
+
 
         # Insert the channel_metadata object reference for this ping.
         self.channel_metadata[this_ping] = self.current_metadata
@@ -1161,21 +1161,14 @@ class raw_data(ping_data):
 
         # Check if we need to store angle data.
         if sample_datagram['mode'] != 1 and self.store_angles:
-            # First extract the alongship and athwartship angle data.  The low
-            # 8 bits are the athwartship values and the upper 8 bits are
-            # alongship.
-            alongship_e = (sample_datagram['angle'][
-                           start_sample:self.sample_count[this_ping]] >>
-                           8).astype('int8')
-            athwartship_e = (sample_datagram['angle'][
-                             start_sample:self.sample_count[this_ping]] &
-                             0xFF).astype('int8')
 
             # Convert from indexed to electrical angles.
-            alongship_e = alongship_e.astype(self.sample_dtype) * \
-                          self.INDEX2ELEC
-            athwartship_e = athwartship_e.astype(self.sample_dtype) * \
-                            self.INDEX2ELEC
+            alongship_e = sample_datagram['angle'] \
+                [start_sample:self.sample_count[this_ping], 1] \
+                .astype(self.sample_dtype) * self.INDEX2ELEC
+            athwartship_e = sample_datagram['angle'] \
+                [start_sample:self.sample_count[this_ping], 0] \
+                .astype(self.sample_dtype) * self.INDEX2ELEC
 
             # Check if we need to pad or trim our sample data.
             sample_pad = sample_dims - athwartship_e.shape[0]
@@ -2104,80 +2097,78 @@ class raw_data(ping_data):
         return param_data
 
 
-    def _create_arrays(self, n_pings, n_samples, initialize=False):
+    def _create_arrays(self, n_pings, n_samples, initialize=False, create_power=False,
+            create_angles=False, create_complex=True, n_complex=4):
         """Initializes raw_data data arrays.
 
-        This is an internal method. Note that all "data" arrays must be numpy
-        arrays.
+        This is an internal method. Note that all arrays must be numpy arrays.
 
         Args:
             n_pings (int): Number of pings.
             n_samples (int): Number of samples.
             initialize (bool): Set to True to initialize arrays.
+            create_power (bool): Set to True to create the power attribute.
+            create_angles (bool): Set to True to create the angles_alongship_e
+                                  angles_athwartship_e attributes.
+            create_complex (bool): Set to True to create the complex attribute.
+            n_complex (int): Number of complex values per sample
         """
 
         # First, create uninitialized arrays.
         self.ping_time = np.empty((n_pings), dtype='datetime64[ms]')
-        self.channel_metadata = np.empty((n_pings), dtype='object')
-        self.transducer_depth = np.empty((n_pings), np.float32)
-        self.frequency = np.empty((n_pings), np.float32)
-        self.transmit_power = np.empty((n_pings), np.float32)
-        self.pulse_length = np.empty((n_pings), np.float32)
-        self.bandwidth = np.empty((n_pings), np.float32)
-        self.sample_interval = np.empty((n_pings), np.float32)
-        self.sound_velocity = np.empty((n_pings), np.float32)
-        self.absorption_coefficient = np.empty((n_pings), np.float32)
-        self.heave = np.empty((n_pings), np.float32)
-        self.pitch = np.empty((n_pings), np.float32)
-        self.roll = np.empty((n_pings), np.float32)
-        self.temperature = np.empty((n_pings), np.float32)
-        self.heading = np.empty((n_pings), np.float32)
-        self.transmit_mode = np.empty((n_pings), np.uint8)
-        self.sample_offset =  np.empty((n_pings), np.uint32)
-        self.sample_count = np.empty((n_pings), np.uint32)
-        if self.is_EK60_on_EK80:
-            if self.store_power:
-                self.power = np.empty((n_pings, n_samples),
-                    dtype=self.sample_dtype, order='C')
-                self.n_samples = n_samples
 
-            if self.store_angles:
-                self.angles_alongship_e = np.empty(
-                    (n_pings, n_samples), dtype=self.sample_dtype, order='C')
-                self.angles_athwartship_e = np.empty(
-                    (n_pings, n_samples), dtype=self.sample_dtype, order='C')
-                self.n_samples = n_samples
-        else:
-            if self.store_complex:
-                self.complex = np.empty((n_pings, n_samples),
-                    dtype=self.sample_dtype, order='C')
-                self.n_samples = n_samples
+        #  create the arrays that contain references to the async data objects
+        self.configuration = np.empty((n_pings), dtype='object')
+        self.environment = np.empty((n_pings), dtype='object')
+        self.motion = np.empty((n_pings), dtype='object')
+
+        #  the rest of the arrays store syncronous ping data
+        self.channel_mode = np.empty((n_pings), np.int32)
+        self.pulse_form = np.empty((n_pings), np.int32)
+        self.frequency = np.empty((n_pings), np.float32)
+        self.pulse_duration = np.empty((n_pings), np.float32)
+        self.sample_interval = np.empty((n_pings), np.float32)
+        self.slope = np.empty((n_pings), np.float32)
+        self.transmit_power = np.empty((n_pings), np.float32)
+        self.sample_count = np.empty((n_pings), np.float32)
+
+        #  and the 2d sample data arrays
+        if create_angles and self.store_power:
+            self.power = np.empty((n_pings, n_samples),
+                dtype=self.sample_dtype, order='C')
+            self.n_samples = n_samples
+        if create_angles and self.store_angles:
+            self.angles_alongship_e = np.empty((n_pings, n_samples),
+                dtype=self.sample_dtype, order='C')
+            self.angles_athwartship_e = np.empty((n_pings, n_samples),
+                dtype=self.sample_dtype, order='C')
+            self.n_samples = n_samples
+        if create_complex and self.store_complex:
+            self.complex = np.empty((n_pings, n_samples,n_complex),
+                dtype=np.complex64, order='C')
+            self.n_complex = np.empty((n_pings), np.int32)
+            self.complex_dtype = np.empty((n_pings), dtype='object')
+            self.n_samples = n_samples
 
         # Check if we should initialize them.
         if initialize:
             self.ping_time.fill(np.datetime64('NaT'))
-            # channel_metadata is initialized when using np.empty.
-            self.transducer_depth.fill(np.nan)
+            self.channel_mode.fill(np.nan)
+            self.pulse_form.fill(np.nan)
             self.frequency.fill(np.nan)
-            self.transmit_power.fill(np.nan)
-            self.pulse_length.fill(np.nan)
-            self.bandwidth.fill(np.nan)
+            self.pulse_duration.fill(np.nan)
             self.sample_interval.fill(np.nan)
-            self.sound_velocity.fill(np.nan)
-            self.absorption_coefficient.fill(np.nan)
-            self.heave.fill(np.nan)
-            self.pitch.fill(np.nan)
-            self.roll.fill(np.nan)
-            self.temperature.fill(np.nan)
-            self.heading.fill(np.nan)
-            self.transmit_mode.fill(0)
-            self.sample_offset.fill(0)
-            self.sample_count.fill(0)
-            if self.store_power:
+            self.slope.fill(np.nan)
+            self.transmit_power.fill(np.nan)
+            self.sample_count.fill(np.nan)
+
+            if create_angles and self.store_power:
                 self.power.fill(np.nan)
-            if self.store_angles:
+            if create_angles and self.store_angles:
                 self.angles_alongship_e.fill(np.nan)
                 self.angles_athwartship_e.fill(np.nan)
+            if create_complex and self.store_complex:
+                self.complex.fill(np.nan)
 
 
     def __str__(self):

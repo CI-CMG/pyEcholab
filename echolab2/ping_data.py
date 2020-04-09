@@ -13,10 +13,7 @@
 #  AS TO THE USEFULNESS OF THE SOFTWARE AND DOCUMENTATION FOR ANY PURPOSE.
 #  THEY ASSUME NO RESPONSIBILITY (1) FOR THE USE OF THE SOFTWARE AND
 #  DOCUMENTATION; OR (2) TO PROVIDE TECHNICAL SUPPORT TO USERS.
-
 """
-
-
 | Developed by:  Rick Towler   <rick.towler@noaa.gov>
 | National Oceanic and Atmospheric Administration (NOAA)
 | Alaska Fisheries Science Center (AFSC)
@@ -26,7 +23,6 @@
 |       Rick Towler   <rick.towler@noaa.gov>
 | Maintained by:
 |       Rick Towler   <rick.towler@noaa.gov>
-
 """
 
 import numpy as np
@@ -130,14 +126,12 @@ class ping_data(object):
                     self.n_samples = data_height
                 elif self.n_samples != data_height:
                     #    TODO:  Better error message
-                    raise ValueError(
-                        'Cannot add attribute. New attribute has a different ' +
-                        'number of samples than the other attributes.')
+                    raise ValueError('Cannot add attribute. New attribute has ' +
+                        'a different number of samples than the other attributes.')
         else:
             # We only allow numpy arrays as data attributes.
-            raise TypeError(
-                'Invalid data attribute type. Data attributes must be numpy '
-                'arrays.')
+            raise TypeError('Invalid data attribute type. Data attributes must ' +
+                'be numpy arrays.')
 
         # Check if n_pings has been set yet.  If not, set it.  Otherwise,
         # check that the dimensions match.  When checking if dimensions

@@ -12,7 +12,17 @@
 #  OF THE SOFTWARE AND DOCUMENTATION FOR ANY PURPOSE. THEY ASSUME NO RESPONSIBILITY
 #  (1) FOR THE USE OF THE SOFTWARE AND DOCUMENTATION; OR (2) TO PROVIDE TECHNICAL
 #  SUPPORT TO USERS.
-
+"""
+| Developed by:  Rick Towler   <rick.towler@noaa.gov>
+| National Oceanic and Atmospheric Administration (NOAA)
+| Alaska Fisheries Science Center (AFSC)
+| Midwater Assesment and Conservation Engineering Group (MACE)
+|
+| Author:
+|       Rick Towler   <rick.towler@noaa.gov>
+| Maintained by:
+|       Rick Towler   <rick.towler@noaa.gov>
+"""
 
 import numpy as np
 #  NOTE: echolab2 uses a modified version of pynmea2 that includes some
@@ -234,8 +244,8 @@ class nmea_data(object):
                         datagrams[msg_type] = {
                                            'time': self.nmea_times[return_idxs]}
 
-                        #  TODO: Work out setting the numpy type based on the
-                        #  data type of the parsed field. Parse one message
+                        # TODO: Work out setting the numpy type based on the
+                        # data type of the parsed field. Parse one message
                         # so we can get the data types of the fields
                         # msg_data = pynmea2.parse(self.raw_datagrams[
                         #                          return_idxs[0]], check=False)
@@ -391,7 +401,7 @@ class nmea_data(object):
 
                     # Since it is possible that one type does not cover the
                     # entire output range, we determine where data is missing
-                    #  and attempt to fill it. First we find what we're missing
+                    # and attempt to fill it. First we find what we're missing
                     out_nans = np.isnan(out_data[field])
 
                     # ...and then we determine what data we have from this type.
