@@ -29,7 +29,7 @@
 """
 
 import numpy as np
-from ..ping_data import PingData
+from ..ping_data import ping_data
 
 
 def empty_like(obj, name=None, color=None, linestyle=None,
@@ -85,7 +85,7 @@ def empty_like(obj, name=None, color=None, linestyle=None,
 
     return new_line
 
-class Line(PingData):
+class Line(ping_data):
     #   TODO: Review attributes in this docstring
     """The line class implements lines based on ping_time and depth/range values.
     The class provides methods manipulating these values in various ways. The

@@ -42,6 +42,7 @@ class simrad_motion_data(object):
         self.n_raw = 0
 
         # Create arrays to store MRU0 data
+
         self.time = np.empty(simrad_motion_data.CHUNK_SIZE, dtype='datetime64[ms]')
         self.heave = np.empty(simrad_motion_data.CHUNK_SIZE, dtype='f')
         self.pitch = np.empty(simrad_motion_data.CHUNK_SIZE, dtype='f')
@@ -63,16 +64,15 @@ class simrad_motion_data(object):
         self.n_raw += 1
 
         # Check if we need to resize our arrays. If so, resize arrays.
-        if self.n_raw > self.mru_times.shape[0]:
-            self._resize_arrays(self.mru_times.shape[0] +
-                                simrad_motion_data.CHUNK_SIZE)
+        if self.n_raw > self.time.shape[0]:
+            self._resize_arrays(self.time.shape[0] + simrad_motion_data.CHUNK_SIZE)
 
         # Add this datagram to our data arrays
-        self.time = motion_datagram['timestamp']
-        self.heave = motion_datagram['heave']
-        self.pitch = motion_datagram['pitch']
-        self.roll = motion_datagram['roll']
-        self.heading = motion_datagram['heading']
+        self.time[self.n_raw - 1] = motion_datagram['timestamp']
+        self.heave[self.n_raw - 1] = motion_datagram['heave']
+        self.pitch[self.n_raw - 1] = motion_datagram['pitch']
+        self.roll[self.n_raw - 1] = motion_datagram['roll']
+        self.heading[self.n_raw - 1] = motion_datagram['heading']
 
 
     def interpolate(self, p_data, start_time=None, end_time=None):

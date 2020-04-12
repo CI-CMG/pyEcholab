@@ -30,13 +30,13 @@
 
 from future.utils import implements_iterator
 import numpy as np
-from ..ping_data import PingData
+from ..ping_data import ping_data
 from ..processing import mask
 
 
 @implements_iterator
-class ProcessedData(PingData):
-    """The ProcessedData class defines the horizontal and vertical axes of
+class processed_data(ping_data):
+    """The processed_data class defines the horizontal and vertical axes of
     the data.
 
     This class stores and manipulates a 2d sample data array along with 1d

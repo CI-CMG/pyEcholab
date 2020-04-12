@@ -112,7 +112,6 @@ class EK80(object):
             read. An empty list will result in all channels being read.
     """
 
-
     def __init__(self):
         """Initializes EK60 class object.
 
@@ -198,14 +197,12 @@ class EK80(object):
         # A list of stings identifying the channel IDs that have been read.
         self.channel_ids = []
 
-        # channel_id_map maps the channel number to channel ID when reading
-        # raw data sources.
-        #self.channel_id_map = {}
-
         # n_channels stores the total number of channels in the object.
         self.n_channels = 0
 
-        # A dictionary to store the raw_data objects.
+        # A dictionary to store the raw_data objects. The dictionary is keyed
+        # by channel ID and each value is a list of raw_data objects associated
+        # with that channel.
         self.raw_data = {}
 
         #  nmea_data stores the util.nmea_data object which will contain
@@ -217,6 +214,11 @@ class EK80(object):
         #  contain data from the MRU datagrams contained in the raw file.
         #  This object has methods to extract and interpolate the motion data.
         self.motion_data = simrad_motion_data()
+
+        # annotation_data stores the contents of the TAG0 aka "annotation"
+        # datagrams. Currently we're storing the raw dict returned by the
+        # parser.
+        self.annotation_data = []
 
         # data_array_dims contains the dimensions of the sample and angle or
         # complex data arrays specified as [n_pings, n_samples].  Values of
@@ -235,8 +237,11 @@ class EK80(object):
         #  file in percent as integer.
         self._last_progress = -1
 
-        #  _current_filename stores the name of the current file being read.
-        self._current_filename = ''
+        #  initialize some internal attributes
+        self._config = None
+        self._filters = {}
+        self._tx_params = {}
+        self._environment = None
 
 
     def read_raw(self, *args, **kwargs):
@@ -330,10 +335,10 @@ class EK80(object):
         # Update the reader state variables.
         if start_time:
             self.read_start_time = self._convert_time_bound(
-                                   start_time, format_string=time_format_string)
+                    start_time, format_string=time_format_string)
         if end_time:
             self.read_end_time = self._convert_time_bound(
-                                 end_time, format_string=time_format_string)
+                    end_time, format_string=time_format_string)
         if start_ping:
             self.read_start_ping = start_ping
         if end_ping:
@@ -368,20 +373,34 @@ class EK80(object):
             self._tx_params = {}
             self._environment = None
 
-            if (progress_callback):
-                #  get the total file size
-                total_bytes = os.stat(filename).st_size
+            #  get the total file size
+            total_bytes = os.stat(filename).st_size
+
+            #  normalize the file path and split out the parts
+            filename = os.path.normpath(filename)
+            file_parts = filename.split(os.path.sep)
+            current_filename = file_parts[-1]
+            current_filepath = os.path.sep.join(file_parts[0:-1])
 
             # open the raw file
             fid = RawSimradFile(filename, 'r')
-            self._current_filename = filename
 
             #  read the configuration datagram - this will always be the
             #  first datagram in an EK80 raw file.
-            self._config = self._read_config(fid)
+            _config = self._read_config(fid)
 
-            #  set the cumulative_bytes var
-            cumulative_bytes = self._config['bytes_read']
+            #  extract the per channel data into our internal config attribute
+            #  and add some additional fields to each channel
+            self._config = _config['configuration']
+            for channel in self._config:
+                self._config[channel]['file_name'] = current_filename
+                self._config[channel]['file_path'] = current_filepath
+                self._config[channel]['file_bytes'] = total_bytes
+                self._config[channel]['start_time'] = _config['timestamp']
+                self._config[channel]['start_ping'] = self.n_pings
+
+            #  set the cumulative_bytes var and start time
+            cumulative_bytes = _config['bytes_read']
 
             #  create a variable to track when we're done reading.
             finished = False
@@ -402,7 +421,7 @@ class EK80(object):
                         #  call the provided callback - the callback has 3 args,
                         #  the first is the full path to the current file and the
                         #  second is the percent read and the third is the bytes read.
-                        progress_callback(self._current_filename, cumulative_pct, cumulative_bytes)
+                        progress_callback(filename, cumulative_pct, cumulative_bytes)
                         self._last_progress = cumulative_pct
 
                 #  update our finished state var - the file will be finished when
@@ -415,7 +434,8 @@ class EK80(object):
 
         # Trim excess data from arrays after reading.
         for channel_id in self.channel_ids:
-            self.raw_data[channel_id].trim()
+            for raw in self.raw_data[channel_id]:
+                raw.trim()
         self.nmea_data.trim()
         self.motion_data.trim()
 
@@ -434,26 +454,24 @@ class EK80(object):
                 np.datetime64(config_datagram['timestamp'], '[ms]')
 
         # check for any new channels and add them if required
-        file_channels = config_datagram.keys()
+        file_channels = config_datagram['configuration'].keys()
         for channel_id in file_channels:
             #  check if we're reading this channel
-            if (self.read_channel_ids == None or channel_id in self.read_channel_ids):
+            if (not self.read_channel_ids or channel_id in self.read_channel_ids):
                 #  check if we're reading this frequency
-                frequency = config_datagram[channel_id]['transducer_frequency']
+                frequency = config_datagram['configuration'][channel_id]['transducer_frequency']
                 if (self.read_frequencies and frequency not in self.read_frequencies):
                     # There are specific frequencies specified and this
-                    # is NOT one of them, so continue.
+                    # is NOT one of them. Remove this channel from the config_datagram
+                    # dictionary and continue.
+                    config_datagram['configuration'].pop(channel_id)
                     continue
 
                 #  we're reading this channel - check if it's new to us
                 if (channel_id not in self.raw_data):
-                    #  This is a new channel, create a new raw_data object to
-                    #  store the channel's data
-                    self.raw_data[channel_id] = raw_data(channel_id,
-                        store_power=self.store_power,
-                        store_angles=self.store_angles,
-                        store_complex=self.store_complex,
-                        max_sample_number=self.read_max_sample_count)
+                    # This is a new channel, create a list to store this
+                    # channel's raw_data objects
+                    self.raw_data[channel_id] = []
 
                     #  add the channel to our list of channel IDs
                     self.channel_ids.append(channel_id)
@@ -515,6 +533,31 @@ class EK80(object):
                 result['finished'] = True
                 return result
 
+        #  update the ping counter
+        if new_datagram['type'].startswith('RAW'):
+            if self._this_ping_time != new_datagram['timestamp']:
+                self.n_pings += 1
+                self._this_ping_time = new_datagram['timestamp']
+
+                # check if we'restoring this channel
+                if new_datagram['channel_id'] not in self.channel_ids:
+                    #  no, it's not in the list - just return
+                    return result
+
+        # Check if we should store this data based on ping bounds.
+        if self.read_start_ping is not None:
+            if self.n_pings < self.read_start_ping:
+                #  we have a start ping but this data comes before it
+                #  so we return without doing anything else
+                return result
+        if self.read_end_ping is not None:
+            if self.n_pings > self.read_end_ping:
+                #  we have a end ping and this data comes after it
+                #  so we are actually done reading - set the finished
+                #  field in our return dict and return
+                result['finished'] = True
+                return result
+
         # Update the end_time property.
         if self.end_time is not None:
             # We can't assume data will be read in time order.
@@ -525,65 +568,74 @@ class EK80(object):
 
         # Process and store the datagrams by type.
 
-        #  FIL datagrams store parameters used to recreate the FM transmit pulse
+        #  FIL datagrams store parameters used to filter the received signal
+        #  EK80 class stores the filters for the currently being read file.
+        #  Filters are stored by channel ID and then by filter stage
         if new_datagram['type'].startswith('FIL'):
 
+            # Check if we're storing this channel
+            if new_datagram['channel_id'] in self.channel_ids:
+                #  check if we have an existing dict for this channel
+                if (new_datagram['channel_id'] not in self._filters.keys()):
+                    #  nope, create it
+                    self._filters[new_datagram['channel_id']] = {}
 
-            #  check if we have an existing dict for this channel
-            if (new_datagram['channel_id'] not in self._filters.keys()):
-                #  nope, create it
-                self._filters[new_datagram['channel_id']] = {}
-
-                #  and update the current_filters attribute of this chan's raw data
-                self.raw_data[new_datagram['channel_id']].current_filters = \
-                    self._filters[new_datagram['channel_id']]
-
-            #  add/update the filter parameters for this filter stage
-            self._filters[new_datagram['channel_id']][new_datagram['stage']] = \
-                    {'stage':new_datagram['stage'],
-                     'n_coefficients':new_datagram['n_coefficients'],
-                     'decimation_factor':new_datagram['decimation_factor'],
-                     'coefficients':new_datagram['coefficients']}
+                #  add the filter parameters for this filter stage
+                self._filters[new_datagram['channel_id']][new_datagram['stage']] = \
+                        {'stage':new_datagram['stage'],
+                         'n_coefficients':new_datagram['n_coefficients'],
+                         'decimation_factor':new_datagram['decimation_factor'],
+                         'coefficients':new_datagram['coefficients']}
 
         # RAW datagrams store raw acoustic data for a channel.
         elif new_datagram['type'].startswith('RAW'):
 
-            #  check to see if the time of thia RAW datagram is
-            if self._this_ping_time != new_datagram['timestamp']:
-                self.n_pings += 1
-                self._this_ping_time = new_datagram['timestamp']
+            #  check if we should set our start time property
+            if not self.start_time:
+                self.start_time = new_datagram['timestamp']
+            # Set the first ping number we read.
+            if not self.start_ping:
+                self.start_ping = self.n_pings
+            # Update the last ping number.
+            self.end_ping = self.n_pings
 
-            # Check if we should store this data based on ping bounds.
-            if self.read_start_ping is not None:
-                if self.n_pings < self.read_start_ping:
-                    #  we have a start ping but this data comes before it
-                    #  so we return without doing anything else
-                    return result
-            if self.read_end_ping is not None:
-                if self.n_pings > self.read_end_ping:
-                    #  we have a end ping and this data comes after it
-                    #  so we are actually done reading - set the finished
-                    #  field in our return dict and return
-                    result['finished'] = True
-                    return result
+            #  loop through the raw_data objects to find the raw_data object
+            #  to store this data.
+            this_raw_data = None
+            for raw_obj in self.raw_data[new_datagram['channel_id']]:
+                if raw_obj.datatype == '':
+                    #  This raw_data object has no type so is empty and can store anything
+                    this_raw_data = raw_obj
+                    break
+                if new_datagram['data_type'] <= 3 and raw_obj.datatype == 'power/angle':
+                    # This raw_data object contains power/angle data and this datagram
+                    # also contains power/angle data
+                    this_raw_data = raw_obj
+                    break
+                if new_datagram['data_type'] > 3 and raw_obj.datatype == 'complex':
+                    # This raw_data object contains complex data and this datagram
+                    # also contains complex data
+                    this_raw_data = raw_obj
+                    break
 
-            # Check if we're supposed to store this channel.
-            if new_datagram['channel_id'] in self.raw_data:
+            #  check if we need to create a new raw_data object
+            if this_raw_data is None:
+                #  create the new raw_data object
+                this_raw_data = raw_data(new_datagram['channel_id'],
+                        store_power=self.store_power,
+                        store_angles=self.store_angles,
+                        store_complex=self.store_complex,
+                        max_sample_number=self.read_max_sample_count)
+                #  and add it to this channel's list of raw_data objects
+                self.raw_data[new_datagram['channel_id']].append(this_raw_data)
 
-                #  check if we should set our start time property
-                if not self.start_time:
-                    self.start_time = new_datagram['timestamp']
-                # Set the first ping number we read.
-                if not self.start_ping:
-                    self.start_ping = self.n_pings
-                # Update the last ping number.
-                self.end_ping = self.n_pings
-
-                # Call this channel's append_ping method.
-                self.raw_data[new_datagram['channel_id']].append_ping(new_datagram,
-                        self._config, self._tx_params[new_datagram['channel_id']],
-                        self._environment, start_sample=self.read_start_sample,
-                        end_sample=self.read_end_sample)
+            # Call this channel's append_ping method.
+            this_raw_data.append_ping(new_datagram,
+                    self._config[new_datagram['channel_id']], self._environment,
+                    self._tx_params[new_datagram['channel_id']],
+                    self._filters[new_datagram['channel_id']],
+                    start_sample=self.read_start_sample,
+                    end_sample=self.read_end_sample)
 
         # NME datagrams store ancillary data as NMEA-0183 style ASCII data.
         elif new_datagram['type'].startswith('NME'):
@@ -594,9 +646,9 @@ class EK80(object):
         # TAG datagrams contain time-stamped annotations inserted via the
         # recording software.
         elif new_datagram['type'].startswith('TAG'):
-            #  TODO: Implement annotation reading
-            print(new_datagram)
-            pass
+            # Currently we store the raw annotation datagrams. A bit rough
+            # but you can get at what you need.
+            self.annotation_data.append(new_datagram)
 
         # XML datagrams contain contain data encoded as an XML string.
         elif new_datagram['type'].startswith('XML'):
@@ -604,12 +656,19 @@ class EK80(object):
             #  kind of data they contain.
             if new_datagram['subtype'] == 'parameter':
                 #  update the most recent parameter attribute for this channel
-                self._tx_params[new_datagram['channel_id']] = \
+                self._tx_params[new_datagram[new_datagram['subtype']]['channel_id']] = \
                         new_datagram[new_datagram['subtype']]
             elif new_datagram['subtype'] == 'environment':
                 #  update the most recent environment attribute
                 self._environment = new_datagram[new_datagram['subtype']]
+
+        # MRU datagrams contain vessel motion data
+        elif new_datagram['type'].startswith('MRU'):
+            # append this motion datagram to the motion_data object
+            self.motion_data.add_datagram(new_datagram)
+
         else:
+            #  report an unknown datagram type
             print("Unknown datagram type: " + str(new_datagram['type']))
 
         #  return our result dict which contains some basic info about
@@ -687,6 +746,9 @@ class EK80(object):
         # Print the class and address.
         msg = str(self.__class__) + " at " + str(hex(id(self))) + "\n"
 
+
+
+
         # Print some more info about the EK60 instance.
         if self.channel_ids:
             n_channels = len(self.channel_ids)
@@ -695,8 +757,10 @@ class EK80(object):
                     n_channels) + " channels:\n")
             else:
                 msg = msg + ("    EK80 object contains data from 1 channel:\n")
+
             for channel_id in self.channel_ids:
-                msg = msg + ("        " + channel_id + "\n")
+                for raw in self.raw_data[channel_id]:
+                    msg = msg + ("        " + channel_id + " (" + raw.datatype + ") " + str(raw.shape()) + "\n")
             msg = msg + ("    data start time: " + str(self.start_time) + "\n")
             msg = msg + ("      data end time: " + str(self.end_time) + "\n")
             msg = msg + ("    number of pings: " + str(self.end_ping -
@@ -816,13 +880,23 @@ class raw_data(ping_data):
         # Samples beyond this will be discarded.
         self.max_sample_number = max_sample_number
 
+        # datatype will be set to a string describing the type of sample data
+        # stored. This value is an empty string until the first raw datagram
+        # is added. At that point the datatype is set. A raw_data object can
+        # only store 1 type of data. The datatype are:
+        #
+        #   power - contains power data
+        #   power/angle - contains power and angle data
+        #   complex - contains complex data
+        self.datatype = ''
+
         # Data_attributes is an internal list that contains the names of all
         # of the class's "data" properties. The echolab2 package uses this
         # attribute to generalize various functions that manipulate these
         # data.  Here we *extend* the list that is defined in the parent class.
         self._data_attributes += ['configuration',
                                   'environment',
-                                  'motion',
+                                  'filters',
                                   'channel_mode',
                                   'pulse_form',
                                   'frequency',
@@ -830,7 +904,8 @@ class raw_data(ping_data):
                                   'sample_interval',
                                   'slope',
                                   'transmit_power',
-                                  'sample_count']
+                                  'sample_count',
+                                  'sample_offset']
 
 #        # Check if the detected_bottom attribute exists and create it if it
 #        # does not.
@@ -838,10 +913,6 @@ class raw_data(ping_data):
 #            data = np.full(self.ping_time.shape[0], np.nan)
 #            self.add_attribute('detected_bottom', data)
 
-        #  initialize the attributes that store the most recent async data vars
-        self.current_config = None
-        self.current_environment = None
-        self.current_motion = None
 
 
     def empty_like(self, n_pings):
@@ -919,8 +990,23 @@ class raw_data(ping_data):
                                      index_array=index_array)
 
 
-    def append_ping(self, sample_datagram, config_datagram, environment_datagram,
-            motion_datagram, start_sample=None, end_sample=None):
+    def shape(self):
+        '''
+
+        '''
+
+        shape = None
+        if self.datatype == 'power' or self.datatype == 'power/angle':
+            shape = self.power.shape
+        elif self.datatype == 'angle':
+            shape = self.angles_alongship_e.shape
+        elif self.datatype == 'complex':
+            shape = self.complex.shape
+        return shape
+
+
+    def append_ping(self, sample_datagram, config_params, environment_datagram,
+            tx_parms, filters, start_sample=None, end_sample=None):
         """Adds a "pings" worth of data to the object.
 
         This method extracts data from the provided sample_datagram dict and
@@ -944,41 +1030,70 @@ class raw_data(ping_data):
         This method is typically only called by the EK80 class when reading a raw file.
 
         Args:
-            sample_datagram (dict): The dictionary containing the parsed RAW datagram.
+            sample_datagram (dict): The dictionary containing the parsed sample datagram.
             config_datagram (dict): The dictionary containing the parsed XML configuration
-                                    datagram that goes with this RAW data.
+                                    datagram that goes with this sample data.
             environment_datagram (dict): A dictionary containing the latest parsed XML
-                                    environment datagram.
-            motion_datagram (dict): The dictionary containing the parsed MRU motion
-                                    datagram.
+                                         environment datagram.
+            tx_parms (dict): The dictionary containing the most recent XML parameter
+                             datagram for this channel.
+            filters (dict): A dictionary containing this channels filter coefficients
+                            used by the EK80 to filter the received signal.
             start_sample (int):
             end_sample (int):
         """
-        #  determine if and how many samples are currently stored
-        n_complex = 0
-        if sample_datagram['angle']:
-            create_angles = True
-            angle_samps = sample_datagram['angle'].shape[0]
-        else:
-            create_angles = False
-            angle_samps = -1
-        if sample_datagram['power']:
-            create_power = True
-            power_samps = sample_datagram['power'].shape[0]
-        else:
-            create_power = False
-            power_samps = -1
-        if sample_datagram['complex']:
-            create_complex = True
-            complex_samps = sample_datagram['complex'].shape[0]
-            n_complex = sample_datagram['complex'].shape[1]
-        else:
-            create_complex = False
-            complex_samps = -1
 
-        #  If this is the first ping to be stored, perform some bookkeeping
-        #  and create the data arrays
+        # Set some defaults
+        complex_samps = -1
+        power_samps = -1
+        angle_samps = -1
+        n_complex = 0
+        max_data_samples = []
+
+        # The contents of the first ping appended to a raw_data object defines
+        # the datatype and determines how the data arrays will be created. Also,
+        # since a raw_data object can only store one datatype, we disable saving
+        # of the other types.
         if self.n_pings == -1:
+
+            # Set defaults
+            create_complex = False
+            create_power = False
+            create_angles = False
+
+            #  Determine what kind of data we've been given - complex or power/angle
+            if sample_datagram['complex'] is not None:
+                # This is a complex datagram. Store complex data only
+                create_complex = True
+                complex_samps = sample_datagram['complex'].shape[0]
+                n_complex = sample_datagram['complex'].shape[1]
+                self.store_power = False
+                self.store_angles = False
+                self.datatype = 'complex'
+
+            else:
+                # This must be a power, angle, or power/angle datagram
+                # Check if either or both are provided
+                if  sample_datagram['power'] is not None:
+                    create_power = True
+                    self.store_complex = False
+                    power_samps = sample_datagram['power'].shape[0]
+                    self.datatype = 'power'
+
+                if sample_datagram['angle'] is not None:
+                    create_angles = True
+                    self.store_complex = False
+                    angle_samps = sample_datagram['angle'].shape[0]
+                    if create_power:
+                        self.datatype = 'power/angle'
+                    else:
+                        self.store_power = False
+                        self.datatype = 'angle'
+
+                # At this point if we're power, we're not storing angle data
+                if self.datatype == 'power':
+                    self.store_angles = False
+
             #  determine the initial number of samples in our arrays
             if self.max_sample_number:
                 n_samples = self.max_sample_number
@@ -997,28 +1112,45 @@ class raw_data(ping_data):
             # have been allocated.
             self.n_pings  = 0
 
-        # Determine the greatest number of existing samples and the greatest
-        # number of samples in this datagram. In theory the power and angle
-        # arrays should always be the same size, but we'll check all to make
-        # sure.
-        max_data_samples = max(self.power.shape[1],
-                               self.angles_alongship_e.shape[1],
-                               self.angles_athwartship_e.shape[1])
-        max_new_samples = max([power_samps, angle_samps])
+        #  determine the number of samples in this datagram as well
+        # as the number of samples in our data array(s).
+        if self.store_angles:
+            angle_samps = sample_datagram['angle'].shape[0]
+            max_data_samples.append(self.angles_alongship_e.shape[1])
+            max_data_samples.append(self.angles_athwartship_e.shape[1])
+        if self.store_power:
+            power_samps = sample_datagram['power'].shape[0]
+            max_data_samples.append(self.power.shape[1])
+        if self.store_complex:
+            complex_samps = sample_datagram['complex'].shape[0]
+            n_complex = sample_datagram['complex'].shape[1]
+            max_data_samples.append(self.complex.shape[1])
+
+            # Check to ensure the number of sectors hasn't changed.
+            # I am assuming the channel ID will change because the
+            # transducer would have to change for the sectors to change.
+            # If I'm wrong, we need to track this in the EK80 object and
+            # create a new raw_data object for data with different n_complex
+            #  values.
+            if self.complex.shape[2] != n_complex:
+                raise ValueError("The number of complex values changed after object " +
+                        "creation. Why didn't the channel ID change??")
+
+        max_data_samples = max(max_data_samples)
+        max_new_samples = max([power_samps, angle_samps, complex_samps])
 
         # Check if we need to truncate the sample data.
-        if self.max_sample_number and (max_new_samples >
-                                             self.max_sample_number):
+        if self.max_sample_number and (max_new_samples > self.max_sample_number):
             max_new_samples = self.max_sample_number
-            if angle_samps > 0:
-                sample_datagram['angle'] = sample_datagram['angle'][
-                                           0:self.max_sample_number]
-            if power_samps > 0:
-                sample_datagram['power'] = sample_datagram['power'][
-                                           0:self.max_sample_number]
-            if power_samps > 0:
-                sample_datagram['complex'] = sample_datagram['complex'][
-                                           0:self.max_sample_number:]
+            if self.store_angles:
+                sample_datagram['angle'] = \
+                        sample_datagram['angle'][0:self.max_sample_number]
+            if self.store_power:
+                sample_datagram['power'] = \
+                        sample_datagram['power'][0:self.max_sample_number]
+            if self.store_complex:
+                sample_datagram['complex'] = \
+                        sample_datagram['complex'][0:self.max_sample_number:]
 
         # Create 2 variables to store our current array size.
         ping_dims = self.ping_time.size
@@ -1064,65 +1196,36 @@ class raw_data(ping_data):
                 # Roll our array 1 ping.
                 self._roll_arrays(1)
 
-        #  update the asyncronous data vars if required
-        if config_datagram != self.current_config:
-            self.current_config = config_datagram
-        if environment_datagram != self.current_environment:
-            self.current_environment = environment_datagram
-        if motion_datagram != self.current_motion:
-            self.current_motion = motion_datagram
+        # Update the channel configuration dict's end_* values
+        config_params['end_ping'] = self.n_pings
+        config_params['end_time'] = sample_datagram['timestamp']
 
-        self.configuration[this_ping] = self.current_config
-        self.environment[this_ping] = self.current_environment
-        self.motion[this_ping] = self.current_motion
-
-        #  the rest of the arrays store syncronous ping data
-        self.channel_mode = np.empty((n_pings), np.int32)
-        self.pulse_form = np.empty((n_pings), np.int32)
-        self.frequency = np.empty((n_pings), np.float32)
-        self.pulse_duration = np.empty((n_pings), np.float32)
-        self.sample_interval = np.empty((n_pings), np.float32)
-        self.slope = np.empty((n_pings), np.float32)
-        self.transmit_power = np.empty((n_pings), np.float32)
-        self.sample_count = np.empty((n_pings), np.float32)
-
-
-
-        # Insert the channel_metadata object reference for this ping.
-        self.channel_metadata[this_ping] = self.current_metadata
-
-        # Update the channel_metadata object with this ping number and time.
-        self.current_metadata.end_ping = self.n_pings
-        self.current_metadata.end_time = sample_datagram['timestamp']
+        # Insert the config, environment, and filter object references for this ping.
+        self.configuration[this_ping] = config_params
+        self.environment[this_ping] = environment_datagram
+        self.filters[this_ping] = filters
 
         # Now insert the data into our numpy arrays.
         self.ping_time[this_ping] = sample_datagram['timestamp']
-        self.transducer_depth[this_ping] = sample_datagram['transducer_depth']
-        self.frequency[this_ping] = sample_datagram['frequency']
-        self.transmit_power[this_ping] = sample_datagram['transmit_power']
-        self.pulse_length[this_ping] = sample_datagram['pulse_length']
-        self.bandwidth[this_ping] = sample_datagram['bandwidth']
-        self.sample_interval[this_ping] = sample_datagram['sample_interval']
-        self.sound_velocity[this_ping] = sample_datagram['sound_velocity']
-        self.absorption_coefficient[this_ping] = sample_datagram[
-            'absorption_coefficient']
-        self.heave[this_ping] = sample_datagram['heave']
-        self.pitch[this_ping] = sample_datagram['pitch']
-        self.roll[this_ping] = sample_datagram['roll']
-        self.temperature[this_ping] = sample_datagram['temperature']
-        self.heading[this_ping] = sample_datagram['heading']
-        self.transmit_mode[this_ping] = sample_datagram['transmit_mode']
+        self.channel_mode[this_ping] = tx_parms['channel_mode']
+        self.pulse_form[this_ping] = tx_parms['pulse_form']
+        self.frequency[this_ping] = tx_parms['frequency']
+        self.pulse_duration[this_ping] = tx_parms['pulse_duration']
+        self.sample_interval[this_ping] = tx_parms['sample_interval']
+        self.slope[this_ping] = tx_parms['slope']
+        self.transmit_power[this_ping] = tx_parms['transmit_power']
 
-        # Do the book keeping if we're storing a subset of samples.
+        # Update sample count and sample offset values
         if start_sample:
-            self.sample_offset[this_ping] = start_sample
+            self.sample_offset[this_ping] = start_sample + sample_datagram['offset']
+
             if end_sample:
                 self.sample_count[this_ping] = end_sample - start_sample + 1
             else:
                 self.sample_count[this_ping] = sample_datagram['count'] - \
                                                start_sample
         else:
-            self.sample_offset[this_ping] = 0
+            self.sample_offset[this_ping] = sample_datagram['offset']
             start_sample = 0
             if end_sample:
                 self.sample_count[this_ping] = end_sample + 1
@@ -1130,16 +1233,35 @@ class raw_data(ping_data):
                 self.sample_count[this_ping] = sample_datagram['count']
                 end_sample = sample_datagram['count']
 
-        # Now store the 2d "sample" data.  Determine what we need to store
-        # based on operational mode.
-        # 1 = Power only, 2 = Angle only 3 = Power & Angle
+        # Now store the "sample" data.
 
-        # Check if we need to store power data.
-        if sample_datagram['mode'] != 2 and self.store_power:
+        # Check if we need to store complex data.
+        if self.store_complex:
 
             # Get the subset of samples we're storing.
-            power = sample_datagram['power'][start_sample:self.sample_count[
-                this_ping]]
+            complex = sample_datagram['complex'][start_sample:self.sample_count[
+                this_ping],:]
+
+            # Check if we need to pad or trim our sample data.
+            sample_pad = sample_dims - complex.shape[0]
+            if sample_pad > 0:
+                # The data array has more samples than this datagram - we
+                # need to pad the datagram.
+                self.complex[this_ping,:,:] = np.pad(complex,((0,sample_pad),(0,0)),
+                        'constant', constant_values=np.nan)
+            elif sample_pad < 0:
+                # The data array has fewer samples than this datagram - we
+                # need to trim the datagram.
+                self.complex[this_ping,:,:] = complex[0:sample_pad,:]
+            else:
+                # The array has the same number of samples.
+                self.complex[this_ping,:,:] = complex
+
+        # Check if we need to store power data.
+        if self.store_power:
+
+            # Get the subset of samples we're storing.
+            power = sample_datagram['power'][start_sample:self.sample_count[this_ping]]
 
             # Convert the indexed power data to power dB.
             power = power.astype(self.sample_dtype) * self.INDEX2POWER
@@ -1160,7 +1282,7 @@ class raw_data(ping_data):
                 self.power[this_ping,:] = power
 
         # Check if we need to store angle data.
-        if sample_datagram['mode'] != 1 and self.store_angles:
+        if self.store_angles:
 
             # Convert from indexed to electrical angles.
             alongship_e = sample_datagram['angle'] \
@@ -1175,17 +1297,15 @@ class raw_data(ping_data):
             if sample_pad > 0:
                 # The data array has more samples than this datagram - we
                 # need to pad the datagram
-                self.angles_alongship_e[this_ping,:] = np.pad(alongship_e,(0,
-                        sample_pad), 'constant', constant_values=np.nan)
+                self.angles_alongship_e[this_ping,:] = np.pad(alongship_e,
+                        (0,sample_pad), 'constant', constant_values=np.nan)
                 self.angles_athwartship_e[this_ping,:] = np.pad(
-                    athwartship_e,(0,sample_pad),
-                        'constant', constant_values=np.nan)
+                    athwartship_e,(0,sample_pad), 'constant', constant_values=np.nan)
             elif sample_pad < 0:
                 # The data array has fewer samples than this datagram - we
                 # need to trim the datagram.
                 self.angles_alongship_e[this_ping,:] = alongship_e[0:sample_pad]
-                self.angles_athwartship_e[this_ping,:] = athwartship_e[
-                                                         0:sample_pad]
+                self.angles_athwartship_e[this_ping,:] = athwartship_e[0:sample_pad]
             else:
                 # The array has the same number of samples.
                 self.angles_alongship_e[this_ping,:] = alongship_e
@@ -2120,9 +2240,10 @@ class raw_data(ping_data):
         #  create the arrays that contain references to the async data objects
         self.configuration = np.empty((n_pings), dtype='object')
         self.environment = np.empty((n_pings), dtype='object')
-        self.motion = np.empty((n_pings), dtype='object')
+        self.filters = np.empty((n_pings), dtype='object')
 
         #  the rest of the arrays store syncronous ping data
+        self.sample_offset = np.empty((n_pings), np.int32)
         self.channel_mode = np.empty((n_pings), np.int32)
         self.pulse_form = np.empty((n_pings), np.int32)
         self.frequency = np.empty((n_pings), np.float32)
@@ -2130,23 +2251,27 @@ class raw_data(ping_data):
         self.sample_interval = np.empty((n_pings), np.float32)
         self.slope = np.empty((n_pings), np.float32)
         self.transmit_power = np.empty((n_pings), np.float32)
-        self.sample_count = np.empty((n_pings), np.float32)
+        self.sample_count = np.empty((n_pings), np.int32)
 
         #  and the 2d sample data arrays
-        if create_angles and self.store_power:
+        if create_power and self.store_power:
             self.power = np.empty((n_pings, n_samples),
                 dtype=self.sample_dtype, order='C')
             self.n_samples = n_samples
+            self._data_attributes.append('power')
         if create_angles and self.store_angles:
             self.angles_alongship_e = np.empty((n_pings, n_samples),
                 dtype=self.sample_dtype, order='C')
+            self._data_attributes.append('angles_alongship_e')
             self.angles_athwartship_e = np.empty((n_pings, n_samples),
                 dtype=self.sample_dtype, order='C')
+            self._data_attributes.append('angles_athwartship_e')
             self.n_samples = n_samples
         if create_complex and self.store_complex:
             self.complex = np.empty((n_pings, n_samples,n_complex),
                 dtype=np.complex64, order='C')
-            self.n_complex = np.empty((n_pings), np.int32)
+            self._data_attributes.append('complex')
+            self.n_complex = n_complex
             self.complex_dtype = np.empty((n_pings), dtype='object')
             self.n_samples = n_samples
 
@@ -2210,193 +2335,6 @@ class raw_data(ping_data):
 
         return msg
 
-
-class ChannelMetadata(object):
-    """
-    The ChannelMetadata class stores the channel configuration data as well as
-    some metadata about the transceiver and file. One of these is created for each
-    channel for every transceiver in every .raw file read.
-
-    References to instances of these objects are stored in the raw_data class.
-    """
-
-    def __init__(self, file, header_xml, transceiver_xml, channel_xml, xducer1_xml,
-            xducer2_xml, start_ping, start_time):
-
-        # Split the filename.
-        file = os.path.normpath(file).split(os.path.sep)
-
-        # Store the base filename and path separately.
-        self.data_file = file[-1]
-        self.data_file_path = os.path.sep.join(file[0:-1])
-
-        # Define some basic metadata properties.
-        self.start_ping = start_ping
-        self.end_ping = 0
-        self.start_time = start_time
-        self.end_time = None
-
-        #  populate with data
-        self.set_header(header_xml)
-        self.set_transceiver_metadata(transceiver_xml)
-        self.set_channel_metadata(channel_xml)
-        self.set_transducer_metadata(xducer1_xml, xducer2_xml)
-
-
-    def set_header(self, header_el):
-
-        self.copyright = header_el['Copyright']
-        self.application_name = header_el['ApplicationName']
-        self.application_version = header_el['Version']
-        self.file_format_version = header_el['FileFormatVersion']
-        self.time_bias = header_el['TimeBias']
-
-
-    def get_header(self):
-
-        header = {'Copyright':self.copyright,
-                  'ApplicationName':self.application_name,
-                  'Version':self.application_version,
-                  'FileFormatVersion':self.file_format_version,
-                  'TimeBias':self.time_bias,
-                   }
-
-        return header
-
-
-    def set_transceiver_metadata(self, transceiver_el):
-
-        self.transceiver_name = transceiver_el['TransceiverName']
-        self.ethernet_address = transceiver_el['EthernetAddress']
-        self.ip_address = transceiver_el['IPAddress']
-        self.transceiver_version = transceiver_el['Version']
-        self.transceiver_software_version = transceiver_el['TransceiverSoftwareVersion']
-        self.transceiver_number = int(transceiver_el['TransceiverNumber'])
-        self.market_segment = transceiver_el['MarketSegment']
-        self.transceiver_type = transceiver_el['TransceiverType']
-        self.serial_number = transceiver_el['SerialNumber']
-        self.impedance = int(transceiver_el['Impedance'])
-
-
-    def get_transceiver_metadata(self):
-
-        transceiver = {'TransceiverName':self.transceiver_name,
-                        'EthernetAddress':self.ethernet_address,
-                        'IPAddress':self.ip_address,
-                        'Version':self.transceiver_version,
-                        'TransceiverSoftwareVersion':self.transceiver_software_version,
-                        'TransceiverNumber':str(self.transceiver_number),
-                        'MarketSegment':self.market_segment,
-                        'TransceiverType':self.transceiver_type,
-                        'SerialNumber':self.serial_number,
-                        'Impedance':str(self.impedance)
-                        }
-
-        return transceiver
-
-
-    def set_channel_metadata(self, chan_el):
-
-        self.channel_id = chan_el['ChannelID']
-        self.channel_id_short = chan_el['ChannelIdShort']
-        self.max_tx_power_transceiver = int(chan_el['MaxTxPowerTransceiver'])
-        self.pulse_duration = []
-        for p in chan_el['PulseDuration'].split(';'):
-            self.pulse_duration.append(float(p))
-        self.sample_interval = []
-        for p in chan_el['SampleInterval'].split(';'):
-            self.sample_interval.append(float(p))
-        self.hw_channel_configuration = chan_el['HWChannelConfiguration']
-
-
-    def get_channel_metadata(self):
-
-        pulse_duration = ';'.join(str(pd) for pd in self.pulse_duration)
-        sample_interval = ';'.join(str(si) for si in self.sample_interval)
-
-        channel = {'ChannelID':self.channel_id,
-                   'ChannelIdShort':self.channel_id_short,
-                   'MaxTxPowerTransceiver':self.max_tx_power_transceiver,
-                   'PulseDuration':pulse_duration,
-                   'SampleInterval':sample_interval,
-                   'HWChannelConfiguration':self.hw_channel_configuration
-                   }
-
-        return channel
-
-
-    def set_transducer_metadata(self, td1_el, td2_el):
-
-        self.transducer_name = td1_el['TransducerName']
-        self.transducer_serial_number = td1_el['SerialNumber']
-        self.transducer_frequency = float(td1_el['Frequency'])
-        self.transducer_freq_min = float(td1_el['FrequencyMinimum'])
-        self.transducer_freq_max = float(td1_el['FrequencyMaximum'])
-        self.transducer_beam_type = int(td1_el['BeamType'])
-        self.gain = []
-        for p in td1_el['Gain'].split(';'):
-            self.gain.append(float(p))
-        self.sa_correction = []
-        for p in td1_el['SaCorrection'].split(';'):
-            self.sa_correction.append(float(p))
-        self.max_tx_power_transducer = float(td1_el['MaxTxPowerTransducer'])
-        self.equivalent_beam_angle = float(td1_el['EquivalentBeamAngle'])
-        self.beamwidth_alongship = float(td1_el['BeamWidthAlongship'])
-        self.beamwidth_athwartship = float(td1_el['BeamWidthAthwartship'])
-        self.angle_sensitivity_alongship = float(td1_el['AngleSensitivityAlongship'])
-        self.angle_sensitivity_athwartship = float(td1_el['AngleSensitivityAthwartship'])
-        self.angle_offset_alongship = float(td1_el['AngleOffsetAlongship'])
-        self.angle_offset_athwartship = float(td1_el['AngleOffsetAthwartship'])
-        self.directivity_drop = float(td1_el['DirectivityDropAt2XBeamWidth'])
-
-
-        self.transducer_mounting = td2_el['TransducerMounting']
-        self.transducer_custom_name = td2_el['TransducerCustomName']
-        self.transducer_orientation = td2_el['TransducerOrientation']
-        self.transducer_offset_x = float(td2_el['TransducerOffsetX'])
-        self.transducer_offset_y = float(td2_el['TransducerOffsetY'])
-        self.transducer_offset_z = float(td2_el['TransducerOffsetZ'])
-        self.transducer_alpha_x = float(td2_el['TransducerAlphaX'])
-        self.transducer_alpha_y = float(td2_el['TransducerAlphaY'])
-        self.transducer_alpha_z = float(td2_el['TransducerAlphaZ'])
-
-
-    def get_transducer_metadata(self):
-
-        gain = ';'.join(str(pd) for pd in self.gain)
-        sa_correction = ';'.join(str(si) for si in self.sa_correction)
-
-        td1 = {'TransducerName':self.transducer_name,
-                'SerialNumber':self.transducer_serial_number,
-                'Frequency':str(self.transducer_frequency),
-                'FrequencyMinimum':str(self.transducer_freq_min),
-                'FrequencyMaximum':str(self.transducer_freq_max),
-                'BeamType':self.transducer_beam_type,
-                'Gain':gain,
-                'SaCorrection':sa_correction,
-                'MaxTxPowerTransducer':str(self.max_tx_power_transducer),
-                'EquivalentBeamAngle':str(self.equivalent_beam_angle),
-                'BeamWidthAlongship':str(self.beamwidth_alongship),
-                'BeamWidthAthwartship':str(self.beamwidth_athwartship),
-                'AngleSensitivityAlongship':str(self.angle_sensitivity_alongship),
-                'AngleSensitivityAthwartship':str(self.angle_sensitivity_athwartship),
-                'AngleOffsetAlongship':str(self.angle_offset_alongship),
-                'AngleOffsetAthwartship':str(self.angle_offset_athwartship),
-                'DirectivityDropAt2XBeamWidth':str(self.directivity_drop),
-                }
-
-        td2 = {'TransducerMounting': self.transducer_mounting,
-                'TransducerCustomName': self.transducer_custom_name,
-                'TransducerOrientation': self.transducer_orientation,
-                'TransducerOffsetX': str(self.transducer_offset_x),
-                'TransducerOffsetY': str(self.transducer_offset_y),
-                'TransducerOffsetZ': str(self.transducer_offset_z),
-                'TransducerAlphaX': str(self.transducer_alpha_x),
-                'TransducerAlphaY': str(self.transducer_alpha_y),
-                'TransducerAlphaZ': str(self.transducer_alpha_z)
-                }
-
-        return (td1,td2)
 
 
 

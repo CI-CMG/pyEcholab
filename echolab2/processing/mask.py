@@ -29,10 +29,10 @@
 
 import numpy as np
 import matplotlib
-from ..ping_data import PingData
+from ..ping_data import ping_data
 
 
-class Mask(PingData):
+class Mask(ping_data):
     # TODO:   add description of class and attributes to the docstring.
     """
     DESCRIPTION OF CLASS AND ATTRIBUTES

@@ -714,18 +714,26 @@ class ping_data(object):
             ndarray.resize and numpy.resize don't maintain the order of the
             data in these cases.
             """
-
-            # If the minor axis is changing, we have to either concatenate or
-            # copy into a new resized array.  We take the second approach
-            # for now, as there shouldn't be a performance differences between
-            # the two approaches.
-
             # Create a new array.
             new_array = np.empty((ping_dim, sample_dim))
             # Fill it with NaNs.
             new_array.fill(np.nan)
             # Copy the data into our new array and return it.
             new_array[0:data.shape[0], 0:data.shape[1]] = data
+            return new_array
+
+
+        def _resize3d(data, ping_dim, sample_dim, sector_dim):
+            """
+            _resize3d returns a new array of the specified dimensions with the
+            data from the provided array copied into it. Same reasoning as above.
+            """
+            # Create a new array.
+            new_array = np.empty((ping_dim, sample_dim, sector_dim))
+            # Fill it with NaNs.
+            new_array.fill(np.nan)
+            # Copy the data into our new array and return it.
+            new_array[0:data.shape[0], 0:data.shape[1],:] = data
             return new_array
 
         # Store the old sizes.
@@ -765,6 +773,16 @@ class ping_data(object):
                     # If the minor axes is changing, we need to use our
                     # resize2d function.
                     attr = _resize2d(attr, new_ping_dim, new_sample_dim)
+            elif attr.ndim == 3:
+                # Resize this 3d sample data array.
+                if new_sample_dim == old_sample_dim:
+                    # If the minor axes isn't changing, we can use
+                    # np.resize() function.
+                    attr = np.resize(attr,(new_ping_dim, new_sample_dim, self.n_complex))
+                else:
+                    # If the minor axes is changing, we need to use our
+                    # resize2d function.
+                    attr = _resize3d(attr, new_ping_dim, new_sample_dim, self.n_complex)
 
             #  Update the attribute.
             setattr(self, attr_name, attr)
