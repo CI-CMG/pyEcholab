@@ -32,7 +32,7 @@ import matplotlib
 from ..ping_data import ping_data
 
 
-class Mask(ping_data):
+class mask(ping_data):
     # TODO:   add description of class and attributes to the docstring.
     """
     DESCRIPTION OF CLASS AND ATTRIBUTES
@@ -53,7 +53,7 @@ class Mask(ping_data):
 
         Creates and sets several internal properties.
         """
-        super(Mask, self).__init__()
+        super(mask, self).__init__()
 
         # Ensure the value arg is a bool.
         value = bool(value)
@@ -173,7 +173,7 @@ class Mask(ping_data):
             else:
                 raise TypeError('Unknown mask type: ' + mask_type)
 
-        elif isinstance(like_obj, Mask):
+        elif isinstance(like_obj, mask):
             # Base this mask off of another mask.  Copy the rest of the
             # attributes.
             self.type = like_obj.type
@@ -219,9 +219,6 @@ class Mask(ping_data):
         This method sets mask elements above the line object to the value
         specified by the above keyword and mask elements below the
         line to the value specified by the below keyword.
-
-        NOTE: This is a place holder. A method similar to this should be
-        implemented.
 
         Args:
             line_obj (ProcessedData obj): The line object the mask refers to.
@@ -643,7 +640,7 @@ class Mask(ping_data):
                 ret_mask = self
             else:
                 # Create and return a new mask.
-                ret_mask = Mask(like=self)
+                ret_mask = mask(like=self)
 
         return other_mask, ret_mask
 

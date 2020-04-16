@@ -416,7 +416,8 @@ class nmea_data(object):
         # Add the processed data object ping_time array to the out_data array
         # and return.
         out_data['ping_time'] = p_data.ping_time.copy()
-        return out_data
+
+        return (field, out_data)
 
         #  Old code used to add fields to the processed data object.
         # Keeping just in case.

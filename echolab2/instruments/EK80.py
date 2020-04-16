@@ -14,7 +14,7 @@
 # OR (2) TO PROVIDE TECHNICAL SUPPORT TO USERS.
 
 '''
-.. module:: echolab2.instruments.EK*0
+.. module:: echolab2.instruments.EK80
 
     :synopsis:  A high-level interface for reading SIMRAD ".raw" formatted
                 files written by the Simrad EK80 WBES system
@@ -760,7 +760,7 @@ class EK80(object):
 
             for channel_id in self.channel_ids:
                 for raw in self.raw_data[channel_id]:
-                    msg = msg + ("        " + channel_id + " (" + raw.datatype + ") " + str(raw.shape()) + "\n")
+                    msg = msg + ("        " + channel_id + " :: " + raw.datatype + " " + str(raw.shape) + "\n")
             msg = msg + ("    data start time: " + str(self.start_time) + "\n")
             msg = msg + ("      data end time: " + str(self.end_time) + "\n")
             msg = msg + ("    number of pings: " + str(self.end_ping -
@@ -990,21 +990,6 @@ class raw_data(ping_data):
                                      index_array=index_array)
 
 
-    def shape(self):
-        '''
-
-        '''
-
-        shape = None
-        if self.datatype == 'power' or self.datatype == 'power/angle':
-            shape = self.power.shape
-        elif self.datatype == 'angle':
-            shape = self.angles_alongship_e.shape
-        elif self.datatype == 'complex':
-            shape = self.complex.shape
-        return shape
-
-
     def append_ping(self, sample_datagram, config_params, environment_datagram,
             tx_parms, filters, start_sample=None, end_sample=None):
         """Adds a "pings" worth of data to the object.
@@ -1070,6 +1055,8 @@ class raw_data(ping_data):
                 self.store_power = False
                 self.store_angles = False
                 self.datatype = 'complex'
+                #  for complex data, we set the sample array type to complex64
+                self.sample_dtype = np.complex64
 
             else:
                 # This must be a power, angle, or power/angle datagram
@@ -1310,6 +1297,18 @@ class raw_data(ping_data):
                 # The array has the same number of samples.
                 self.angles_alongship_e[this_ping,:] = alongship_e
                 self.angles_athwartship_e[this_ping,:] = athwartship_e
+
+
+    def get_calibration(self):
+        """Returns a calibration object populated from the data contained in this
+        raw_data object.
+
+        """
+
+        cal_obj = calibration()
+        cal_obj.from_raw_data(self)
+
+        return cal_obj
 
 
     def get_power(self, **kwargs):
@@ -1845,14 +1844,13 @@ class raw_data(ping_data):
         # First, create a dict with key names that match the attributes names
         # of the calibration parameters we require for this method.
         cal_parms = {'sample_interval':None,
-                     'sound_velocity':None,
+                     'sound_speed':None,
                      'sample_offset':None}
 
         # Next, iterate through the dictionary calling the method to extract
         # the values for each parameter.
         for key in cal_parms:
-            cal_parms[key] = self._get_calibration_param(calibration, key,
-                                                         return_indices)
+            cal_parms[key] = self._get_calibration_param(calibration, key, return_indices)
 
         # Check if we have multiple sample offset values and get the minimum.
         unique_sample_offsets = np.unique(
@@ -1867,12 +1865,10 @@ class raw_data(ping_data):
             # There are at least 2 different sample intervals in the data.  We
             # must resample the data.  We'll deal with adjusting sample offsets
             # here too.
-            (output, sample_interval) = self._vertical_resample(data[
-                                                            return_indices],
-                    cal_parms['sample_interval'], unique_sample_interval,
-                                                            resample_interval,
+            (output, sample_interval) = self._vertical_resample(data[return_indices],
+                    cal_parms['sample_interval'], unique_sample_interval, resample_interval,
                     cal_parms['sample_offset'], min_sample_offset,
-                                            is_power=property_name == 'power')
+                    is_power=property_name == 'power')
         else:
             # We don't have to resample, but check if we need to shift any
             # samples based on their sample offsets.
@@ -1881,7 +1877,7 @@ class raw_data(ping_data):
                 # the samples.
                 output = self._vertical_shift(data[return_indices],
                         cal_parms['sample_offset'], unique_sample_offsets,
-                                              min_sample_offset)
+                        min_sample_offset)
             else:
                 # The data all have the same sample intervals and sample
                 # offsets.  Simply copy the data as is.
@@ -1909,19 +1905,15 @@ class raw_data(ping_data):
                 min_sample_offset)
 
             # Get an array of indexes in the output array to interpolate.
-            pings_to_interp = np.where(cal_parms['sound_velocity'] !=
-                                       sound_velocity)[0]
+            pings_to_interp = np.where(cal_parms['sound_velocity'] != sound_velocity)[0]
 
             # Iterate through this list of pings to change.  Interpolating each
             # ping.
             for ping in pings_to_interp:
                 # Resample using the provided sound speed.
-                resample_range = get_range_vector(output.shape[1],
-                                                  sample_interval,
+                resample_range = get_range_vector(output.shape[1], sample_interval,
                         cal_parms['sound_velocity'][ping], min_sample_offset)
-
-                output[ping,:] = np.interp(range, resample_range, output[
-                                                                  ping, :])
+                output[ping,:] = np.interp(range, resample_range, output[ping, :])
 
         else:
             # We have a fixed sound speed and only need to calculate a single
@@ -2054,7 +2046,7 @@ class raw_data(ping_data):
 
         Args:
             p_data: A processed data object containing data to convert.
-            calibration (calibration object): The data calibration object where
+            calibration (calibration object): The calibration object where
                 calibration data will be retrieved.
             heave_correct (bool): Set to True to apply heave correction.
             return_indices (array): A numpy array of indices to return.
@@ -2066,11 +2058,13 @@ class raw_data(ping_data):
         cal_parms = {'transducer_depth':None,
                      'heave':None}
 
+
+
         # Next, iterate through the dictionary, calling the method to extract
         # the values for each parameter.
         for key in cal_parms:
-            cal_parms[key] = self._get_calibration_param(calibration, key,
-                                                         return_indices)
+            cal_parms[key] = self._get_calibration_param(calibration,
+                    key, return_indices)
 
         # Check if we're applying heave correction and/or returning depth by
         # applying a transducer offset.
@@ -2091,32 +2085,35 @@ class raw_data(ping_data):
                                dtype='float32'):
         """Retrieves calibration parameter values.
 
-        This method interrogates the provided cal_object for the provided
-        param_name property and returns the parameter values based on what it
-        finds. It handles 4 cases:
+        This method returns appropriately sized arrays containing the calibration
+        parameter specified in param_name. The calibration object's attributes
+        can be set to None, to a scalar value, or to a 1d array and this function
+        creates and fills these arrays based on the data in the calibration object
+        and the value passed to return_indices. It handles 4 cases:
 
-            If the user has provided a scalar calibration value, the function
+            If the calibration object's parameter is a scalar value, the function
             will return a 1D array the length of return_indices filled with
             that scalar.
 
-            If the user has provided a 1D array the length of return_indices, it
-            will return that array without modification.
+            If the calibration object's parameter is a 1D array the length of
+            return_indices, it will return that array without modification.
 
-            If the user has provided a 1D array the length of self.ping_time, it
-            will return a 1D array the length of return_indices that is the
-            subset of this data defined by the return_indices index array.
+            If the calibration object's parameter is a 1D array the length of
+            self.ping_time, it will return a 1D array the length of return_indices
+            that is the subset of this data defined by the return_indices index
+            array.
 
-            Lastly, if the user has not provided anything, this function will
+            Lastly, If the calibration object's parameter is None this function will
             return a 1D array the length of return_indices filled with data
             extracted from the raw data object.
 
         Args:
-            cal_object (calibration object): The calibration object where
+            cal_object (calibration object): The calibration object from which
                 parameter values will be retrieved.
             param_name (str):  Attribute name needed to get parameter value in
                 calibration object.
             return_indices (array): A numpy array of indices to return.
-            dtype (str): Data type
+            dtype (str): Numpy data type of the returned array.
 
         Raises:
             ValueError: The calibration parameter array is the wrong length.
@@ -2127,16 +2124,9 @@ class raw_data(ping_data):
             A numpy array, param_data, with calibration parameter values.
         """
 
-        # Check if the calibration object has the attribute we're looking for.
-        use_cal_object = False
-        if cal_object and hasattr(cal_object, param_name):
-            # Try to get the parameter from the calibration object.
-            param = getattr(cal_object, param_name)
-            if param is not None:
-                use_cal_object = True
+        param = getattr(cal_object, param_name)
 
-        if use_cal_object:
-            # The cal object seems to have our data - give it a go.
+        if param:
 
             # Check if the input param is a numpy array.
             if isinstance(param, np.ndarray):
@@ -2161,9 +2151,7 @@ class raw_data(ping_data):
                     raise ValueError("The calibration parameter array " +
                                      param_name + " is the wrong length.")
             # It is not an array.  Check if it is a scalar int or float.
-            elif type(param) == int or type(param) == float or type(param) ==\
-                    np.float64:
-
+            elif type(param) in [int, float, np.float32, np.float64]:
                     param_data = np.empty((return_indices.shape[0]),
                                               dtype=dtype)
                     param_data.fill(param)
@@ -2172,47 +2160,10 @@ class raw_data(ping_data):
                 raise ValueError("The calibration parameter " + param_name +
                         " must be an ndarray or scalar float.")
         else:
-            # Parameter is not provided in the calibration object, copy it
-            # from the raw data.  Calibration parameters are found directly
-            # in the raw_data object and they are in the channel_metadata
-            # objects.  If we don't find it directly in raw_data, then we need
-            # to fish it out of the channel_metadata objects.
-            try:
-                # First check if this parameter is a direct property in
-                # raw_data.
-                self_param = getattr(self, param_name)
-                # It is, so return a view of the subset of data we're
-                # interested in.
-                param_data = self_param[return_indices]
-            except:
-                # It is not a direct property, so it must be in the
-                # channel_metadata object.  Create the return array.
-                param_data = np.empty((return_indices.shape[0]), dtype=dtype)
-                # Create a counter to use to index the return array. We can't
-                # use the index value from return_indices since these values
-                # may be re-ordered.
-                ret_idx = 0
-                # Populate with the data found in the channel_metadata objects.
-
-                for idx in return_indices:
-                    # Dig out sa_correction from the table.
-                    if isinstance(self.channel_metadata[idx],
-                                  ChannelMetadata):
-                        if param_name == 'sa_correction':
-                            sa_table = getattr(self.channel_metadata[idx],
-                                               'sa_correction_table')
-                            pl_table = getattr(self.channel_metadata[idx],
-                                               'pulse_length_table')
-                            param_data[ret_idx] = sa_table[
-                                np.where(np.isclose(
-                                    pl_table, self.pulse_length[idx]))[0]][0]
-                        else:
-                            param_data[ret_idx] = getattr(
-                                self.channel_metadata[idx], param_name)
-                    else:
-                        param_data[ret_idx] = np.nan
-                    # Increment the index counter.
-                    ret_idx += 1
+            # Parameter is not provided in the calibration object, extract it
+            # from the raw data.
+            param_data = cal_object.get_attribute_from_raw(self, param_name,
+                    return_indices=return_indices)
 
         return param_data
 
@@ -2269,23 +2220,27 @@ class raw_data(ping_data):
             self.n_samples = n_samples
         if create_complex and self.store_complex:
             self.complex = np.empty((n_pings, n_samples,n_complex),
-                dtype=np.complex64, order='C')
+                dtype=self.sample_dtype, order='C')
             self._data_attributes.append('complex')
             self.n_complex = n_complex
             self.complex_dtype = np.empty((n_pings), dtype='object')
             self.n_samples = n_samples
 
+        #  update our shape attribute
+        self._shape()
+
         # Check if we should initialize them.
         if initialize:
             self.ping_time.fill(np.datetime64('NaT'))
-            self.channel_mode.fill(np.nan)
-            self.pulse_form.fill(np.nan)
+            self.sample_offset.fill(np.nan)
+            self.channel_mode.fill(0)
+            self.pulse_form.fill(0)
             self.frequency.fill(np.nan)
             self.pulse_duration.fill(np.nan)
             self.sample_interval.fill(np.nan)
             self.slope.fill(np.nan)
             self.transmit_power.fill(np.nan)
-            self.sample_count.fill(np.nan)
+            self.sample_count.fill(0)
 
             if create_angles and self.store_power:
                 self.power.fill(np.nan)
@@ -2336,13 +2291,10 @@ class raw_data(ping_data):
         return msg
 
 
-
-
-class CalibrationParameters(object):
+class calibration(object):
     """
-    The CalibrationParameters class contains parameters required for
-    transforming power and electrical angle data to Sv/sv TS/SigmaBS and
-    physical angles.
+    The calibration class contains parameters required for transforming power,
+    electrical angle, and complex data to Sv/sv TS/SigmaBS and physical angles.
 
     When converting raw data to power, Sv/sv, Sp/sp, or to physical angles
     you have the option of passing a calibration object containing the data
@@ -2357,7 +2309,7 @@ class CalibrationParameters(object):
 
     If you set any attribute to None, that attribute's values will be obtained
     from the raw_data object which contains the value at the time of recording.
-    If you do not pass a CalibrationParameters object to the conversion methods
+    If you do not pass a calibration object to the conversion methods
     *all* of the cal parameter values will be extracted from the raw_data
     object.
     """
@@ -2367,38 +2319,28 @@ class CalibrationParameters(object):
         # Set the initial calibration property values.
         self.channel_id = None
 
-        self.sample_offset = None
-        self.sound_velocity = None
-        self.sample_interval = None
-        self.absorption_coefficient = None
-        self.heave = None
-        self.equivalent_beam_angle = None
-        self.gain  = None
-        self.sa_correction = None
-        self.transmit_power = None
-        self.pulse_length = None
-        self.angle_sensitivity_alongship = None
-        self.angle_sensitivity_athwartship = None
-        self.angle_offset_alongship = None
-        self.angle_offset_athwartship = None
-        self.transducer_depth = None
+        #  these attributes are properties of the raw_data class
+        self._raw_attributes = ['sample_offset', 'channel_mode', 'pulse_form', 'frequency',
+                'pulse_duration' ,'sample_interval' ,'slope' ,'sample_count', 'transmit_power']
+        self._init_attributes(self._raw_attributes)
 
-        # Create a list that contains the attribute names of the parameters.
-        self._parms = ['sample_interval',
-                       'sound_velocity',
-                       'sample_offset',
-                       'transducer_depth',
-                       'heave',
-                       'gain',
-                       'transmit_power',
-                       'equivalent_beam_angle',
-                       'pulse_length',
-                       'absorption_coefficient',
-                       'sa_correction',
-                       'angle_sensitivity_alongship',
-                       'angle_sensitivity_athwartship',
-                       'angle_offset_alongship',
-                       'angle_offset_athwartship']
+        #  these attributes are found in the configuration datagram
+        self._config_attributes = ['pulse_duration_fm', 'gain' ,'sa_correction', 'equivalent_beam_angle',
+                'angle_sensitivity_alongship', 'angle_sensitivity_athwartship', 'angle_offset_alongship',
+                'angle_offset_athwartship', 'beam_width_alongship', 'beam_width_athwartship',
+                'directivity_drop_at_2x_beam_width', 'transducer_offset_x', 'transducer_offset_y',
+                'transducer_offset_z', 'transducer_alpha_x', 'transducer_alpha_y', 'transducer_alpha_z',
+                'transducer_name', 'hw_channel_configuration', 'rx_sample_frequency', 'time_bias']
+        self._init_attributes(self._config_attributes)
+
+        # These attributes are found in the environment datagrams
+        self._environment_attributes = ['depth', 'acidity', 'salinity', 'sound_speed', 'temperature',
+                'latitude', 'transducer_sound_speed', 'sound_velocity_profile']
+        self._init_attributes(self._environment_attributes)
+
+        # These attributes are contained in the async motion datagrams
+        self._motion_attributes = ['heave', 'pitch', 'roll', 'heading']
+        self._init_attributes(self._motion_attributes)
 
 
     def from_raw_data(self, raw_data, return_indices=None):
@@ -2420,51 +2362,93 @@ class CalibrationParameters(object):
         if return_indices is None:
             return_indices = np.arange(raw_data.ping_time.shape[0])
 
-        # Work through the calibration parameters and extract them from the
-        # raw_data object.
-        for param_name in self._parms:
-            # Calibration parameters are found directly in the raw_data
-            # object and they are in the ChannelMetadata objects.  If we
-            # don't find it directly in raw_data then we need to fish it out
-            # of the ChannelMetadata objects.
-            try:
-                # First check if this parameter is a direct property in
-                # raw_data.
-                raw_param = getattr(raw_data, param_name)
-                param_data = raw_param[return_indices].copy()
-            except:
-                # It is not a direct property so it must be in the
-                # ChannelMetadata object.  Create the return array.
-                param_data = np.empty((return_indices.shape[0]))
-                # Create a counter to use to index the return array. We can't
-                # use the index value from return_indices since these values
-                # may be re-ordered.
-                ret_idx = 0
-                # Then populate with the data found in the ChannelMetadata
-                # objects.
+        # Extract the direct attributes - these are calibration params
+        # stored as top level attributes in the raw_data class
+        for param_name in self._raw_attributes:
+            self.set_attribute_from_raw(raw_data, param_name,
+                    return_indices=return_indices)
 
-                for idx in return_indices:
-                    # Dig out sa_correction from the table.
-                    if isinstance(raw_data.channel_metadata[idx],
-                                   ChannelMetadata):
-                        if param_name == 'sa_correction':
-                            sa_table = getattr(raw_data.channel_metadata[
-                                                   idx], 'sa_correction_table')
-                            pl_table = getattr(raw_data.channel_metadata[
-                                                   idx], 'pulse_length_table')
-                            param_data[ret_idx] = sa_table[np.where(
-                                np.isclose(pl_table, raw_data.pulse_length[
-                                    idx]))[0]][0]
-                        else:
-                            param_data[ret_idx] = getattr(
-                                self.channel_metadata[idx], param_name)
-                    else:
-                        param_data[ret_idx] = np.nan
-                    # Increment the index counter
-                    ret_idx += 1
+        # Extract attributes from the configuration dict - these are
+        # attribues that are stored in the .raw file configuration
+        # datagram and apply to all data within a .raw file
+        for param_name in self._config_attributes:
+            self.set_attribute_from_raw(raw_data, param_name,
+                    return_indices=return_indices)
 
-            # Check if we can collapse the vector - if all the values are the
-            # same, we set the parameter to a scalar value.
+        # Extract attributes from the environment datagrams
+        for param_name in self._environment_attributes:
+            self.set_attribute_from_raw(raw_data, param_name,
+                    return_indices=return_indices)
+
+        # Extract the motion attributes
+        for param_name in self._motion_attributes:
+            self.set_attribute_from_raw(raw_data, param_name,
+                    return_indices=return_indices)
+
+
+    def read_ecs_file(self, ecs_file, channel):
+        """Reads an echoview ecs file and parses out the
+        parameters for a given channel.
+        """
+
+        current_section = ''
+        current_transceiver = ''
+
+
+        with open(ecs_file, 'r') as fp:
+            line = fp.readline()
+
+
+    def get_attribute_from_raw(self, raw_data, param_name, return_indices=None):
+        """get_attribute_from_raw gets an individual attribute using the data
+        within the provided raw_data object.
+        """
+        param_data = None
+
+        # If we're not given specific indices, grab everything.
+        if return_indices is None:
+            return_indices = np.arange(raw_data.ping_time.shape[0])
+
+        if param_name in self._raw_attributes:
+            # Extract data from raw_data attribues
+            raw_param = getattr(raw_data, param_name)
+            param_data = raw_param[return_indices].copy()
+
+        elif param_name in self._config_attributes:
+            # Extract configuration data
+            param_data = np.empty((return_indices.shape[0]))
+            ret_idx = 0
+            for idx in return_indices:
+                param_data[ret_idx] = raw_data.configuration[param_name]
+                ret_idx += 1
+
+        elif param_name in self._environment_attributes:
+            # Extract environmental data
+            param_data = np.empty((return_indices.shape[0]))
+            ret_idx = 0
+            for idx in return_indices:
+                param_data[ret_idx] = raw_data.environment[param_name]
+                ret_idx += 1
+
+        elif param_name in self._motion_attributes:
+            start_time = np.min(self.ping_time[return_indices])
+            end_time = np.max(self.ping_time[return_indices])
+            self.interpolate( p_data, start_time=start_time, end_time=end_time,
+                attributes=[param_name])
+
+        return param_data
+
+
+    def set_attribute_from_raw(self, raw_data, param_name, return_indices=None):
+        """set_attribute_from_raw updates an individual attribute using the data
+        within the provided raw_data object.
+        """
+        param_data = self.get_attribute_from_raw(raw_data, param_name,
+            return_indices=return_indices)
+
+        # If param_data is not none, update the attribute
+        if param_data:
+            # Check if we can collapse the vector
             if np.all(np.isclose(param_data, param_data[0])):
                 # This parameter's values are all the same.
                 param_data = param_data[0]
@@ -2473,9 +2457,11 @@ class CalibrationParameters(object):
             setattr(self, param_name, param_data)
 
 
-    def read_ecs_file(self, ecs_file, channel):
-        """Reads an echoview ecs file and parses out the
-        parameters for a given channel.
+    def _init_attributes(self, attributes):
+        """ Internal method to initialize the provided attribute to None
         """
-        pass
+
+        for attribute in attributes:
+            # Add the attribute
+            setattr(self, attribute, None)
 

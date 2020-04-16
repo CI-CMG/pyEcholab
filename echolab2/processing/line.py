@@ -43,41 +43,41 @@ def empty_like(obj, name=None, color=None, linestyle=None,
     line will have the default line attributes if not explicitly provided.
 
     Args:
-        obj (Line or ProcessedData object): The Line or ProcessedData object
+        obj (line or ProcessedData object): The line or ProcessedData object
         instance that is the template for the new object being created.
-        name (str): Optional name for the new Line object.
-        color (): Optional color for the new Line object.
+        name (str): Optional name for the new line object.
+        color (): Optional color for the new line object.
         linestyle(str): Optional linestyle is a string that defines the style of the line.
         linewidth(float): Optional linewidth is a float the defines the width of the line.
 
     Returns:
-        New empty instance of Line object with name and color ether
-        copied from Line object passed in or using optional parameters
+        New empty instance of line object with name and color ether
+        copied from line object passed in or using optional parameters
         passed to method.
     """
     # Create a new line object to return.
-    new_line = Line(ping_time=obj.ping_time.copy())
+    new_line = line(ping_time=obj.ping_time.copy())
 
     # Check if new properties were provided, otherwise copy from original.
     if color:
         new_line.color = color
     else:
-        if isinstance(obj, Line):
+        if isinstance(obj, line):
             new_line.color = obj.color
     if name:
         new_line.name = name
     else:
-        if isinstance(obj, Line):
+        if isinstance(obj, line):
             new_line.name = obj.name
     if linestyle:
         new_line.linestyle = linestyle
     else:
-        if isinstance(obj, Line):
+        if isinstance(obj, line):
             new_line.linestyle = obj.linestyle
     if linewidth:
         new_line.linewidth = linewidth
     else:
-        if isinstance(obj, Line):
+        if isinstance(obj, line):
             new_line.linewidth = obj.linewidth
 
     # Set the data array to NaNs.
@@ -85,7 +85,8 @@ def empty_like(obj, name=None, color=None, linestyle=None,
 
     return new_line
 
-class Line(ping_data):
+
+class line(ping_data):
     #   TODO: Review attributes in this docstring
     """The line class implements lines based on ping_time and depth/range values.
     The class provides methods manipulating these values in various ways. The
@@ -104,11 +105,11 @@ class Line(ping_data):
 
     def __init__(self, ping_time=None, data=None, color=[0.58, 0.0, 0.83],
                  name='line', linestyle='solid', linewidth=1.0):
-        """Initializes Line class object.
+        """Initializes line class object.
 
         Creates and sets several internal properties.
         """
-        super(Line, self).__init__()
+        super(line, self).__init__()
 
         # Set the ping time.
         self.ping_time = ping_time
@@ -146,9 +147,6 @@ class Line(ping_data):
         self._data_attributes += ['data']
 
 
-
-
-
     def interpolate(self, new_times):
         """Interpolates the data values to the provided time vector.
 
@@ -168,19 +166,19 @@ class Line(ping_data):
 
          _setup_numeric is an internal method that contains generalized code for
         the numeric operators. Biggest job is interpolating ping times if the
-        current Line instance has a different number of pings from "other".
+        current line instance has a different number of pings from "other".
 
         Args:
-            other(Line object or array or scalar value): The data that is
-            being used in the operator along with the Line instance being
+            other(line object or array or scalar value): The data that is
+            being used in the operator along with the line instance being
             operated on.
 
         Returns:
-            The data from other if it's a Line object or other if other is a
+            The data from other if it's a line object or other if other is a
             scalar or array.
         """
 
-        if isinstance(other, Line):
+        if isinstance(other, line):
             if other.data.shape[0] != self.data.shape[0]:
                 # The other line has a different number of pings so
                 # interpolate to this line's pings.
@@ -201,16 +199,16 @@ class Line(ping_data):
         __add__ implements the binary addition operator.
 
         Args:
-            other(Line object or array or scalar value): The data that is
-                being added to the Line instance being operated on.
+            other(line object or array or scalar value): The data that is
+                being added to the line instance being operated on.
 
         Returns:
-            Line object that is the result of adding "other" to the Line object.
+            line object that is the result of adding "other" to the line object.
         """
         other_data = self._setup_numeric(other)
         new_line = empty_like(self)
 
-        if isinstance(other, Line):
+        if isinstance(other, line):
             other_data = other.data
         else:
             other_data = other
@@ -226,12 +224,12 @@ class Line(ping_data):
         __radd__ implements the reflected binary addition operator.
 
         Args:
-            other(Line object or array or scalar value): The data that is
-                being reflected added to the Line instance being operated on.
+            other(line object or array or scalar value): The data that is
+                being reflected added to the line instance being operated on.
 
         Returns:
-            Line object that is the result of reflective adding "other" to
-            the Line object.
+            line object that is the result of reflective adding "other" to
+            the line object.
         """
 
         return self.__add__(other)
@@ -243,11 +241,11 @@ class Line(ping_data):
         __iadd__ implements the in-place binary addition operator
 
         Args:
-            other(Line object or array or scalar value): The data that is
-                being added to the Line instance being operated on.
+            other(line object or array or scalar value): The data that is
+                being added to the line instance being operated on.
 
         Returns:
-            Returns original Line object with "other" added to it.
+            Returns original line object with "other" added to it.
         """
 
         other_data = self._setup_numeric(other)
@@ -262,16 +260,16 @@ class Line(ping_data):
         __sub__ implements the binary subtraction operator.
 
         Args:
-            other(Line object or array or scalar value): The data that is
-                being subtracted from the Line instance being operated on.
+            other(line object or array or scalar value): The data that is
+                being subtracted from the line instance being operated on.
 
         Returns:
-            New Line object that is the original object minus "other".
+            New line object that is the original object minus "other".
         """
 
         other_data = self._setup_numeric(other)
         new_line = empty_like(self)
-        if isinstance(other, Line):
+        if isinstance(other, line):
             other_data = other.data
         else:
             other_data = other
@@ -287,11 +285,11 @@ class Line(ping_data):
         __rsub__ implements the reflected binary subtraction operator.
 
         Args:
-            other(Line object or array or scalar value): The data that is
-            being subtracted from the Line instance being operated on.
+            other(line object or array or scalar value): The data that is
+            being subtracted from the line instance being operated on.
 
         Returns:
-            New Line object that is the original object minus "other".
+            New line object that is the original object minus "other".
         """
 
         return self.__sub__(other)
@@ -303,11 +301,11 @@ class Line(ping_data):
         __isub__ implements the in-place binary subtraction operator.
 
         Args:
-            other(Line object or array or scalar value): The data that is
-            being subtracted from the Line instance being operated on.
+            other(line object or array or scalar value): The data that is
+            being subtracted from the line instance being operated on.
 
         Returns:
-            Original Line object with "other" subtracted from it.
+            Original line object with "other" subtracted from it.
         """
         other_data = self._setup_numeric(other)
         self.data[:] = self.data - other_data
@@ -321,16 +319,16 @@ class Line(ping_data):
         __mul__ implements the binary multiplication operator.
 
         Args:
-            other(Line object or array or scalar value): The data that is
-            being multiplied with the Line instance being operated on.
+            other(line object or array or scalar value): The data that is
+            being multiplied with the line instance being operated on.
 
         Returns:
-            New Line object that is the original object multiplied by  "other".
+            New line object that is the original object multiplied by  "other".
         """
 
         other_data = self._setup_numeric(other)
         new_line = empty_like(self)
-        if isinstance(other, Line):
+        if isinstance(other, line):
             other_data = other.data
         else:
             other_data = other
@@ -346,11 +344,11 @@ class Line(ping_data):
         __rmul__ implements the reflected binary multiplication operator.
 
         Args:
-            other(Line object or array or scalar value): The data that is
-            being multiplied with the Line instance being operated on.
+            other(line object or array or scalar value): The data that is
+            being multiplied with the line instance being operated on.
 
         Returns:
-            New Line object that is the original object multiplied by  "other".
+            New line object that is the original object multiplied by  "other".
         """
 
         return self.__mul__(other)
@@ -362,11 +360,11 @@ class Line(ping_data):
         __imul__ implements the in-place binary multiplication operator.
 
         Args:
-            other(Line object or array or scalar value): The data that is
-            being multiplied with the Line instance being operated on.
+            other(line object or array or scalar value): The data that is
+            being multiplied with the line instance being operated on.
 
         Returns:
-            Original Line object multiplied by other".
+            Original line object multiplied by other".
         """
 
         other_data = self._setup_numeric(other)
@@ -381,15 +379,15 @@ class Line(ping_data):
         __truediv__ implements the binary fp division operator.
 
         Args:
-            other(Line object or array or scalar value): The data to divide the
-            Line instance being operated on.
+            other(line object or array or scalar value): The data to divide the
+            line instance being operated on.
 
         Returns:
-            New Line object that is the original Line object divided bu other.
+            New line object that is the original line object divided bu other.
         """
         other_data = self._setup_numeric(other)
         new_line = empty_like(self)
-        if isinstance(other, Line):
+        if isinstance(other, line):
             other_data = other.data
         else:
             other_data = other
@@ -405,10 +403,10 @@ class Line(ping_data):
         __rtruediv__ implements the reflected binary fp division operator.
 
         Args:
-            other(Line object or array or scalar value): The data to divide the
-            Line instance being operated on.
+            other(line object or array or scalar value): The data to divide the
+            line instance being operated on.
         Returns:
-            New Line object that is the original Line object divided bu other.
+            New line object that is the original line object divided bu other.
         """
 
         return self.__truediv__(other)
@@ -420,11 +418,11 @@ class Line(ping_data):
         __itruediv__ implements the in-place binary fp division operator.
 
         Args:
-            other(Line object or array or scalar value): The data to divide the
-            Line instance being operated on.
+            other(line object or array or scalar value): The data to divide the
+            line instance being operated on.
 
         Returns:
-            Original Line object divided by other.
+            Original line object divided by other.
         """
 
         other_data = self._setup_numeric(other)
@@ -439,15 +437,15 @@ class Line(ping_data):
         __pow__ implements the binary power operator.
 
         Args:
-            other(Line object or array or scalar value): The data to raise the
-            Line instance being operated on.
+            other(line object or array or scalar value): The data to raise the
+            line instance being operated on.
 
         Returns:
-            New Line object that is the original Line raided to "other".
+            New line object that is the original line raided to "other".
         """
         other_data = self._setup_numeric(other)
         new_line = empty_like(self)
-        if isinstance(other, Line):
+        if isinstance(other, line):
             other_data = other.data
         else:
             other_data = other
@@ -463,11 +461,11 @@ class Line(ping_data):
         __rpow__ implements the reflected binary power operator.
 
         Args:
-            other(Line object or array or scalar value): The data to raise the
-            Line instance being operated on.
+            other(line object or array or scalar value): The data to raise the
+            line instance being operated on.
 
         Returns:
-            New Line object that is the original Line raided to "other".
+            New line object that is the original line raided to "other".
         """
 
         return self.__pow__(other)
@@ -479,11 +477,11 @@ class Line(ping_data):
         __ipow__ implements the in-place binary power operator.
 
         Args:
-           other(Line object or array or scalar value): The data to raise the
-            Line instance being operated on.
+           other(line object or array or scalar value): The data to raise the
+            line instance being operated on.
 
         Returns:
-            Original Line object that raided to "other".
+            Original line object that raided to "other".
         """
 
         other_data = self._setup_numeric(other)

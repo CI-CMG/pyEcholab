@@ -29,20 +29,18 @@ import numpy as np
 
 class simrad_motion_data(object):
     '''
-    The simrad_motion_data class provides storage for and parsing of NMEA data commonly
-    collected along with sonar data.
+    The simrad_motion_data class stores data from Simrad's MRU datagram and
+    provides a method to interpolate the data to your ping times.
     '''
 
     CHUNK_SIZE = 500
 
     def __init__(self):
 
-        # Create a counter to keep track of the number of datagrams, This is
-        # used to inform the array sizes.
+        # Create a counter to keep track of the number of datagrams.
         self.n_raw = 0
 
         # Create arrays to store MRU0 data
-
         self.time = np.empty(simrad_motion_data.CHUNK_SIZE, dtype='datetime64[ms]')
         self.heave = np.empty(simrad_motion_data.CHUNK_SIZE, dtype='f')
         self.pitch = np.empty(simrad_motion_data.CHUNK_SIZE, dtype='f')
@@ -52,66 +50,81 @@ class simrad_motion_data(object):
 
     def add_datagram(self, motion_datagram):
         """
-        Add MRU0 datagrams to this object.
-
+        Add MRU0 datagram data.
 
         Args:
-            motion_datagram (dict)
+            motion_datagram (dict) - The motion datagram dictionary returned by
+                    the simrad datagram parser.
 
         """
+        # Check if we need to resize our arrays.
+        if self.n_raw == self.time.shape[0]:
+            self._resize_arrays(self.time.shape[0] + simrad_motion_data.CHUNK_SIZE)
+
+        # Add this datagram to our data arrays
+        self.time[self.n_raw] = motion_datagram['timestamp']
+        self.heave[self.n_raw] = motion_datagram['heave']
+        self.pitch[self.n_raw] = motion_datagram['pitch']
+        self.roll[self.n_raw] = motion_datagram['roll']
+        self.heading[self.n_raw] = motion_datagram['heading']
 
         # Increment datagram counter.
         self.n_raw += 1
 
-        # Check if we need to resize our arrays. If so, resize arrays.
-        if self.n_raw > self.time.shape[0]:
-            self._resize_arrays(self.time.shape[0] + simrad_motion_data.CHUNK_SIZE)
 
-        # Add this datagram to our data arrays
-        self.time[self.n_raw - 1] = motion_datagram['timestamp']
-        self.heave[self.n_raw - 1] = motion_datagram['heave']
-        self.pitch[self.n_raw - 1] = motion_datagram['pitch']
-        self.roll[self.n_raw - 1] = motion_datagram['roll']
-        self.heading[self.n_raw - 1] = motion_datagram['heading']
-
-
-    def interpolate(self, p_data, start_time=None, end_time=None):
+    def interpolate(self, p_data, start_time=None, end_time=None,
+            attributes=None):
         """
         interpolate returns the requested motion data interpolated to the ping times
-        that are present in the provided processed_data object.
+        that are present in the provided ping_data object.
 
-            p_data is a processed data object that contains the ping_time vector
-                to interpolate to.
+            p_data is a ping_data object that contains the ping_time vector
+                    to interpolate to.
             start_time is a datetime or datetime64 object defining the starting time of the data
-                to return. If None, the start time is the earliest time.
+                    to return. If None, the start time is the earliest time.
             end_time is a datetime or datetime64 object defining the ending time of the data
                     to return. If None, the end time is the latest time.
+            attributes is a string or list of strings specifying the motion attribute(s)
+                    to interpolate and return. If None, all attributes are interpolated
+                    and returned.
 
-
+        Returns a dictionary of numpy arrays keyed by attribute name that contain the
+        interpolated data for that attribute.
         """
+        # Create the dictionary to return
+        out_data = {}
 
+        # Return an empty dict if we don't contain any data
+        if self.n_raw < 1:
+            return out_data
 
         # Get the index for all datagrams within the time span.
         return_idxs = self._get_indices(start_time, end_time,
                 time_order=True)
 
-        # Create the dictionary to return
-        out_data = {}
-        out_data['ping_time'] = p_data.ping_time.copy()
-        out_data['heave'] = np.interp(p_data.ping_time.astype('d'),
-            self.time.astype('d'), self.heave, left=np.nan, right=np.nan)
-        out_data['pitch'] = np.interp(p_data.ping_time.astype('d'),
-            self.time.astype('d'), self.pitch, left=np.nan, right=np.nan)
-        out_data['roll'] = np.interp(p_data.ping_time.astype('d'),
-            self.time.astype('d'), self.roll, left=np.nan, right=np.nan)
-        out_data['heading'] = np.interp(p_data.ping_time.astype('d'),
-            self.time.astype('d'), self.heading, left=np.nan, right=np.nan)
+        # Check if we're been given specific attributes to interpolate
+        if attributes is None:
+            # No - interpolate all
+            attributes = ['heave', 'pitch', 'roll', 'heading']
+        elif isinstance(attributes, str):
+            # We have a string, put it in a list
+            attributes = [attributes]
 
 
 
-        return out_data
+        # Work through the attributes and interpolate
+        for attribute in attributes:
+            try:
+                # Interpolate this attribute using the time vector in the
+                # provided ping_data object
+                out_data[attribute] = np.interp(p_data.ping_time.astype('d'),
+                        self.time.astype('d'), getattr(self, attribute),
+                        left=np.nan, right=np.nan)
+            except:
+                # Provided attribute doesn't exist
+                pass
 
-
+        return out_data[return_idxs]
 
 
     def _get_indices(self, start_time, end_time, time_order=True):
@@ -134,7 +147,6 @@ class simrad_motion_data(object):
         Returns: Index array containing indices of data to return.
 
         """
-
         #  Ensure that we have times to work with.
         if start_time is None:
             start_time = np.min(self.time)
@@ -173,7 +185,7 @@ class simrad_motion_data(object):
         self.pitch = np.resize(self.pitch,(new_size))
         self.roll = np.resize(self.roll,(new_size))
         self.heading = np.resize(self.heading,(new_size))
-        self.heave = np.resize(self.heading,(new_size))
+        self.heave = np.resize(self.heave,(new_size))
 
 
     def trim(self):
@@ -197,18 +209,11 @@ class simrad_motion_data(object):
         #  print the class and address
         msg = str(self.__class__) + " at " + str(hex(id(self))) + "\n"
 
-        #  print some more info about the nmea_data instance
+        #  print some more info about the motion_data instance
         if (self.n_raw > 0):
-            msg = "{0}       MRU data start time: {1}\n".format(
-                                                       msg, self.time[0])
-            msg = "{0}         MRU data end time: {1}\n".format(
-                                              msg,self.time[self.n_raw-1])
-            msg = "{0}  number of NMEA datagrams: {1}\n".format(msg, self.n_raw)
-            msg = "{0}         unique talker IDs: {1}\n".format(
-                                               msg, (','.join(self.talker_ids)))
-            msg = "{0}        unique message IDs: {1}\n".format(
-                                              msg, (','.join(self.message_ids)))
-            #  TODO: add reporting of numbers of individual message IDs
+            msg = "{0}       MRU data start time: {1}\n".format(msg, self.time[0])
+            msg = "{0}         MRU data end time: {1}\n".format(msg,self.time[self.n_raw-1])
+            msg = "{0}       Number of datagrams: {1}\n".format(msg,self.n_raw+1)
         else:
             msg = msg + ("  simrad_motion_data object contains no data\n")
 

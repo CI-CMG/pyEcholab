@@ -27,7 +27,7 @@ def compare_dicts(a, b):
 
 
 #  CW complex - full resolution (should be 32-bit samples)
-#filename = 'C:/EK80 Test Data/EK80/CW/complex/DY2000_EK80_Cal-D20200126-T060729.raw'
+filename = 'C:/EK80 Test Data/EK80/CW/complex/DY2000_EK80_Cal-D20200126-T060729.raw'
 
 #  CW reduced (power/angle) - full resolution
 #filename = 'C:/EK80 Test Data/EK80/CW/reduced/DY2000_EK80_Cal-D20200126-T061004.raw'
@@ -36,7 +36,7 @@ def compare_dicts(a, b):
 #filename = 'C:/EK80 Test Data/EK80/CW/further reduced/DY2000_EK80_Cal-D20200126-T062251.raw'
 
 # CW EK60 on EK80 (power/angle)
-filename = 'C:/EK80 Test Data/EK80/CW/further reduced/DY2000_EK80_Cal-D20200126-T062251.raw'
+#filename = 'C:/EK80 Test Data/EK80/CW/further reduced/DY2000_EK80_Cal-D20200126-T062251.raw'
 
 # FM EK80
 #filename = 'C:/EK80 Test Data/EK80/FM/DY1802_EK80-D20180301-T185940.raw'
@@ -55,6 +55,7 @@ if (1):
     #  pick out the other initial datagrams
     filters = []
     nmea = []
+    motion = []
     datagram = fid.read(1)
     while (datagram['type'] != 'RAW3'):
         if (datagram['type'] == 'FIL1'):
@@ -66,6 +67,8 @@ if (1):
                 environment_datagram = datagram
         if (datagram['type'] == 'NME0'):
             nmea.append(datagram)
+        if (datagram['type'] == 'MRU0'):
+            motion.append(datagram)
         datagram = fid.read(1)
 
     #  grab one raw datagram

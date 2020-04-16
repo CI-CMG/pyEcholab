@@ -1,5 +1,4 @@
 # coding=utf-8
-# coding=utf-8
 
 #     National Oceanic and Atmospheric Administration (NOAA)
 #     Alaskan Fisheries Science Center (AFSC)
@@ -13,7 +12,13 @@
 #  AS TO THE USEFULNESS OF THE SOFTWARE AND DOCUMENTATION FOR ANY PURPOSE.
 #  THEY ASSUME NO RESPONSIBILITY (1) FOR THE USE OF THE SOFTWARE AND
 #  DOCUMENTATION; OR (2) TO PROVIDE TECHNICAL SUPPORT TO USERS.
+
 """
+.. module:: echolab2.ping_data
+
+    :synopsis: Base class for containers use to store data collected
+               from fisheries sonar systems.
+
 | Developed by:  Rick Towler   <rick.towler@noaa.gov>
 | National Oceanic and Atmospheric Administration (NOAA)
 | Alaska Fisheries Science Center (AFSC)
@@ -59,8 +64,13 @@ class ping_data(object):
         # Stores the total number of pings contained in our container.
         self.n_pings = -1
 
-        # The number of samples in the 2d sample arrays.
+        # The number of samples in the 2d/3d sample arrays.
         self.n_samples = -1
+
+        # A tuple describing the shape of the sample data array in the form
+        # (n_pings, n_samples) or (n_pings, n_samples, s_sectors) for complex
+        # data. If shape is None, the data arrays have not been allocated.
+        self.shape = None
 
         # Allows the user to specify a dtype for the sample data.  This should
         # be set before any attributes are added.
@@ -74,7 +84,7 @@ class ping_data(object):
         # "data attributes" are attributes that store data by ping. They can
         # be 1d, such as ping_time, sample_interval, and transducer_depth. Or
         # they can be 2d, such as power, Sv, angle data, etc.  Echolab2
-        # supports attributes that are 1d and 2d numpy arrays.  When
+        # supports attributes that are 1d, 2d, and 3d numpy arrays.  When
         # subclassing, you must extend this list in your __init__ method to
         # contain all of the data attributes of that class that you want to
         # exist at instantiation (attributes can also be added later).
@@ -208,15 +218,28 @@ class ping_data(object):
 
         # Check that we have been given an insertion point or index array.
         if ping_number is None and ping_time is None and index_array is None:
-            raise ValueError('Either ping_number or ping_time needs to be '
+            raise ValueError('Either ping_number or ping_time needs to be ' +
                              'defined or an index array needs to be provided ' +
                              'to specify a replacement point.')
 
         # Make sure that obj_to_insert class matches "this" class.
         if not isinstance(self, obj_to_insert.__class__):
-            raise TypeError('The object provided as a source of replacement '
+            raise TypeError('The object provided as a source of replacement ' +
                             'pings must be an instance of ' +
                             str(self.__class__))
+
+        # Make sure the data types are the same
+        if self.datatype != obj_to_insert.datatype:
+            raise TypeError('The object you are inserting  does not have the same data ' +
+                    'type as this object. This data type: ' + self.datatype +
+                    ' object to insert data type: ' + obj_to_insert.datatype)
+
+        #  if complex, make sure the number of sectors are the same
+        if self.datatype == 'complex':
+            if self.n_complex != obj_to_insert.n_complex:
+                raise TypeError('The object you are inserting  does not have the same ' +
+                    'number of complex samples as this object. This n_complex: ' + self.n_complex +
+                    ' object to insert n_complex: ' + obj_to_insert.n_complex)
 
         # Make sure that the frequencies match.  Don't allow replacing pings
         # with different frequencies.
@@ -321,10 +344,9 @@ class ping_data(object):
                 elif data.ndim == 2:
                     # Insert the new data.
                     data[replace_index, :] = data_to_insert[:,:]
-
-                else:
-                    #TODO:   At some point do we handle 3d arrays?
-                    pass
+                elif data.ndim == 3:
+                    # Insert the new data.
+                    data[replace_index, :, :] = data_to_insert[:,:,:]
 
         # Update our global properties.
         if obj_to_insert.channel_id not in self.channel_id:
@@ -383,11 +405,19 @@ class ping_data(object):
         # various attributes we're deleting to NaNs.
         for attr_name in self._data_attributes:
             attr = getattr(self, attr_name)
-            if isinstance(attr, np.ndarray) and (attr.ndim == 2):
-                if remove:
-                    attr[0:new_n_pings, :] = attr[keep_idx, :]
-                else:
-                    attr[del_idx, :] = np.nan
+            if isinstance(attr, np.ndarray) and attr.ndim > 1:
+                if attr.ndim == 2:
+                    # 2d array
+                    if remove:
+                        attr[0:new_n_pings, :] = attr[keep_idx, :]
+                    else:
+                        attr[del_idx, :] = np.nan
+                elif attr.ndim == 3:
+                    # 3d array
+                    if remove:
+                        attr[0:new_n_pings, :, :] = attr[keep_idx, :, :]
+                    else:
+                        attr[del_idx, :, :] = np.nan
             else:
                 if remove:
                     # Copy the data we're keeping into a contiguous block.
@@ -395,27 +425,16 @@ class ping_data(object):
                 else:
                     # Set the data to NaN or appropriate value.
                     if attr.dtype in [np.float16, np.float32, np.float64,
-                                       np.datetime64]:
-                        # This is a float like object.  Set the del_idx
-                        # values to NaN for float data types or NaT for
-                        # datetime64.
+                                       np.datetime64, np.complex64, np.complex128]:
+                        # This is a float like object so set to NaN or NaT
                         attr[del_idx] = np.nan
-                    elif attr.dtype in [np.uint16, np.uint32, np.uint64,
-                                         np.uint8]:
-                        # TODO: Unsigned integers are set...
-                        # well, what really is an appropriate value???
-                        attr[del_idx] = 0
                     else:
-                        # TODO: signed ints...
-                        # -1? -999? -9999? it's a good question.
-                        attr[del_idx] = -1
+                        # Set all other integers to zero
+                        attr[del_idx] = 0
 
         # If we're removing the pings, shrink the arrays.
         if remove:
             self.resize(new_n_pings, self.n_samples)
-
-        # Update the n_pings attribute.
-        self.n_pings = self.ping_time.shape[0]
 
 
     def append(self, obj_to_append):
@@ -603,39 +622,40 @@ class ping_data(object):
                 elif data.ndim == 2:
                     # Move the existing data from right to left to avoid
                     # overwriting data yet to be moved.
-                    data[move_index[::-1], :] = data[move_idx[::-1],:]
+                    data[move_index[::-1], :] = data[move_idx[::-1], :]
                     # Insert the new data.
-                    data[insert_index, :] = data_to_insert[:,:]
-                else:
-                    # TODO:  At some point do we handle 3d arrays?
-                    pass
+                    data[insert_index, :] = data_to_insert[:, :]
+                elif data.ndim == 3:
+                    # Move 3d data
+                    data[move_index[::-1], :, :] = data[move_idx[::-1], :, :]
+                    # Insert the new data.
+                    data[insert_index, :, :] = data_to_insert[:, :, :]
 
         # Now update our global properties.
         if obj_to_insert.channel_id not in self.channel_id:
             self.channel_id += obj_to_insert.channel_id
 
-        # Update the n_pings attribute.
+        # Update the size/shape attributes.
         self.n_pings = self.ping_time.shape[0]
+        self.n_samples = my_samples
+        self.shape = self._shape()
 
 
-    def trim(self, n_pings=None, n_samples=None):
+    def trim(self, n_pings=None):
         """Trims pings from an echolab2 data object to a given length.
 
         This method deletes pings from a data object to a length defined by
-        n_pings and n_samples.
+        n_pings.
 
         Args:
             n_pings (int): Number of pings (horizontal axis).
-            n_samples (int): Number of samples (vertical axis).
         """
 
         if not n_pings:
             n_pings = self.n_pings
-        if not n_samples:
-            n_samples = self.n_samples
 
         # Resize keeping the sample number the same.
-        self.resize(n_pings, n_samples)
+        self.resize(n_pings, self.n_samples)
 
 
     def roll(self, roll_pings):
@@ -715,7 +735,7 @@ class ping_data(object):
             data in these cases.
             """
             # Create a new array.
-            new_array = np.empty((ping_dim, sample_dim))
+            new_array = np.empty((ping_dim, sample_dim), dtype=self.sample_dtype)
             # Fill it with NaNs.
             new_array.fill(np.nan)
             # Copy the data into our new array and return it.
@@ -729,7 +749,7 @@ class ping_data(object):
             data from the provided array copied into it. Same reasoning as above.
             """
             # Create a new array.
-            new_array = np.empty((ping_dim, sample_dim, sector_dim))
+            new_array = np.empty((ping_dim, sample_dim, sector_dim), dtype=self.sample_dtype)
             # Fill it with NaNs.
             new_array.fill(np.nan)
             # Copy the data into our new array and return it.
@@ -787,8 +807,9 @@ class ping_data(object):
             #  Update the attribute.
             setattr(self, attr_name, attr)
 
-        # Set the new sample count.
+        # Set the new shape attributes
         self.n_samples = new_sample_dim
+        self.shape = self._shape()
 
         # We cannot update the n_pings attribute here since raw_data uses
         # this attribute to store the number of pings read, *not* the total
@@ -1087,6 +1108,7 @@ class ping_data(object):
         obj.sample_dtype = self.sample_dtype
         obj.n_samples = self.n_samples
         obj.n_pings = self.n_pings
+        obj.shape = self.shape
         obj._data_attributes = list(self._data_attributes)
 
         # Work through the data attributes list, copying the values.
@@ -1096,6 +1118,19 @@ class ping_data(object):
 
         # Return the copy.
         return obj
+
+
+    def _shape(self):
+        '''Internal method used to update the shape attribute
+        '''
+        shape = None
+        if self.datatype == 'power' or self.datatype == 'power/angle':
+            shape = self.power.shape
+        elif self.datatype == 'angle':
+            shape = self.angles_alongship_e.shape
+        elif self.datatype == 'complex':
+            shape = self.complex.shape
+        return shape
 
 
     def _like(self, obj, n_pings, value, empty_times=False):
@@ -1179,18 +1214,19 @@ class ping_data(object):
                             data[:] = np.datetime64('NaT')
                         else:
                             data[:] = attr.copy()
-                    #    TODO:Other time based attributes are set to NaT.
-                    #    Not sure if this is what we want to do, but not sure
-                    #    what other time attributes would exist so this is what
-                    #    we're doing for now.
                     elif data.dtype == 'datetime64[ms]':
                         data[:] = np.datetime64('NaT')
                     else:
                         data[:] = value
-                else:
+                elif attr.ndim == 2:
                     # Create the 2d array(s).
                     data = np.empty((n_pings, self.n_samples), dtype=attr.dtype)
                     data[:, :] = value
+                else:
+                    #  must be a 3d attribute
+                    data = np.empty((n_pings, self.n_samples, self.n_complex),
+                        dtype=attr.dtype)
+                    data[:, :, :] = value
 
             # Add the attribute to our empty object.  We can skip using
             # add_attribute here because we shouldn't need to check

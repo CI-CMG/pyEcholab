@@ -13,8 +13,8 @@
 #  (1) FOR THE USE OF THE SOFTWARE AND DOCUMENTATION; OR (2) TO PROVIDE TECHNICAL
 #  SUPPORT TO USERS.
 
-'''
-.. module:: echolab.instruments.util.simrad_parsers
+"""
+.. module:: echolab2.instruments.util.simrad_parsers
 
     :synopsis: Parsers for Simrad raw file datagrams
 
@@ -30,7 +30,7 @@
 | Maintained by:
 |       Rick Towler   <rick.towler@noaa.gov>
 
-'''
+"""
 
 import numpy as np
 import logging
