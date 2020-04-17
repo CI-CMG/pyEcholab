@@ -417,15 +417,7 @@ class nmea_data(object):
         # and return.
         out_data['ping_time'] = p_data.ping_time.copy()
 
-        return (field, out_data)
-
-        #  Old code used to add fields to the processed data object.
-        # Keeping just in case.
-        #
-        # Insert or update the interpolated fields as attributes in the
-        # processed data object.
-        # for field in interp_fields:
-        #     p_data.add_attribute(field, out_data[field])
+        return (interp_fields, out_data)
 
 
     def _get_indices(self, start_time, end_time, time_order=True):

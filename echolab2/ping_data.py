@@ -93,17 +93,30 @@ class ping_data(object):
         # required attribute that all data objects must have.
         self._data_attributes = ['ping_time']
 
-        # Attributes are added using the add_attribute method. You can add
+        # Attributes are added using the add_data_attribute method. You can add
         # them manually by appending the name of the new attribute to the
         # _data_attributes dictionary and then setting the attribute using
         # setattr().
+
+        # Object attributes are similar to data attributes except they are not
+        # linked to a data axis (time, sample_number, range/depth). Another
+        # important difference is that they are not resized when the data arrays
+        # are resized. Object attributes can be set to any value or object and
+        # do not have to be numpy arrays.
+
+        # Similar to the data attributes you can add and remove object attributes
+        # using the add_object_attribute and remove_object_attribute methods.
+        self._object_attributes = ['sample_dtype']
 
         # When writing methods that operate on these data, we will not assume
         # that they exist.  An attribute should only exist if it contains data.
 
 
-    def add_attribute(self, name, data):
+    def add_data_attribute(self, name, data):
         """Adds a "data attribute" to the class.
+
+        Data attributes are attributes that are linked to one of the data
+        axes. Data attributes are resized when the data arrays are resized.
 
         This method first checks if the new attribute shares the same
         dimensions as existing attributes, and if so, appends the attribute
@@ -135,7 +148,6 @@ class ping_data(object):
                 if self.n_samples < 0:
                     self.n_samples = data_height
                 elif self.n_samples != data_height:
-                    #    TODO:  Better error message
                     raise ValueError('Cannot add attribute. New attribute has ' +
                         'a different number of samples than the other attributes.')
         else:
@@ -149,25 +161,62 @@ class ping_data(object):
         # samples since a 1d data attribute can be on either axis.
         if self.n_pings < 0:
             self.n_pings = data_width
-        elif self.n_pings != data_width and self.n_samples != data_width:
-            #    TODO:  Better error message
+        elif self.n_pings != data_width:
             raise ValueError('Cannot add attribute as the new attribute has '
-                             'a different number of pings (or samples) than '
-                             'the other attributes.')
+                    'a different number of pings than the other attributes.')
+        elif self.n_samples != data_width:
+            raise ValueError('Cannot add attribute as the new attribute has '
+                    'a different number of samples than the other attributes.')
 
         # Add the name to our list of attributes if it doesn't already exist.
         if name not in self._data_attributes:
             self._data_attributes.append(name)
 
-        # Add the name to self.
+        # Add or update ourself.
         setattr(self, name, data)
 
 
-    def remove_attribute(self, name):
-        """Removes a data attribute from the object.
+    def add_object_attribute(self, name, data):
+        """Adds a "object attribute" to the class.
+
+        Object attributes are attributes that are not linked to a data axis.
+        Object attributes are primarily used by the processed_data class to
+        describe general attributes about the object or data like 'data_type'
+        or 'is_log'. Object attributes can be any data type and are not
+        resized or altered in any way when the data arrays are resized.
+
+        Since the data is not linked to an axis there is no checking
+        of dimensions before adding.
 
         Args:
             name (str): The attribute name to be added to the class.
+            data (object): An python object/value
+
+        """
+
+        # Add the name to our list of attributes if it doesn't already exist.
+        if name not in self._object_attributes:
+            self._data_attributes.append(name)
+
+        # Add or update ourself.
+        setattr(self, name, data)
+
+
+    def remove_object_attribute(self, name):
+        """Removes a object attribute from the object.
+
+        Args:
+            name (str): The attribute name to be removed from the class.
+        """
+        #  we remove data and object attributes the same way
+        self.remove_data_attribute(name)
+
+
+    def remove_data_attribute(self, name):
+        """Removes a data attribute from the object.
+
+        Args:
+            name (str): The attribute name to be removed from the class.
         """
 
         # Try to remove the attribute given the name.  Silently fail if the
@@ -1072,12 +1121,11 @@ class ping_data(object):
 
         # Determine the new array size.
         new_sample_dims = (data.shape[1] + max(sample_offsets) -
-                           min_sample_offset)
+                min_sample_offset)
 
         # Create the new array.
-        shifted_data = np.empty(
-            (data.shape[0], new_sample_dims), dtype=self.sample_dtype,
-            order='C')
+        shifted_data = np.empty((data.shape[0], new_sample_dims),
+                dtype=self.sample_dtype, order='C')
         shifted_data.fill(np.nan)
 
         # Fill the array, looping over the different sample offsets.
@@ -1085,8 +1133,8 @@ class ping_data(object):
             rows_this_offset = np.where(sample_offsets == offset)[0]
             start_index = offset - min_sample_offset
             end_index = start_index + data.shape[1]
-            shifted_data[rows_this_offset, start_index:end_index] = data[
-                                            rows_this_offset, 0:data.shape[1]]
+            shifted_data[rows_this_offset, start_index:end_index] = \
+                    data[rows_this_offset, 0:data.shape[1]]
 
         return shifted_data
 
@@ -1110,8 +1158,14 @@ class ping_data(object):
         obj.n_pings = self.n_pings
         obj.shape = self.shape
         obj._data_attributes = list(self._data_attributes)
+        obj._object_attributes  = list(self._object_attributes)
 
-        # Work through the data attributes list, copying the values.
+        # Copy object attributes
+        for attr_name in self._object_attributes:
+            attr = getattr(self, attr_name)
+            setattr(obj, attr_name, attr.copy())
+
+        # Copy the data attributes
         for attr_name in obj._data_attributes:
             attr = getattr(self, attr_name)
             setattr(obj, attr_name, attr.copy())
@@ -1148,9 +1202,6 @@ class ping_data(object):
         with NaT (not a time) values. If n_pings != self.n_pings THIS
         ARGUMENT IS IGNORED AND THE NEW PING VECTOR IS FILLED WITH NaT.
 
-        You can specify channel_id if you want to explicitly set it and not copy
-        it from this instance.
-
         The result should be a new object where horizontal axes (excepting
         ping_time) and sample data arrays are empty (NaN or NaT). The
         contents of the ping_time vector will depend on the state of the
@@ -1177,8 +1228,14 @@ class ping_data(object):
         obj.sample_dtype = self.sample_dtype
         obj.n_samples = self.n_samples
         obj.n_pings = n_pings
-
         obj._data_attributes = list(self._data_attributes)
+        obj._object_attributes  = list(self._object_attributes)
+
+        # Copy object attributes - this is simple as there are no
+        # size or type checks.
+        for attr_name in self._object_attributes:
+            attr = getattr(self, attr_name)
+            setattr(obj, attr_name, attr.copy())
 
         # Check if n_pings != self.n_pings.  If the new object's horizontal
         # axis is a different shape than this object's we can't copy
@@ -1222,14 +1279,14 @@ class ping_data(object):
                     # Create the 2d array(s).
                     data = np.empty((n_pings, self.n_samples), dtype=attr.dtype)
                     data[:, :] = value
-                else:
+                elif attr.ndim == 3:
                     #  must be a 3d attribute
                     data = np.empty((n_pings, self.n_samples, self.n_complex),
                         dtype=attr.dtype)
                     data[:, :, :] = value
 
             # Add the attribute to our empty object.  We can skip using
-            # add_attribute here because we shouldn't need to check
+            # add_data_attribute here because we shouldn't need to check
             # dimensions and we've already handled the low level stuff like
             # copying the _data_attributes list, etc.
             setattr(obj, attr_name, data)

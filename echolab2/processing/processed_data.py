@@ -98,38 +98,18 @@ class processed_data(ping_data):
 
         NEED TO ADD A SECTION REGARDING OPERATORS
 
-
-
-        IMPORTANT NOTE!
-            This software is under heavy development and while the API is fairly
-            stable, it may still change. Further, while reviewing the code
-            you may wonder why certain things are done a certain way.
-            Understanding that this class initially was written to have an
-            arbitrary number of "sample data" arrays will shed some light on
-            this. This was changed later in development so that
-            ProcessedData objects only contain a single sample data array
-            but much of the mechanics of dealing with multiple 2d arrays are
-            in place in part because the sample_data class still operates
-            this way and in part because the code hasn't been changed yet.
     """
 
     def __init__(self, channel_id, frequency, data_type):
-        """Initializes ProcessedData class object.
+        """Initializes processed_data class object.
 
-        Creates and sets several internal properties used to store information
-        about data and control operation of processed data object instance.
-        Code is heavily commented to facilitate use.
+        Creates an empty processed data object
         """
-        super(ProcessedData, self).__init__()
+        super(processed_data, self).__init__()
 
         # Set the frequency, channel_id, and data type.
         if channel_id:
-            if isinstance(channel_id, list):
-                # If we've been passed a list as a channel id, copy the list.
-                self.channel_id = list(channel_id)
-            else:
-                # We've been given not a list - just set the id.
-                self.channel_id = channel_id
+            self.channel_id = channel_id
         else:
             self.channel_id = None
         self.frequency = frequency
@@ -144,6 +124,8 @@ class processed_data(ping_data):
         # manually you should set this state value accordingly.
         self.is_log = False
 
+        self.is_heave_corrected = False
+
         # Sample thickness is the vertical extent of the samples in meters.  It
         # is calculated as thickness = sample interval(s)*sound speed(m/s) / 2.
         self.sample_thickness = 0
@@ -151,6 +133,23 @@ class processed_data(ping_data):
         # Sample offset is the number of samples the first row of data are
         # offset away from the transducer face.
         self.sample_offset = 0
+
+        # Define the attribute names for "navigation" data. These are the
+        # list of possible field names that store data related to the movement
+        # and motion of the sampling platform.
+        self._nav_attributes = ['latitude', 'longitude', 'heading', 'trip_distance_nmi',
+                'spd_over_grnd_kts', 'pitch', 'heave', 'roll']
+
+
+        #  extend the _data_attributes list adding our data attribute
+        self._data_attributes += ['data']
+
+
+        #  create a list that stores the scalar object attributes
+        self._obj_attributes = ['sample_thickness',
+                                'sample_offset',
+                                'is_log',
+                                'is_heave_corrected']
 
 
     def replace(self, obj_to_insert, ping_number=None, ping_time=None,
@@ -164,8 +163,8 @@ class processed_data(ping_data):
         extra data in obj_to_insert will be ignored.
 
         Args:
-            obj_to_insert (ProcessedData): an instance of
-                echolab2.ProcessedData that contains the data you are using
+            obj_to_insert (processed_data): an instance of
+                echolab2.processed_data that contains the data you are using
                 as the replacement. obj_to_insert's sample data will be
                 vertically interpolated to the vertical axis of this object.
             ping_number (int): The ping number specifying the first ping to
@@ -199,7 +198,7 @@ class processed_data(ping_data):
             # When replacing, we copy the ping times.
             obj_to_insert.ping_times = self.ping_times[index_array]
 
-        # When inserting/replacing data in ProcessedData objects we have to
+        # When inserting/replacing data in processed_data objects we have to
         # make sure the data are the same type. The parent method will check
         # if the frequencies are the same.
         if self.data_type != obj_to_insert.data_type:
@@ -220,7 +219,7 @@ class processed_data(ping_data):
         obj_to_insert.interpolate(this_vaxis)
 
         # We are now coexisting in harmony - call parent's insert.
-        super(ProcessedData, self).replace( obj_to_insert, ping_number=None,
+        super(processed_data, self).replace( obj_to_insert, ping_number=None,
                 ping_time=None, insert_after=True, index_array=None)
 
 
@@ -243,13 +242,13 @@ class processed_data(ping_data):
 
     def insert(self, obj_to_insert, ping_number=None, ping_time=None,
                insert_after=True, index_array=None):
-        """Inserts the data from the provided echolab2.ProcessedData object
+        """Inserts the data from the provided echolab2.processed_data object
         into this object.
 
         The insertion point is specified by ping number or time.
 
         Args:
-            obj_to_insert: an instance of echolab2.ProcessedData that
+            obj_to_insert: an instance of echolab2.processed_data that
                 contains the data you are inserting. The object's sample data
                 will be vertically interpolated to the vertical axis of this
                 object.
@@ -297,18 +296,16 @@ class processed_data(ping_data):
         obj_to_insert.interpolate(this_vaxis)
 
         # We are now coexisting in harmony - call parent's insert.
-        super(ProcessedData, self).insert(obj_to_insert,
-                                           ping_number=ping_number,
-                                           ping_time=ping_time,
-                                           insert_after=insert_after,
-                                           index_array=index_array)
+        super(processed_data, self).insert(obj_to_insert,
+                ping_number=ping_number, ping_time=ping_time,
+                insert_after=insert_after, index_array=index_array)
 
 
     def empty_like(self, n_pings=None, empty_times=False, channel_id=None,
             data_type=None, is_log=False):
         """Returns an object filled with NaNs.
 
-        This method returns a ProcessedData object with the same general
+        This method returns a processed_data object with the same general
         characteristics of "this" object with all of the data arrays
         filled with NaNs.
 
@@ -326,13 +323,13 @@ class processed_data(ping_data):
                 for the new object. If this value is None, the channel_id is
                 copied from this object's id.
             data_type: Set data_type to a string defining the type of data
-                the new ProcessedData object will eventually contain. This
+                the new processed_data object will eventually contain. This
                 can be used to identify derived or synthetic data types.
-            is_log: Set this to True if the new ProcessedData object will
+            is_log: Set this to True if the new processed_data object will
                 contain data in log form. Set it to False if not.
 
         Returns:
-            An empty ProcessedData object.
+            An empty processed_data object.
         """
         # If no data_type is provided, copy this data_type.
         if data_type is None:
@@ -343,24 +340,24 @@ class processed_data(ping_data):
         if channel_id:
             channel_id = channel_id
         else:
-            channel_id = list(self.channel_id)
+            channel_id = None
 
-        # Get an empty ProcessedData object "like" this object.
-        empty_obj = ProcessedData(channel_id, self.frequency,
-                data_type)
-        empty_obj.sample_thickness = self.sample_thickness
-        empty_obj.sample_offset = self.sample_offset
+        # Get an empty processed_data object "like" this object.
+        empty_obj = processed_data(channel_id, self.frequency, data_type)
+
+        # Call the parent _like helper method
+        self._like(empty_obj, n_pings, np.nan, empty_times=empty_times)
+        empty_obj.data_type = data_type
         empty_obj.is_log = is_log
 
-        # Call the parent _like helper method and return the result.
-        return self._like(empty_obj, n_pings, np.nan, empty_times=empty_times)
+        return empty_obj
 
 
     def zeros_like(self, n_pings=None, empty_times=False, channel_id=None,
             data_type=None, is_log=False):
         """Returns an object filled with zeros.
 
-        This method returns a ProcessedData object with the same general
+        This method returns a processed_data object with the same general
         characteristics of "this" object with all of the data arrays
         filled with zeros.
 
@@ -381,9 +378,9 @@ class processed_data(ping_data):
                 channel_id for the new object. If this value is None,
                 the channel_id is copied from this object's id.
             data_type (str): Set data_type to a string defining the type of data
-                the new ProcessedData object will eventually contain. This
+                the new processed_data object will eventually contain. This
                 can be used to identify derived or synthetic data types.
-            is_log (bool): Set this to True if the new ProcessedData object
+            is_log (bool): Set this to True if the new processed_data object
                 will contain data in log form. Set it to False if not.
         """
         # If no data_type is provided, copy this data_type.
@@ -395,39 +392,32 @@ class processed_data(ping_data):
         if channel_id:
             channel_id = channel_id
         else:
-            channel_id = list(self.channel_id)
+            channel_id = self.channel_id
 
-        # Get an empty ProcessedData object "like" this object.
-        empty_obj = ProcessedData(channel_id, self.frequency,
-                self.data_type)
-        empty_obj.sample_thickness = self.sample_thickness
-        empty_obj.sample_offset = self.sample_offset
-        empty_obj.is_log = is_log
+        # Get an empty processed_data object "like" this object.
+        zeros_obj = processed_data(channel_id, self.frequency, self.data_type)
 
-        # Call the parent _like helper method and return the result.
-        return self._like(empty_obj, n_pings, 0.0,
-                empty_times=empty_times)
+        # Call the parent _like helper method
+        self._like(zeros_obj, n_pings, 0.0, empty_times=empty_times)
+        zeros_obj.data_type = data_type
+        zeros_obj.is_log = is_log
+
+        return zeros_obj
 
 
     def copy(self):
         """creates a deep copy of this object."""
 
-        # Create an empty ProcessedData object with the same basic props as
+        # Create an empty processed_data object with the same basic props as
         # our self.
-        pd_copy = ProcessedData(self.channel_id,
-                self.frequency, self.data_type)
-
-        # Copy the other base attributes of our class.
-        pd_copy.sample_thickness = self.sample_thickness
-        pd_copy.sample_offset = self.sample_offset
-        pd_copy.is_log = self.is_log
+        pd_copy = processed_data(self.channel_id, self.frequency, self.data_type)
 
         # Call the parent _copy helper method and return the result.
         return self._copy(pd_copy)
 
 
     def view(self, ping_slice, sample_slice):
-        """Creates a ProcessedData object who's data attributes are views
+        """Creates a processed_data object who's data attributes are views
         into this instance's data.
 
         This method is intended to be a convenient method for displaying or
@@ -443,7 +433,7 @@ class processed_data(ping_data):
                 parameters (start, stop, stride) for the sample axis.
 
         Returns:
-            A ProcessedData object, p_data.
+            A processed_data object, p_data.
         """
 
         # Check if we've been passed tuples instead of slice objs. Convert
@@ -456,18 +446,20 @@ class processed_data(ping_data):
 
         # Create a new object to return.  The data attributes of the new
         # instance will be views into this instance's data.
-        p_data = ProcessedData(self.channel_id, self.frequency, self.data_type)
+        p_data = processed_data(self.channel_id, self.frequency, self.data_type)
 
-        # Copy common attributes (include parent class attributes since we
-        # don't call a parent method to do this).
-        p_data.sample_thickness = self.sample_thickness
-        p_data.sample_dtype = self.sample_dtype
-        p_data.frequency = self.frequency
+        # Copy object and data attributes
         p_data._data_attributes = list(self._data_attributes)
-        p_data.is_log = self.is_log
+        p_data._object_attributes  = list(self._object_attributes)
+
+        # Copy object attributes - this is simple as there are no
+        # size or type checks.
+        for attr_name in self._object_attributes:
+            attr = getattr(self, attr_name)
+            setattr(p_data, attr_name, attr.copy())
 
         # Work through the data attributes, slicing them and adding to the new
-        # ProcessedData object.
+        # processed_data object.
         for attr_name in self._data_attributes:
             attr = getattr(self, attr_name)
             if attr.ndim == 2:
@@ -595,8 +587,8 @@ class processed_data(ping_data):
         if to_depth:
             # If we're converting from range to depth, add depth and remove
             # range.
-            self.add_attribute('depth', new_axis)
-            self.remove_attribute('range')
+            self.add_data_attribute('depth', new_axis)
+            self.remove_data_attribute('range')
         else:
             # No conversion, just assign the new vertical axis data.
             vert_axis = new_axis
@@ -721,15 +713,104 @@ class processed_data(ping_data):
 
         # Call the parent method to resize the arrays (n_samples is updated
         # here).
-        super(ProcessedData, self).resize(new_ping_dim, new_sample_dim)
+        super(processed_data, self).resize(new_ping_dim, new_sample_dim)
 
         # Update n_pings.
         self.n_pings = self.ping_time.shape[0]
 
 
+    def set_motion(self, motion_obj):
+        """set_motion will extract and interpolate pitch, heave, roll, and
+        heading data in the provided "motion object" to this object's time
+        axis and add them as attributes
+
+        When using the EK80 class, the motion_object is stored in
+        the motion_data attribute. The EK60
+
+        p_data.set_motion(ek80.motion_data)
+        """
+        motion_types = ['pitch', 'roll', 'heave', 'heading']
+        for type in motion_types:
+            #  get the interpolated data for this type
+            attr_names, data = motion_obj.interpolate(self, type)
+
+            # iterate through the returned data and add or update it
+            for attr_name in attr_names:
+                #  check if we had data for this attribute
+                if data[attr_name]:
+                    #  yes - add or update it
+                    if hasattr(self, attr_name):
+                        #  update existing attribute
+                        setattr(self, attr_name, data[attr_name])
+                    else:
+                        #  add attribute
+                        self.add_data_attribute(attr_name, data[attr_name])
+
+
+    def set_navigation(self, nmea_obj):
+        """set_navigation will extract and interpolate common navigation
+        NMEA datagrams from the provided "NMEA object" to this object's time
+        axis and add them as an attributes.
+
+        If 'GGA','RMC', or 'GLL' datagrams are present, the "latitude" and
+        "longitude" attributes will be added. If more than one of these
+        datagrams are present, preference will be given to GGA or RMC over
+        GLL.
+
+        If the 'VTG' datagram is present, the "spd_over_grnd_kts" attribute
+        will be added.
+
+        If the 'VLW' datagram is present, the "trip_distance_nmi" attribute
+        will be added.
+
+        If the 'SHR' datagram is present, the "heave", "pitch", and "roll"
+        attributes will be added.
+
+        When using the EK60 or EK80 classes, the nmea_object is stored in
+        the nmea_data attribute.
+
+        p_data.set_navigation(ek80.nmea_data)
+        """
+        # Define the message types we're going to try to add using the
+        # nmea_data metatypes
+        nav_types = ['position', 'speed', 'attitude', 'distance']
+        for type in nav_types:
+            #  get the interpolated data for this type
+            attr_names, data = nmea_obj.interpolate(self, type)
+
+            # iterate through the returned data and add or update it
+            for attr_name in attr_names:
+                #  check if we had data for this attribute
+                if data[attr_name]:
+                    #  yes - add or update it
+                    if hasattr(self, attr_name):
+                        #  update existing attribute
+                        setattr(self, attr_name, data[attr_name])
+                    else:
+                        #  add attribute
+                        self.add_data_attribute(attr_name, data[attr_name])
+
+
+    def set_navigation_like(self, p_obj):
+        """set_navigation_like sets this object's navigation attributes
+        like another ping_data object's nav attributes. The other object
+        must share this object's time axis.
+
+        This method *does not* copy the data and is best used when processing
+        multiple channels that share the same time axis as you can avoid
+        interpolating and storing the same data for all of your channels.
+        """
+        for attr_name in self._nav_attributes:
+            if hasattr(p_obj, attr_name):
+                if hasattr(self, attr_name):
+                    setattr(self, attr_name, getattr(p_obj, attr_name))
+                else:
+                    self.add_data_attribute(attr_name, getattr(p_obj, attr_name))
+
+
     def __setitem__(self, key, value):
         """
-        We can assign to sample data elements in ProcessedData objects using
+        We can assign to sample data elements in processed_data objects using
         assignment with mask objects or we can use python array slicing.
 
         When assigning data, the assignment is to the sample data only.
@@ -745,7 +826,7 @@ class processed_data(ping_data):
         """
         # Determine if we're assigning with a mask or assigning with slice
         # object.
-        if isinstance(key, mask.Mask):
+        if isinstance(key, mask.mask):
             # It's a mask.  Make sure the mask applies to this object.
             self._check_mask(key)
 
@@ -767,8 +848,8 @@ class processed_data(ping_data):
             sample_mask = key
 
         # Check what value we've been given.
-        if isinstance(value, ProcessedData):
-            # It is a ProcessedData object.  Check if it's compatible.
+        if isinstance(value, processed_data):
+            # It is a processed_data object.  Check if it's compatible.
             self._is_like_me(value)
 
             # Get a view of the sliced sample data.
@@ -784,14 +865,14 @@ class processed_data(ping_data):
 
 
     def __iter__(self):
-        """ProcessedData objects are iterable
+        """processed_data objects are iterable
         """
         self._iter_idx = 0
         return self
 
 
     def __next__(self):
-        """ProcessedData objects are iterable and return a vector containing
+        """processed_data objects are iterable and return a vector containing
         a pings worth of data per iteration.
         """
         self._iter_idx += 1
@@ -802,7 +883,7 @@ class processed_data(ping_data):
 
 
     def __getitem__(self, key):
-        """ProcessedData objects can be sliced with standard index based
+        """processed_data objects can be sliced with standard index based
         slicing as well as mask objects.
 
         Args:
@@ -813,7 +894,7 @@ class processed_data(ping_data):
         """
 
         # Determine if we're "slicing" with a mask or slicing with slice object.
-        if isinstance(key, mask.Mask):
+        if isinstance(key, mask.mask):
 
             # Make sure the mask applies to this object.
             self._check_mask(key)
@@ -846,7 +927,7 @@ class processed_data(ping_data):
         Ensures that the mask dimensions and axes values match our data's
         dimensions and values.
         Args:
-            mask (Mask): A mask object.
+            mask (mask): A mask object.
 
         Raises:
             ValueError: Ranges do not match.
@@ -890,11 +971,11 @@ class processed_data(ping_data):
     def _is_like_me(self, pd_object):
         """Checks that the object dimensions and values match data's.
 
-        This method ensures that the ProcessedData object's dimensions and axes
+        This method ensures that the processed_data object's dimensions and axes
         values match our data's dimensions and values.
 
         Args:
-            pd_object (ProcessedData): The ProcessedData object we are checking.
+            pd_object (processed_data): The processed_data object we are checking.
 
         Raises:
             ValueError: Ping times do not match.
@@ -905,14 +986,14 @@ class processed_data(ping_data):
 
         # Check the ping times and make sure they match.
         if not np.array_equal(self.ping_time, pd_object.ping_time):
-            raise ValueError("The ProcessedData object's ping times do not "
+            raise ValueError("The processed_data object's ping times do not "
                              "match our ping times.")
 
         # Make sure the vertical axis is the same.
         if hasattr(pd_object, 'range'):
             if hasattr(self, 'range'):
                 if not np.array_equal(self.range, pd_object.range):
-                    raise ValueError("The ProcessedData object's ranges do "
+                    raise ValueError("The processed_data object's ranges do "
                                      "not match our ranges.")
             else:
                 raise AttributeError('You cannot operate on a range based '
@@ -920,7 +1001,7 @@ class processed_data(ping_data):
         else:
             if hasattr(self, 'depth'):
                 if not np.array_equal(self.depth, mask.depth):
-                    raise ValueError("The ProcessedData object's depths do "
+                    raise ValueError("The processed_data object's depths do "
                                      "not match our depths.")
             else:
                 raise AttributeError('You cannot operate on a depth based '
@@ -930,12 +1011,12 @@ class processed_data(ping_data):
     def __gt__(self, other):
         """Implements the "greater than" operator.
 
-        We accept either a like sized ProcessedData object, a like sized
+        We accept either a like sized processed_data object, a like sized
         numpy array, or a scalar value.  The comparison operators always do a
         element-by-element comparison and return the results in a sample mask.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             A mask object containing the results of the comparison.
@@ -955,12 +1036,12 @@ class processed_data(ping_data):
     def __lt__(self, other):
         """Implements the "less than" operator.
 
-        We accept either a like sized ProcessedData object, a like sized
+        We accept either a like sized processed_data object, a like sized
         numpy array or a scalar value. The comparison operators always do a
         element-by-element comparison and return the results in a sample mask.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             A mask object containing the results of the comparison.
@@ -980,12 +1061,12 @@ class processed_data(ping_data):
     def __ge__(self, other):
         """Implements the "greater than or equal to" operator.
 
-        We accept either a like sized ProcessedData object, a like sized
+        We accept either a like sized processed_data object, a like sized
         numpy array or a scalar value.  The comparison operators always do a
         element-by-element comparison and return the results in a sample mask.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             A mask object containing the results of the comparison.
@@ -1005,12 +1086,12 @@ class processed_data(ping_data):
     def __le__(self, other):
         """Implements the "less than or equal to" operator.
 
-        We accept either a like sized ProcessedData object, a like sized
+        We accept either a like sized processed_data object, a like sized
         numpy array or a scalar value.  The comparison operators always do a
         element-by-element comparison and return the results in a sample mask.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             A mask object containing the results of the comparison.
@@ -1030,12 +1111,12 @@ class processed_data(ping_data):
     def __eq__(self, other):
         """Implements the "equal" operator.
 
-        We accept either a like sized ProcessedData object, a like sized
+        We accept either a like sized processed_data object, a like sized
         numpy array or a scalar value. The comparison operators always do a
         element-by-element comparison and return the results in a sample mask.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             A mask object containing the results of the comparison.
@@ -1055,12 +1136,12 @@ class processed_data(ping_data):
     def __ne__(self, other):
         """Implements the "not equal" operator.
 
-        We accept either a like sized ProcessedData object, a like sized
+        We accept either a like sized processed_data object, a like sized
         numpy array or a scalar value. The comparison operators always do a
         element-by-element comparison and return the results in a sample mask.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             A mask object containing the results of the comparison.
@@ -1086,7 +1167,7 @@ class processed_data(ping_data):
         *probably* successfully apply the operator.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Raises:
             ValueError: Array has wrong shape.
@@ -1096,8 +1177,8 @@ class processed_data(ping_data):
         """
 
         # Determine what we're comparing our self to.
-        if isinstance(other, ProcessedData):
-            # We've been passed a ProcessedData object.  Make sure it's kosher.
+        if isinstance(other, processed_data):
+            # We've been passed a processed_data object.  Make sure it's kosher.
             self._is_like_me(other)
 
             # Get the references to the other sample data array.
@@ -1126,7 +1207,7 @@ class processed_data(ping_data):
         comparison operators.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             A mask object and references to data from "other".
@@ -1136,7 +1217,7 @@ class processed_data(ping_data):
         other_data = self._setup_operators(other)
 
         # Create the mask we will return.
-        compare_mask = mask.Mask(like=self)
+        compare_mask = mask.mask(like=self)
 
         # Disable warning for comparing NaNs.
         self._old_npset = np.seterr(invalid='ignore')
@@ -1149,7 +1230,7 @@ class processed_data(ping_data):
         operators.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
             inplace (bool): Set to True to operate in-place.  Otherwise,
                 need to create an object to return.
 
@@ -1159,7 +1240,7 @@ class processed_data(ping_data):
         # Do some checks and get references to the data.
         other_data = self._setup_operators(other)
 
-        # If we're not operating in-place, create a ProcessedData object to
+        # If we're not operating in-place, create a processed_data object to
         # return.
         if not inplace:
             # Return references to a new pd object.
@@ -1175,7 +1256,7 @@ class processed_data(ping_data):
         """Implements the binary addition operator
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             An object, op_result, containing the results.
@@ -1194,7 +1275,7 @@ class processed_data(ping_data):
         """Implements the reflected binary addition operator.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             An object containing the results.
@@ -1207,7 +1288,7 @@ class processed_data(ping_data):
         """Implements the in-place binary addition operator.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             An object, op_result, containing the results.
@@ -1227,7 +1308,7 @@ class processed_data(ping_data):
         """Implements the binary subtraction operator.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             An object, op_result, containing the results.
@@ -1246,7 +1327,7 @@ class processed_data(ping_data):
         """Implements the reflected binary subtraction operator.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             An object containing the results.
@@ -1258,7 +1339,7 @@ class processed_data(ping_data):
         """Implements the in-place binary subtraction operator.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             An object, op_result, containing the results.
@@ -1277,7 +1358,7 @@ class processed_data(ping_data):
         """Implements the binary multiplication operator.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             An object, op_result, containing the results.
@@ -1296,7 +1377,7 @@ class processed_data(ping_data):
         """Implements the reflected binary multiplication operator.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             An object containing the results.
@@ -1309,7 +1390,7 @@ class processed_data(ping_data):
         """Implements the in-place binary multiplication operator.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             An object, op_result, containing the results.
@@ -1329,7 +1410,7 @@ class processed_data(ping_data):
         """Implements the binary fp division operator
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             An object, op_result, containing the results.
@@ -1348,7 +1429,7 @@ class processed_data(ping_data):
         """Implements the reflected binary fp division operator.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             An object containing the results.
@@ -1361,7 +1442,7 @@ class processed_data(ping_data):
         """Implements the in-place binary fp division operator.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             An object, op_result, containing the results.
@@ -1380,7 +1461,7 @@ class processed_data(ping_data):
         """Implements the binary power operator.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             An object, op_result, containing the results.
@@ -1399,7 +1480,7 @@ class processed_data(ping_data):
         """Implements the reflected binary power operator.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             An object containing the results.
@@ -1411,7 +1492,7 @@ class processed_data(ping_data):
         """Implements the in-place binary power operator.
 
         Args:
-            other: a ProcessedData object, numpy array, or scalar value.
+            other: a processed_data object, numpy array, or scalar value.
 
         Returns:
             An object, op_result, containing the results.
@@ -1428,22 +1509,19 @@ class processed_data(ping_data):
 
     def __str__(self):
         """Re-implements string method that provides some basic info about
-        the ProcessedData object
+        the processed_data object
 
         Returns:
-            A string with information about the ProcessedData instance.
+            A string with information about the processed_data instance.
         """
 
         #  print the class and address
         msg = str(self.__class__) + " at " + str(hex(id(self))) + "\n"
 
-        #  print some more info about the ProcessedData instance
+        #  print some more info about the processed_data instance
         n_pings = len(self.ping_time)
         if n_pings > 0:
-            msg = msg + "                channel(s): ["
-            for channel in self.channel_id:
-                msg = msg + channel + ", "
-            msg = msg[0:-2] + "]\n"
+            msg = msg + "                channel(s): [" + self.channel_id + "]\n"
             msg = (msg + "                 frequency: " + str(self.frequency)
                    + "\n")
             msg = (msg + "           data start time: " + str(self.ping_time[
@@ -1471,6 +1549,6 @@ class processed_data(ping_data):
                             attr))
                 n_attr += 1
         else:
-            msg = msg + "  ProcessedData object contains no data\n"
+            msg = msg + "  processed_data object contains no data\n"
 
         return msg

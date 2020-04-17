@@ -72,14 +72,15 @@ class simrad_motion_data(object):
         self.n_raw += 1
 
 
-    def interpolate(self, p_data, start_time=None, end_time=None,
-            attributes=None):
+    def interpolate(self, p_data, data_type, start_time=None, end_time=None):
         """
         interpolate returns the requested motion data interpolated to the ping times
         that are present in the provided ping_data object.
 
             p_data is a ping_data object that contains the ping_time vector
                     to interpolate to.
+            data_type is a string pecifying the motion attribute to interpolate, valid
+                    values are: 'pitch', 'heave', 'roll', and 'heading'
             start_time is a datetime or datetime64 object defining the starting time of the data
                     to return. If None, the start time is the earliest time.
             end_time is a datetime or datetime64 object defining the ending time of the data
@@ -103,28 +104,27 @@ class simrad_motion_data(object):
                 time_order=True)
 
         # Check if we're been given specific attributes to interpolate
-        if attributes is None:
+        if data_type is None:
             # No - interpolate all
             attributes = ['heave', 'pitch', 'roll', 'heading']
-        elif isinstance(attributes, str):
+        elif isinstance(data_type, str):
             # We have a string, put it in a list
-            attributes = [attributes]
-
-
+            attributes = [data_type]
 
         # Work through the attributes and interpolate
         for attribute in attributes:
             try:
                 # Interpolate this attribute using the time vector in the
                 # provided ping_data object
-                out_data[attribute] = np.interp(p_data.ping_time.astype('d'),
+                i_data = np.interp(p_data.ping_time.astype('d'),
                         self.time.astype('d'), getattr(self, attribute),
                         left=np.nan, right=np.nan)
+                out_data[attribute] = i_data[return_idxs]
             except:
                 # Provided attribute doesn't exist
-                pass
+                out_data[attribute] = None
 
-        return out_data[return_idxs]
+        return (attributes, out_data)
 
 
     def _get_indices(self, start_time, end_time, time_order=True):

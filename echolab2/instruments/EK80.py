@@ -911,7 +911,7 @@ class raw_data(ping_data):
 #        # does not.
 #        if not hasattr(self, 'detected_bottom'):
 #            data = np.full(self.ping_time.shape[0], np.nan)
-#            self.add_attribute('detected_bottom', data)
+#            self.add_data_attribute('detected_bottom', data)
 
 
 
@@ -1923,14 +1923,14 @@ class raw_data(ping_data):
                     sound_velocity, min_sample_offset)
 
         # Assign the results to the "data" processed_data object.
-        p_data.add_attribute('data', output)
+        p_data.add_data_attribute('data', output)
 
         # Calculate the sample thickness.
         sample_thickness = sample_interval * sound_velocity / 2.0
 
         # Now assign range, sound_velocity, sample thickness and offset to
         # the processed_data object.
-        p_data.add_attribute('range', range)
+        p_data.add_data_attribute('range', range)
         p_data.sound_velocity = sound_velocity
         p_data.sample_thickness = sample_thickness
         p_data.sample_offset = min_sample_offset
@@ -2338,10 +2338,6 @@ class calibration(object):
                 'latitude', 'transducer_sound_speed', 'sound_velocity_profile']
         self._init_attributes(self._environment_attributes)
 
-        # These attributes are contained in the async motion datagrams
-        self._motion_attributes = ['heave', 'pitch', 'roll', 'heading']
-        self._init_attributes(self._motion_attributes)
-
 
     def from_raw_data(self, raw_data, return_indices=None):
         """Populates the calibration object.
@@ -2380,11 +2376,6 @@ class calibration(object):
             self.set_attribute_from_raw(raw_data, param_name,
                     return_indices=return_indices)
 
-        # Extract the motion attributes
-        for param_name in self._motion_attributes:
-            self.set_attribute_from_raw(raw_data, param_name,
-                    return_indices=return_indices)
-
 
     def read_ecs_file(self, ecs_file, channel):
         """Reads an echoview ecs file and parses out the
@@ -2412,7 +2403,7 @@ class calibration(object):
         if param_name in self._raw_attributes:
             # Extract data from raw_data attribues
             raw_param = getattr(raw_data, param_name)
-            param_data = raw_param[return_indices].copy()
+            param_data = raw_param[return_indices]
 
         elif param_name in self._config_attributes:
             # Extract configuration data
@@ -2429,12 +2420,6 @@ class calibration(object):
             for idx in return_indices:
                 param_data[ret_idx] = raw_data.environment[param_name]
                 ret_idx += 1
-
-        elif param_name in self._motion_attributes:
-            start_time = np.min(self.ping_time[return_indices])
-            end_time = np.max(self.ping_time[return_indices])
-            self.interpolate( p_data, start_time=start_time, end_time=end_time,
-                attributes=[param_name])
 
         return param_data
 
