@@ -27,7 +27,7 @@ def compare_dicts(a, b):
 
 
 #  CW complex - full resolution (should be 32-bit samples)
-filename = 'C:/EK80 Test Data/EK80/CW/complex/DY2000_EK80_Cal-D20200126-T060729.raw'
+#filename = 'C:/EK80 Test Data/EK80/CW/complex/DY2000_EK80_Cal-D20200126-T060729.raw'
 
 #  CW reduced (power/angle) - full resolution
 #filename = 'C:/EK80 Test Data/EK80/CW/reduced/DY2000_EK80_Cal-D20200126-T061004.raw'
@@ -41,6 +41,8 @@ filename = 'C:/EK80 Test Data/EK80/CW/complex/DY2000_EK80_Cal-D20200126-T060729.
 # FM EK80
 #filename = 'C:/EK80 Test Data/EK80/FM/DY1802_EK80-D20180301-T185940.raw'
 
+#CW reduced (power/angle) - full resolution - survey file
+filename = 'C:/EK80 Test Data/EK80/CW/survey/DY2003_EK80-D20200312-T201435.raw'
 
 
 #  explore datagrams from various file types

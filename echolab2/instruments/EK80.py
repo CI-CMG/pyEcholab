@@ -1339,7 +1339,7 @@ class raw_data(ping_data):
             **kwargs (dict): A keyworded argument list.
 
         Returns:
-            The processed data object, p_data.
+            The processed_data object, p_data.
         """
 
         # Call the generalized _get_sample_data method requesting the 'power'
@@ -1405,7 +1405,7 @@ class raw_data(ping_data):
 
 
     def get_Sv(self, calibration=None, linear=False, tvg_correction=True,
-               heave_correct=False, return_depth=False, **kwargs):
+               return_depth=False, **kwargs):
         """Gets Sv data
 
         The value passed to cal_parameters is a calibration parameters object.
@@ -1421,7 +1421,6 @@ class raw_data(ping_data):
             calibration (float):
             linear (bool): Set to True if getting "sv" data
             tvg_correction:
-            heave_correct:
             return_depth (float):
             **kwargs (dict): A keyworded argument list.
 
@@ -1452,9 +1451,9 @@ class raw_data(ping_data):
         # Set the data attribute in the processed_data object.
         p_data.data = sv_data
 
-        # Check if we need to convert to depth.
-        if heave_correct or return_depth:
-            self._to_depth(p_data, calibration, heave_correct, return_indices)
+        # Check if we need to convert to depth
+        if return_depth:
+            p_data.to_depth(calibration)
 
         return p_data
 
@@ -1480,8 +1479,7 @@ class raw_data(ping_data):
 
 
     def get_Sp(self,  calibration=None, linear=False, tvg_correction=False,
-            heave_correct=False, return_depth=False,
-            **kwargs):
+            return_depth=False, **kwargs):
         """Gets Sp data.
 
         Sp is calculated as follows:
@@ -1506,7 +1504,6 @@ class raw_data(ping_data):
             linear (bool): Set to True if getting Sp data.
             tvg_correction (bool): Set to True to apply a correction to the
                 range of 2 * sample thickness.
-            heave_correct (bool): If true apply heave correction.
             return_depth (bool): If true, return the vertical axis of the
                 data as depth.  Otherwise, return as range.
             **kwargs
@@ -1537,15 +1534,15 @@ class raw_data(ping_data):
         # Set the data attribute in the processed_data object.
         p_data.data = sp_data
 
-        # Check if we need to convert to depth.
-        if heave_correct or return_depth:
-            self._to_depth(p_data, calibration, heave_correct, return_indices)
+        # Check if we need to convert to depth or heave correct.
+        if return_depth:
+            p_data.to_depth(calibration)
 
         return p_data
 
 
     def get_bottom(self, calibration=None, return_indices=None,
-            heave_correct=False, return_depth=False, **kwargs):
+            return_depth=False, **kwargs):
         """Gets a echolab2 line object containing the sounder detected bottom
         depths.
 
@@ -1556,13 +1553,10 @@ class raw_data(ping_data):
         to ensure that the sounder detected bottom depths align with your sample
         data.
 
-        heave_correct is only used to determine if we need to return depths.
-
         Args:
             calibration (calibration object): The data calibration object where
                 calibration data will be retrieved.
             return_indices (array): A numpy array
-            heave_correct (bool): Set to True to apply heave correction.
             return_depth (bool): If true, return the vertical axis of the
                 data as depth.  Otherwise, return as range.
             **kwargs
@@ -1585,12 +1579,6 @@ class raw_data(ping_data):
             # Get an array of index values to return.
             return_indices = self.get_indices(**kwargs)
 
-        # We don't heave correct the bottom data, but if it is set, we know we
-        # have to return depth.  We keep the heave_correct keyword for
-        # consistency with the other get_* methods.
-        if heave_correct:
-            return_depth = True
-
         # Extract the recorded sound velocity.
         sv_recorded = self.sound_velocity[return_indices]
 
@@ -1601,8 +1589,8 @@ class raw_data(ping_data):
         # Next, iterate through the dict, calling the method to extract the
         # values for each parameter.
         for key in cal_parms:
-            cal_parms[key] = self._get_calibration_param(calibration, key,
-                                                         return_indices)
+            cal_parms[key] = self._get_calibration_param(calibration,
+                    key, return_indices)
 
         # Check if we have to adjust the depth due to a change in sound speed.
         if np.all(np.isclose(sv_recorded, cal_parms['sound_velocity'])):
@@ -1636,7 +1624,7 @@ class raw_data(ping_data):
         """
 
         # Get the electrical angles.
-        pd_alongship, pd_athwartship, return_indices = \
+        alongship, athwartship, return_indices = \
                 self._get_electrical_angles(calibration=calibration, **kwargs)
 
         # Get the calibration params required for angle conversion.
@@ -1649,33 +1637,31 @@ class raw_data(ping_data):
         # values for each parameter.
         for key in cal_parms:
             cal_parms[key] = self._get_calibration_param(calibration, key,
-                                                         return_indices)
+                    return_indices)
 
         # Compute the physical angles.
-        pd_alongship.data[:] = (pd_alongship.data /
+        alongship.data[:] = (alongship.data /
                 cal_parms['angle_sensitivity_alongship'][:, np.newaxis])
-        pd_alongship.data -= cal_parms['angle_offset_alongship'][:, np.newaxis]
-        pd_athwartship.data[:] = (pd_athwartship.data /
+        alongship.data -= cal_parms['angle_offset_alongship'][:, np.newaxis]
+        athwartship.data[:] = (athwartship.data /
                 cal_parms['angle_sensitivity_athwartship'][:, np.newaxis])
-        pd_athwartship.data -= cal_parms['angle_offset_athwartship'][:,
+        athwartship.data -= cal_parms['angle_offset_athwartship'][:,
                                np.newaxis]
 
         # Set the data types.
-        pd_alongship.data_type = 'angles_alongship'
-        pd_athwartship.data_type = 'angles_athwartship'
+        alongship.data_type = 'angles_alongship'
+        athwartship.data_type = 'angles_athwartship'
 
         # We do not need to convert to depth here since the electrical_angle
         # data will already have been converted to depth if requested.
 
-        return pd_alongship, pd_athwartship
+        return alongship, athwartship
 
 
-    def get_electrical_angles(self, heave_correct=False, return_depth=False,
-            calibration=None, **kwargs):
+    def get_electrical_angles(self, return_depth=False, calibration=None, **kwargs):
         """Gets unconverted angles_alongship_e and angles_athwartship_e data.
 
         Args:
-            heave_correct (bool): Set to True to apply heave correction.
             return_depth (bool): If true, return the vertical axis of the
                 data as depth.  Otherwise, return as range.
             calibration (calibration object): The data calibration object where
@@ -1687,31 +1673,30 @@ class raw_data(ping_data):
             angles_alongship_e and angles_athwartship_e data.
         """
 
-        # Call the generalized _get_sample_data method requesting the
-        # 'angles_alongship_e' sample attribute. The method will return a
-        # reference to a newly created iprocessed_data instance.
-        pd_alongship, return_indices = self._get_sample_data(
-            'angles_alongship_e', **kwargs)
+        # Call the _get_sample_data method requesting the 'angles_alongship_e'
+        # sample attribute. The method will return a reference to a newly created
+        # processed_data object.
+        alongship, return_indices = self._get_sample_data('angles_alongship_e',
+                **kwargs)
 
         # Repeat for the athwartship data.
-        pd_athwartship, return_indices = self._get_sample_data(
-            'angles_athwartship_e', **kwargs)
+        athwartship, return_indices = self._get_sample_data('angles_athwartship_e',
+                **kwargs)
 
         # Set the data type.
-        pd_alongship.data_type = 'angles_alongship_e'
-        pd_athwartship.data_type = 'angles_athwartship_e'
+        alongship.data_type = 'angles_alongship_e'
+        athwartship.data_type = 'angles_athwartship_e'
 
-        if heave_correct or return_depth:
-            self._to_depth(pd_alongship, calibration, heave_correct,
-                           return_indices)
-            self._to_depth(pd_athwartship, calibration, heave_correct,
-                           return_indices)
+        # Covert to depth
+        if return_depth:
+            alongship.to_depth(calibration)
+            athwartship.to_depth(calibration)
 
-        return (pd_alongship, pd_athwartship)
+        return alongship, athwartship
 
 
-    def _get_electrical_angles(self, heave_correct=False, return_depth=False,
-            calibration=None, **kwargs):
+    def _get_electrical_angles(self, return_depth=False, calibration=None,
+            **kwargs):
         """Retrieves unconverted angles_alongship_e and angles_athwartship_e
         data and creates an index array mapping pings.
 
@@ -1721,7 +1706,6 @@ class raw_data(ping_data):
         used internally.
 
         Args:
-            heave_correct (bool): Set to True to apply heave correction.
             return_depth (bool): If true, return the vertical axis of the
                 data as depth.  Otherwise, return as range.
             calibration (calibration object): The data calibration object where
@@ -1734,35 +1718,33 @@ class raw_data(ping_data):
             mapping pings to this object.
         """
 
-        # Call the generalized _get_sample_data method requesting the
-        # 'angles_alongship_e' sample attribute. The method will return a
-        # reference to a newly created iprocessed_data instance.
+        # Call the _get_sample_data method requesting the 'angles_alongship_e'
+        # sample attribute. The method will return a reference to a newly created
+        # processed_data object.
         alongship, return_indices = self._get_sample_data(
             'angles_alongship_e', **kwargs)
 
-        # Use the "private" insert_into keyword to insert the
-        # athwartship_e data into p_data.
+        # use the already computed return_indices from the first
+        # call to _get_sample_data to get the athwartship data
         kwargs.pop('return_indices', None)
-        athwartship, return_indices2 = self._get_sample_data(
-            'angles_athwartship_e', return_indices=return_indices, **kwargs)
+        athwartship, ri = self._get_sample_data('angles_athwartship_e',
+                return_indices=return_indices, **kwargs)
 
         # Set the data type.
         alongship.data_type = 'angles_alongship_e'
         athwartship.data_type = 'angles_athwartship_e'
 
-        if heave_correct or return_depth:
-            self._to_depth(alongship, calibration, heave_correct,
-                           return_indices)
-            self._to_depth(athwartship, calibration, heave_correct,
-                           return_indices)
+        # Apply depth and/or heave correction
+        if return_depth:
+            alongship.to_depth(calibration)
+            athwartship.to_depth(calibration)
 
-        return (alongship, athwartship, return_indices)
+        return alongship, athwartship, return_indices
 
 
     def _get_sample_data(self, property_name, calibration=None,
-                         resample_interval=RESAMPLE_SHORTEST,
-                         resample_soundspeed=None, return_indices=None,
-                         **kwargs):
+            resample_interval=RESAMPLE_SHORTEST, resample_soundspeed=None,
+            return_indices=None, **kwargs):
         """Retrieves sample data.
 
         This method returns a processed data object that contains the
@@ -1821,8 +1803,7 @@ class raw_data(ping_data):
         if isinstance(return_indices, np.ndarray):
             if max(return_indices) > self.ping_time.shape[0]:
                 raise ValueError("One or more of the return indices provided "
-                                 "exceeds the " + "number of pings in the " +
-                                 "raw_data object")
+                        "exceeds the " + "number of pings in the " + "raw_data object")
         else:
             # Get an array of index values to return.
             return_indices = self.get_indices(**kwargs)
@@ -1838,14 +1819,18 @@ class raw_data(ping_data):
             data = getattr(self, property_name)
         else:
             raise AttributeError("The attribute name " + property_name +
-                                 " does not exist.")
+                    " does not exist.")
 
         # Populate the calibration parameters required for this method.
         # First, create a dict with key names that match the attributes names
         # of the calibration parameters we require for this method.
         cal_parms = {'sample_interval':None,
                      'sound_speed':None,
-                     'sample_offset':None}
+                     'sample_offset':None,
+                     'transducer_mounting':None,
+                     'drop_keel_offset': None,
+                     'transducer_offset_z': None,
+                     'water_level_draft': None}
 
         # Next, iterate through the dictionary calling the method to extract
         # the values for each parameter.
@@ -1859,8 +1844,7 @@ class raw_data(ping_data):
 
         # Check if we need to resample our sample data.
         unique_sample_interval = np.unique(
-            cal_parms['sample_interval'][~np.isnan(
-                cal_parms['sample_interval'])])
+            cal_parms['sample_interval'][~np.isnan(cal_parms['sample_interval'])])
         if unique_sample_interval.shape[0] > 1:
             # There are at least 2 different sample intervals in the data.  We
             # must resample the data.  We'll deal with adjusting sample offsets
@@ -1887,7 +1871,7 @@ class raw_data(ping_data):
             sample_interval = unique_sample_interval[0]
 
         # Check if we have a fixed sound speed.
-        unique_sound_velocity = np.unique(cal_parms['sound_velocity'])
+        unique_sound_velocity = np.unique(cal_parms['sound_speed'])
         if unique_sound_velocity.shape[0] > 1:
             # There are at least 2 different sound speeds in the data or
             # provided calibration data.  Interpolate all data to the most
@@ -1896,23 +1880,22 @@ class raw_data(ping_data):
             n = 0
             for speed in unique_sound_velocity:
                 # Determine the sound speed with the most pings.
-                if np.count_nonzero(cal_parms['sound_velocity'] == speed) > n:
+                if np.count_nonzero(cal_parms['sound_speed'] == speed) > n:
                    sound_velocity = speed
 
             # Calculate the target range.
-            range = get_range_vector(
-                output.shape[1], sample_interval, sound_velocity,
-                min_sample_offset)
+            range = get_range_vector(output.shape[1], sample_interval,
+                    sound_velocity, min_sample_offset)
 
             # Get an array of indexes in the output array to interpolate.
-            pings_to_interp = np.where(cal_parms['sound_velocity'] != sound_velocity)[0]
+            pings_to_interp = np.where(cal_parms['sound_speed'] != sound_velocity)[0]
 
             # Iterate through this list of pings to change.  Interpolating each
             # ping.
             for ping in pings_to_interp:
                 # Resample using the provided sound speed.
                 resample_range = get_range_vector(output.shape[1], sample_interval,
-                        cal_parms['sound_velocity'][ping], min_sample_offset)
+                        cal_parms['sound_speed'][ping], min_sample_offset)
                 output[ping,:] = np.interp(range, resample_range, output[ping, :])
 
         else:
@@ -1934,6 +1917,15 @@ class raw_data(ping_data):
         p_data.sound_velocity = sound_velocity
         p_data.sample_thickness = sample_thickness
         p_data.sample_offset = min_sample_offset
+
+        # Add the transducer draft attribute
+        # First check if we apply the drop keel offset
+        add_drop_keel = cal_parms['transducer_mounting'] == 'DropKeel'
+        # Zero out offset where the mounting isn't DropKeel
+        cal_parms['drop_keel_offset'][np.invert(add_drop_keel)] = 0.0
+        # Compute the draft and add the attribute
+        xdcr_draft = cal_parms['transducer_offset_z'] + cal_parms['drop_keel_offset']
+        p_data.add_data_attribute('transducer_draft', xdcr_draft)
 
         # Return the processed_data object containing the requested data.
         return p_data, return_indices
@@ -1966,7 +1958,7 @@ class raw_data(ping_data):
         cal_parms = {'gain':None,
                      'transmit_power':None,
                      'equivalent_beam_angle':None,
-                     'pulse_length':None,
+                     'pulse_duration':None,
                      'absorption_coefficient':None,
                      'sa_correction':None}
 
@@ -1974,20 +1966,20 @@ class raw_data(ping_data):
         # the values for each parameter.
         for key in cal_parms:
             cal_parms[key] = self._get_calibration_param(calibration, key,
-                                                         return_indices)
+                    return_indices)
 
         # Get sound_velocity from the power data since get_power might have
         # manipulated this value.
-        cal_parms['sound_velocity'] = np.empty((return_indices.shape[0]),
-                                               dtype=self.sample_dtype)
-        cal_parms['sound_velocity'].fill(power_data.sound_velocity)
+        cal_parms['sound_speed'] = np.empty((return_indices.shape[0]),
+                dtype=self.sample_dtype)
+        cal_parms['sound_speed'].fill(power_data.sound_velocity)
 
         # Calculate the system gains.
-        wavelength = cal_parms['sound_velocity'] / power_data.frequency
+        wavelength = cal_parms['sound_speed'] / power_data.frequency
         if convert_to in ['sv','Sv']:
             gains = 10 * np.log10((cal_parms['transmit_power'] * (10**(
                 cal_parms['gain']/10.0))**2 * wavelength**2 * cal_parms[
-                'sound_velocity'] * cal_parms['pulse_length'] * 10**(
+                'sound_speed'] * cal_parms['pulse_duration'] * 10**(
                 cal_parms['equivalent_beam_angle']/10.0)) / (32 * np.pi**2))
         else:
             gains = 10 * np.log10((cal_parms['transmit_power'] * (10**(
@@ -2000,7 +1992,7 @@ class raw_data(ping_data):
         # to Sv/sv.
         if tvg_correction:
             c_range = power_data.range.copy() - (self.TVG_CORRECTION *
-                                                 power_data.sample_thickness)
+                    power_data.sample_thickness)
             c_range[c_range < 0] = 0
         else:
             c_range = power_data.range
@@ -2081,91 +2073,7 @@ class raw_data(ping_data):
         p_data.shift_pings(vert_shift, to_depth=True)
 
 
-    def _get_calibration_param(self, cal_object, param_name, return_indices,
-                               dtype='float32'):
-        """Retrieves calibration parameter values.
 
-        This method returns appropriately sized arrays containing the calibration
-        parameter specified in param_name. The calibration object's attributes
-        can be set to None, to a scalar value, or to a 1d array and this function
-        creates and fills these arrays based on the data in the calibration object
-        and the value passed to return_indices. It handles 4 cases:
-
-            If the calibration object's parameter is a scalar value, the function
-            will return a 1D array the length of return_indices filled with
-            that scalar.
-
-            If the calibration object's parameter is a 1D array the length of
-            return_indices, it will return that array without modification.
-
-            If the calibration object's parameter is a 1D array the length of
-            self.ping_time, it will return a 1D array the length of return_indices
-            that is the subset of this data defined by the return_indices index
-            array.
-
-            Lastly, If the calibration object's parameter is None this function will
-            return a 1D array the length of return_indices filled with data
-            extracted from the raw data object.
-
-        Args:
-            cal_object (calibration object): The calibration object from which
-                parameter values will be retrieved.
-            param_name (str):  Attribute name needed to get parameter value in
-                calibration object.
-            return_indices (array): A numpy array of indices to return.
-            dtype (str): Numpy data type of the returned array.
-
-        Raises:
-            ValueError: The calibration parameter array is the wrong length.
-            ValueError: The calibration parameter isn't a ndarray or scalar
-                float.
-
-        Returns:
-            A numpy array, param_data, with calibration parameter values.
-        """
-
-        param = getattr(cal_object, param_name)
-
-        if param:
-
-            # Check if the input param is a numpy array.
-            if isinstance(param, np.ndarray):
-                # Check if it is a single value array.
-                if param.shape[0] == 1:
-                    param_data = np.empty((return_indices.shape[0]),
-                                          dtype=dtype)
-                    param_data.fill(param)
-                # Check if it is an array the same length as contained in the
-                # raw data.
-                elif param.shape[0] == self.ping_time.shape[0]:
-                    # Calibration parameters provided as full length
-                    # array.  Get the selection subset.
-                    param_data = param[return_indices]
-                # Check if it is an array the same length as return_indices.
-                elif param.shape[0] == return_indices.shape[0]:
-                    # Calibration parameters provided as a subset, so no need
-                    # to index with return_indices.
-                    param_data = param
-                else:
-                    # It is an array that is the wrong shape.
-                    raise ValueError("The calibration parameter array " +
-                                     param_name + " is the wrong length.")
-            # It is not an array.  Check if it is a scalar int or float.
-            elif type(param) in [int, float, np.float32, np.float64]:
-                    param_data = np.empty((return_indices.shape[0]),
-                                              dtype=dtype)
-                    param_data.fill(param)
-            else:
-                # Invalid type provided.
-                raise ValueError("The calibration parameter " + param_name +
-                        " must be an ndarray or scalar float.")
-        else:
-            # Parameter is not provided in the calibration object, extract it
-            # from the raw data.
-            param_data = cal_object.get_attribute_from_raw(self, param_name,
-                    return_indices=return_indices)
-
-        return param_data
 
 
     def _create_arrays(self, n_pings, n_samples, initialize=False, create_power=False,
@@ -2330,12 +2238,14 @@ class calibration(object):
                 'angle_offset_athwartship', 'beam_width_alongship', 'beam_width_athwartship',
                 'directivity_drop_at_2x_beam_width', 'transducer_offset_x', 'transducer_offset_y',
                 'transducer_offset_z', 'transducer_alpha_x', 'transducer_alpha_y', 'transducer_alpha_z',
-                'transducer_name', 'hw_channel_configuration', 'rx_sample_frequency', 'time_bias']
+                'transducer_name', 'hw_channel_configuration', 'rx_sample_frequency', 'time_bias',
+                'transducer_mounting']
         self._init_attributes(self._config_attributes)
 
         # These attributes are found in the environment datagrams
         self._environment_attributes = ['depth', 'acidity', 'salinity', 'sound_speed', 'temperature',
-                'latitude', 'transducer_sound_speed', 'sound_velocity_profile']
+                'latitude', 'transducer_sound_speed', 'sound_velocity_profile', 'drop_keel_offset',
+                'water_level_draft']
         self._init_attributes(self._environment_attributes)
 
 
@@ -2407,18 +2317,48 @@ class calibration(object):
 
         elif param_name in self._config_attributes:
             # Extract configuration data
-            param_data = np.empty((return_indices.shape[0]))
+
+            # Determine the data type of the param and create empty array
+            if isinstance(raw_data.configuration[0][param_name], np.ndarray):
+                dtype = raw_data.configuration[0][param_name].dtype
+            elif isinstance(raw_data.configuration[0][param_name], int):
+                dtype = np.int32
+            elif isinstance(raw_data.configuration[0][param_name], float):
+                dtype = np.float32
+            else:
+                dtype = 'object'
+            param_data = np.empty((return_indices.shape[0]), dtype=dtype)
+
+            # Populate the empty array
             ret_idx = 0
             for idx in return_indices:
-                param_data[ret_idx] = raw_data.configuration[param_name]
+                p = raw_data.configuration[idx][param_name]
+                # Check if this is a table value that needs to be looked up
+                # TODO: Need to handle cases where lookup param is from pulse_duration_fm
+                if param_name in ['sa_correction', 'gain', 'pulse_duration', 'pulse_duration_fm']:
+                    p = p[raw_data.configuration[idx]['pulse_duration'] ==
+                            raw_data.pulse_duration[idx]][0]
+                param_data[ret_idx] = p
                 ret_idx += 1
 
         elif param_name in self._environment_attributes:
             # Extract environmental data
-            param_data = np.empty((return_indices.shape[0]))
+
+            # Determine the data type of the param and create empty array
+            if isinstance(raw_data.environment[0][param_name], np.ndarray):
+                dtype = raw_data.environment[0][param_name].dtype
+            elif isinstance(raw_data.environment[0][param_name], int):
+                dtype = np.int32
+            elif isinstance(raw_data.environment[0][param_name], float):
+                dtype = np.float32
+            else:
+                dtype = 'object'
+            param_data = np.empty((return_indices.shape[0]), dtype='object')
+
+            # Populate the empty array
             ret_idx = 0
             for idx in return_indices:
-                param_data[ret_idx] = raw_data.environment[param_name]
+                param_data[ret_idx] = raw_data.environment[idx][param_name]
                 ret_idx += 1
 
         return param_data
@@ -2432,11 +2372,7 @@ class calibration(object):
             return_indices=return_indices)
 
         # If param_data is not none, update the attribute
-        if param_data:
-            # Check if we can collapse the vector
-            if np.all(np.isclose(param_data, param_data[0])):
-                # This parameter's values are all the same.
-                param_data = param_data[0]
+        if not param_data is None:
 
             # Update the attribute.
             setattr(self, param_name, param_data)

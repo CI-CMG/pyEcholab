@@ -124,7 +124,11 @@ class processed_data(ping_data):
         # manually you should set this state value accordingly.
         self.is_log = False
 
+        # is_heave_corrected will be true when heave correction has been applied.
         self.is_heave_corrected = False
+
+
+        self.sound_velocity = None
 
         # Sample thickness is the vertical extent of the samples in meters.  It
         # is calculated as thickness = sample interval(s)*sound speed(m/s) / 2.
@@ -148,6 +152,7 @@ class processed_data(ping_data):
         #  create a list that stores the scalar object attributes
         self._obj_attributes = ['sample_thickness',
                                 'sample_offset',
+                                'sound_velocity',
                                 'is_log',
                                 'is_heave_corrected']
 
@@ -520,6 +525,136 @@ class processed_data(ping_data):
         self.data[:,0:n_samples] = np.nan
 
 
+    def to_depth(self, cal_object, heave_correct=False):
+        """to_depth converts the vertical axis to depth by applying the
+        transducer offset vertically shifting each ping. If heave_correct
+        is set to True, heave correction will be applied as well.
+
+        If the primary axis is already depth and heave_correct is set to
+        True and heave compensation has not been applied, only heave
+        compensation will be applied.If the primary axis is depth and
+        heave_correct is set and heave compensation HAS been applied
+        nothing happens.
+
+        In order for heave correction to be applied, you must call the
+        processed_data.get_motion() method to
+
+        """
+        # Check if vert axis is range or depth
+        if not hasattr(self, 'depth'):
+            # Get the transducer depth
+            if hasattr(self, 'transducer_draft'):
+                vert_shift = self.transducer_draft
+            else:
+                vert_shift = 0
+            # note that we're converting from range
+            from_range = True
+        else:
+            #  vert axis is already depth so no shift
+            vert_shift = 0
+            from_range = False
+
+        # Check if we're applying heave correction
+        if heave_correct and hasattr(self, 'heave') and \
+                self.is_heave_corrected == False:
+            # add heave to our vertical shift
+            vert_shift += self.heave
+            self.is_heave_corrected == True
+
+        # Now shift the pings if required.
+        if np.any(vert_shift):
+            #  we have at least 1 ping to shift
+            new_axis = self.shift_pings(vert_shift)
+
+            #  update attribute(s) with new axis values
+            if from_range:
+                # We're converting from range so add depth
+                self.add_data_attribute('depth', new_axis)
+                # And remove range
+                self.remove_data_attribute('range')
+            else:
+                # Vert axis is already depth - update it
+                setattr(self, 'depth', new_axis)
+        else:
+            #  no shift, but we may need to change the axis
+            if from_range:
+                # No shift so just swap range and depth
+                self.add_data_attribute('depth', self.range)
+                self.remove_data_attribute('range')
+
+
+    def to_range(self, cal_object):
+        """to_range converts the vertical axis to range by removing the
+        transducer offset vertically shifting each ping. If heave correction.
+        has been applied, it will be backed out.
+
+        If the primary axis is already range this function does nothing.
+
+        In order for heave correction to be applied, you must call the
+        processed_data.get_motion() method to
+
+        """
+        # Check if vert axis is range or depth
+        if hasattr(self, 'depth'):
+            # Get the transducer depth
+            if hasattr(self, 'transducer_draft'):
+                vert_shift = -self.transducer_draft
+            else:
+                vert_shift = 0
+            # note that we're converting from range
+            from_depth = True
+        else:
+            #  vert axis is already range so no shift
+            vert_shift = 0
+            from_depth = False
+
+        # Check if we need to back out heave correction
+        if self.is_heave_corrected:
+            if hasattr(self, 'heave'):
+                # subtract heave from our vertical shift
+                vert_shift -= self.heave
+                self.is_heave_corrected == False
+            else:
+                # is_heave_corrected is set, but we don't have heave data anymore
+                AttributeError('Cannot convert to range. Heave correction is applied ' +
+                        'but heave attribute is not present. No way to back out heave.')
+
+        # Now shift the pings if required.
+        if np.any(vert_shift):
+            #  we have at least 1 ping to shift
+            new_axis = self.shift_pings(vert_shift)
+
+            #  update attribute(s) with new axis values
+            if from_depth:
+                # We're converting from depth so add range
+                self.add_data_attribute('range', new_axis)
+                # And remove depth
+                self.remove_data_attribute('depth')
+            else:
+                # Vert axis is already range - update it
+                setattr(self, 'range', new_axis)
+        else:
+            #  no shift, but we may need to change the axis
+            if from_depth:
+                # No shift so just swap depth and range
+                self.add_data_attribute('range', self.depth)
+                self.remove_data_attribute('depth')
+
+
+    def heave_correct(self, cal_object):
+        """heave_correct applies heave correction. Since heave correction implies
+        conversion to depth, we simply call to_depth with heave_correct set.
+
+
+        This method will replace the range attribute with depth.
+
+        """
+
+
+        self.to_depth(cal_object, heave_correct=True)
+
+
+
     def shift_pings(self, vert_shift, to_depth=False):
         """Shifts sample data vertically.
 
@@ -575,23 +710,14 @@ class processed_data(ping_data):
 
             # Iterate through the pings and interpolate.
             for ping in range(self.n_pings):
-                self.data[ping, :] = np.interp(
-                    new_axis, vert_axis + vert_shift[ping],
+                self.data[ping, :] = np.interp( new_axis, vert_axis + vert_shift[ping],
                     self.data[ping, :old_samps], left=np.nan, right=np.nan)
 
             # Convert back to log units if required.
             if is_log:
                 self.to_log()
 
-        # Assign the new axis.
-        if to_depth:
-            # If we're converting from range to depth, add depth and remove
-            # range.
-            self.add_data_attribute('depth', new_axis)
-            self.remove_data_attribute('range')
-        else:
-            # No conversion, just assign the new vertical axis data.
-            vert_axis = new_axis
+        return new_axis
 
 
     def to_linear(self):
@@ -794,6 +920,23 @@ class processed_data(ping_data):
     def set_navigation_like(self, p_obj):
         """set_navigation_like sets this object's navigation attributes
         like another ping_data object's nav attributes. The other object
+        must share this object's time axis.
+
+        This method *does not* copy the data and is best used when processing
+        multiple channels that share the same time axis as you can avoid
+        interpolating and storing the same data for all of your channels.
+        """
+        for attr_name in self._nav_attributes:
+            if hasattr(p_obj, attr_name):
+                if hasattr(self, attr_name):
+                    setattr(self, attr_name, getattr(p_obj, attr_name))
+                else:
+                    self.add_data_attribute(attr_name, getattr(p_obj, attr_name))
+
+
+    def set_motion_like(self, p_obj):
+        """set_motion_like sets this object's motion attributes
+        like another ping_data object's motion attributes. The other object
         must share this object's time axis.
 
         This method *does not* copy the data and is best used when processing

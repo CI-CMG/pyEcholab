@@ -730,13 +730,25 @@ class SimradXMLParser(_SimradDatagramParser):
                         #  no parse char provided - nothing to parse
                         data = xml_dict[k]
 
-                    #  try to convert to specified type
+                    # Try to convert to specified type
                     if isinstance(data, list):
+                        # Lists are returned as numpy arrays
                         for i in range(len(data)):
                             try:
                                 data[i] = parse_opts[k][0](data[i])
                             except:
                                 pass
+
+                        # Determine the array type
+                        if parse_opts[k][0] == int:
+                            dtype = np.int32
+                        elif parse_opts[k][0] == float:
+                            dtype = np.float32
+                        else:
+                            dtype = np.string_
+
+                        # and create the array
+                        data = np.array(data, dtype=dtype)
                     else:
                         data = parse_opts[k][0](data)
 

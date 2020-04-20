@@ -14,7 +14,7 @@ from echolab2.instruments import EK80
 #filename = 'C:/EK80 Test Data/EK80/CW/reduced/DY2000_EK80_Cal-D20200126-T061004.raw'
 
 #  CW extra reduced (power/angle) - downsampled
-#filename = 'C:/EK80 Test Data/EK80/CW/further reduced/DY2000_EK80_Cal-D20200126-T062251.raw'
+filename = 'C:/EK80 Test Data/EK80/CW/further reduced/DY2000_EK80_Cal-D20200126-T062251.raw'
 
 # CW EK60 on EK80 (power/angle)
 #filename = 'C:/EK80 Test Data/EK80/CW/further reduced/DY2000_EK80_Cal-D20200126-T062251.raw'
@@ -22,13 +22,22 @@ from echolab2.instruments import EK80
 # FM EK80
 #filename = 'C:/EK80 Test Data/EK80/FM/DY1802_EK80-D20180301-T185940.raw'
 
-filename = ['C:/EK80 Test Data/EK80/CW/reduced/DY2000_EK80_Cal-D20200126-T061004.raw',
-            'C:/EK80 Test Data/EK80/CW/complex/DY2000_EK80_Cal-D20200126-T060729.raw']
+#filename = ['C:/EK80 Test Data/EK80/CW/reduced/DY2000_EK80_Cal-D20200126-T061004.raw',
+#            'C:/EK80 Test Data/EK80/CW/complex/DY2000_EK80_Cal-D20200126-T060729.raw']
 
 ek80 = EK80.EK80()
 
 # Use the read_raw method to read in a data file.
 ek80.read_raw(filename)
+
+#  get the 2nd channel
+raw = ek80.raw_data[list(ek80.raw_data.keys())[1]]
+
+#  extract the first data type
+calibration = raw[0].get_calibration()
+
+Sv = raw[0].get_Sv(calibration=calibration)
+
 
 print(ek80)
 
