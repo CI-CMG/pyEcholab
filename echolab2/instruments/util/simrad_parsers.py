@@ -614,7 +614,10 @@ class SimradXMLParser(_SimradDatagramParser):
     transceiver_parsing_options = {'TransceiverNumber':[int,'',''],
                                    'Version':[str,'transceiver_version',''],
                                    'IPAddress':[str,'ip_address',''],
-                                   'Impedance':[int,'','']
+                                   'Impedance':[int,'',''],
+                                   'Multiplexing':[int,'',''],
+                                   'RxSampleFrequency':[float,'',''],
+                                   'HwChannelConfiguration':[int,'','']
                                   }
 
     transducer_parsing_options = {'SerialNumber':[str,'transducer_serial_number',''],

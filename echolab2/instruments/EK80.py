@@ -191,9 +191,6 @@ class EK80(object):
         # n_files stores the total number of raw files read.
         self.n_files = 0
 
-        # A list of frequencies that have been read.
-        self.frequencies = []
-
         # A list of stings identifying the channel IDs that have been read.
         self.channel_ids = []
 
@@ -780,12 +777,6 @@ class raw_data(ping_data):
 
     # Define some instrument specific constants.
 
-    # Simrad recommends a TVG correction factor of 2 samples to compensate
-    # for receiver delay and TVG start time delay in EK60 and related
-    # hardware.  Note that this correction factor is only applied when
-    # computing Sv/sv and not Sp/sp.
-    TVG_CORRECTION = 2
-
     # Define constants used to specify the target resampling interval for the
     # power and angle conversion functions.  These values represent the
     # standard sampling intervals for EK60 hardware when operated with the
@@ -907,13 +898,6 @@ class raw_data(ping_data):
                                   'sample_count',
                                   'sample_offset']
 
-#        # Check if the detected_bottom attribute exists and create it if it
-#        # does not.
-#        if not hasattr(self, 'detected_bottom'):
-#            data = np.full(self.ping_time.shape[0], np.nan)
-#            self.add_data_attribute('detected_bottom', data)
-
-
 
     def empty_like(self, n_pings):
         """Returns raw_data object with data arrays filled with NaNs.
@@ -930,12 +914,10 @@ class raw_data(ping_data):
         # Create an instance of echolab2.EK80.raw_data and set the same basic
         # properties as this object.  Return the empty processed_data object.
         empty_obj = raw_data(self.channel_id, n_pings=n_pings,
-                             n_samples=self.n_samples,
-                             rolling=self.rolling_array, chunk_width=n_pings,
-                             store_power=self.store_power,
-                             store_angles=self.store_angles,
-                             store_complex=self.store_complex,
-                             max_sample_number=self.max_sample_number)
+                n_samples=self.n_samples, rolling=self.rolling_array,
+                chunk_width=n_pings, store_power=self.store_power,
+                store_angles=self.store_angles, store_complex=self.store_complex,
+                max_sample_number=self.max_sample_number)
 
         return self._like(empty_obj, n_pings, np.nan, empty_times=True)
 
@@ -981,13 +963,12 @@ class raw_data(ping_data):
         # Check that the data types are the same.
         if not isinstance(obj_to_insert, raw_data):
             raise TypeError('The object you are inserting must be an instance '
-                            + 'of echolab2.EK80.raw_data')
+                    + 'of echolab2.EK80.raw_data')
 
         # We are now coexisting in harmony - call parent's insert.
         super(raw_data, self).insert(obj_to_insert, ping_number=ping_number,
-                                     ping_time=ping_time,
-                                     insert_after=insert_after,
-                                     index_array=index_array)
+                ping_time=ping_time, insert_after=insert_after,
+                index_array=index_array)
 
 
     def append_ping(self, sample_datagram, config_params, environment_datagram,
@@ -1328,7 +1309,7 @@ class raw_data(ping_data):
         return much faster if the raw data share the same sample thickness,
         offset and sound speed.
 
-        If calibration is set to an instance of EK60.CalibrationParameters the
+        If calibration is set to an instance of EK80.calibration the
         values in that object (if set) will be used when performing the
         transformations required to return the results. If the required
         parameters are not set in the calibration object or if no object is
@@ -1342,9 +1323,15 @@ class raw_data(ping_data):
             The processed_data object, p_data.
         """
 
-        # Call the generalized _get_sample_data method requesting the 'power'
-        # sample attribute.
-        p_data, return_indices = self._get_sample_data('power', **kwargs)
+        # Call the _get_sample_data method requesting the appropriate sample attribute.
+        if hasattr(self, 'power'):
+            p_data, return_indices = self._get_sample_data('power', **kwargs)
+        elif hasattr(self, 'complex'):
+            raise NotImplementedError('Conversion of complex data to power ' +
+                    'is not implemented at this time.')
+        else:
+            raise AttributeError('Raw data object does not contain power or ' +
+                    'complex data required to return power.')
 
         # Set the data type.
         p_data.data_type = 'power'
@@ -1371,9 +1358,15 @@ class raw_data(ping_data):
             return_indices.
         """
 
-        # Call the generalized _get_sample_data method requesting the 'power'
-        # sample attribute.
-        p_data, return_indices = self._get_sample_data('power', **kwargs)
+        # Call the _get_sample_data method requesting the appropriate sample attribute.
+        if hasattr(self, 'power'):
+            p_data, return_indices = self._get_sample_data('power', **kwargs)
+        elif hasattr(self, 'complex'):
+            raise NotImplementedError('Conversion of complex data to power ' +
+                    'is not implemented at this time.')
+        else:
+            raise AttributeError('Raw data object does not contain power or ' +
+                    'complex data required to return power.')
 
         # Set the data type.
         p_data.data_type = 'power'
@@ -1429,10 +1422,8 @@ class raw_data(ping_data):
             True).
         """
 
-        # Get the power data - this step also resamples and arranges the raw
-        # data.
-        p_data, return_indices = self._get_power(calibration=calibration,
-                                                 **kwargs)
+        # Get the power data - this step also resamples and arranges the raw data.
+        p_data, return_indices = self._get_power(calibration=calibration, **kwargs)
 
         # Set the data type and is_log attribute.
         if linear:
@@ -1446,7 +1437,7 @@ class raw_data(ping_data):
 
         # Convert power to Sv/sv.
         sv_data = self._convert_power(p_data, calibration, attribute_name,
-                                      linear, return_indices, tvg_correction)
+                linear, return_indices, tvg_correction)
 
         # Set the data attribute in the processed_data object.
         p_data.data = sv_data
@@ -1513,10 +1504,8 @@ class raw_data(ping_data):
             True).
         """
 
-        # Get the power data - this step also resamples and arranges the raw
-        # data.
-        p_data, return_indices = self._get_power(calibration=calibration,
-                                                 **kwargs)
+        # Get the power data - this step also resamples and arranges the raw data.
+        p_data, return_indices = self._get_power(calibration=calibration, **kwargs)
 
         # Set the data type.
         if linear:
@@ -1529,7 +1518,7 @@ class raw_data(ping_data):
 
         # Convert
         sp_data = self._convert_power(p_data, calibration, attribute_name,
-                                      linear, return_indices, tvg_correction)
+                linear, return_indices, tvg_correction)
 
         # Set the data attribute in the processed_data object.
         p_data.data = sp_data
@@ -1721,14 +1710,34 @@ class raw_data(ping_data):
         # Call the _get_sample_data method requesting the 'angles_alongship_e'
         # sample attribute. The method will return a reference to a newly created
         # processed_data object.
-        alongship, return_indices = self._get_sample_data(
-            'angles_alongship_e', **kwargs)
+        if hasattr(self, 'angles_alongship_e') or hasattr(self, 'angles_athwartship_e'):
+            if hasattr(self, 'angles_alongship_e'):
+                alongship, return_indices = self._get_sample_data('angles_alongship_e',
+                        **kwargs)
+            else:
+                raise AttributeError('Raw data object does not contain the ' +
+                        'angles_alongship_e attribute required to return angle data.')
 
-        # use the already computed return_indices from the first
-        # call to _get_sample_data to get the athwartship data
-        kwargs.pop('return_indices', None)
-        athwartship, ri = self._get_sample_data('angles_athwartship_e',
-                return_indices=return_indices, **kwargs)
+            # use the already computed return_indices from the first
+            # call to _get_sample_data to get the athwartship data
+            if hasattr(self, 'angles_athwartship_e'):
+                kwargs.pop('return_indices', None)
+                athwartship, ri = self._get_sample_data('angles_athwartship_e',
+                        return_indices=return_indices, **kwargs)
+            else:
+                raise AttributeError('Raw data object does not contain the ' +
+                        'angles_athwartship_e attribute required to return angle data.')
+
+        elif hasattr(self, 'complex'):
+            raise NotImplementedError('Conversion of complex data to angle data ' +
+                    'is not implemented at this time.')
+
+        else:
+            # We don't have complex nor electrical angle data required so
+            # we can't do anything.
+            raise AttributeError('Raw data object does not contain the raw ' +
+                        'data required to return angle data.')
+
 
         # Set the data type.
         alongship.data_type = 'angles_alongship_e'
@@ -1743,15 +1752,15 @@ class raw_data(ping_data):
 
 
     def _get_sample_data(self, property_name, calibration=None,
-            resample_interval=RESAMPLE_SHORTEST, resample_soundspeed=None,
-            return_indices=None, **kwargs):
+            resample_interval=RESAMPLE_SHORTEST, return_indices=None,
+            **kwargs):
         """Retrieves sample data.
 
         This method returns a processed data object that contains the
         sample data from the property name provided. It performs all of the
         required transformations to place the raw data into a rectangular
-        array where all samples share the same thickness and are correctly
-        arranged relative to each other.
+        array where all samples in all pings share the same thickness and are
+        correctly arranged relative to each other.
 
         This process happens in 3 steps:
 
@@ -1763,21 +1772,31 @@ class raw_data(ping_data):
         return much faster if the raw data share the same sample thickness,
         offset and sound speed.
 
-        If calibration is set to an instance of EK60.CalibrationParameters
+        If calibration is set to an instance of an EK80.calibration object
         the values in that object (if set) will be used when performing the
         transformations required to return the results. If the required
         parameters are not set in the calibration object or if no object is
         provided, this method will extract these parameters from the raw data.
 
         Args:
-            property_name (str): The attribute name with the sample data
-                needed.
-            calibration (calibration object): The data calibration object where
-                calibration data will be retrieved.
-            resample_interval (int): The interval used to resample the data.
-            resample_soundspeed:
+            property_name (str): The attribute name of the sample data
+                to be returned. For the EK80 the sample data attributes
+                are 'complex', 'power', 'angles_alongship_e', and
+                'angles_athwartship_e' and the available attributes will
+                depend on how the data were collected and stored.
+
+            calibration (EK80.calibration object): The calibration object where
+                calibration data will be retrieved. If this is set to None,
+                calibration data will be directly extracted from the raw
+
+            resample_interval (float): The echosounder sampling interval used to
+                define the vertical position of the samples. If data was collected
+                with a different sampling interval it will be resampled to
+                the specified interval. The default behavior is to resample
+                to the shortest sampling interval in the data. This value has
+                no effect when all data share the same sampling interval.
+
             return_indices (array): A numpy array of indices to return.
-            **kwargs
 
         Raises:
             ValueError: Return indices exceeds the number of pings.
@@ -1835,7 +1854,8 @@ class raw_data(ping_data):
         # Next, iterate through the dictionary calling the method to extract
         # the values for each parameter.
         for key in cal_parms:
-            cal_parms[key] = self._get_calibration_param(calibration, key, return_indices)
+            cal_parms[key] = self._get_calibration_param(calibration, key,
+                    return_indices)
 
         # Check if we have multiple sample offset values and get the minimum.
         unique_sample_offsets = np.unique(
@@ -1985,14 +2005,11 @@ class raw_data(ping_data):
             gains = 10 * np.log10((cal_parms['transmit_power'] * (10**(
                 cal_parms['gain']/10.0))**2 * wavelength**2) / (16 * np.pi**2))
 
-        # Get the range for TVG calculation.  If tvg_correction = True, we
-        # will apply a correction to the range of 2 * sample thickness. The
-        # corrected range is also used for absorption calculations. A
-        # corrected range should be used to calculate when converting Power
-        # to Sv/sv.
+        # Get the range for TVG calculation.  For the EK80, the corrected
+        # TVG range is computed c_range = range - sound speed * pulse length / 4
+        # This is equivalent to sample_thickness/ 2
         if tvg_correction:
-            c_range = power_data.range.copy() - (self.TVG_CORRECTION *
-                    power_data.sample_thickness)
+            c_range = power_data.range.copy() - (power_data.sample_thickness / 2.0)
             c_range[c_range < 0] = 0
         else:
             c_range = power_data.range
@@ -2222,7 +2239,26 @@ class calibration(object):
     object.
     """
 
-    def __init__(self):
+    def __init__(self, absorption_method='A&M'):
+        '''
+
+            absorption_method (str): specifies the method used to calculate
+                                     absorption of sound in seawater. Currently
+                                     the default and only method implemented is
+                                     "A&M" for Ainslie and McColm:
+
+                Ainslie M. A., McColm J. G., "A simplified formula for viscous and
+                  chemical absorption in sea water", Journal of the Acoustical Society
+                  of America, 103(3), 1671-1672, 1998.
+
+                http://resource.npl.co.uk/acoustics/techguides/seaabsorption/physics.html
+
+        '''
+
+        # Absorption_method stores the string identifying the method used to
+        # compute seawater absorption. Unlike EK60, EK80 doesn't compute this
+        # and instead provides the variables to do it.
+        self.absorption_method = absorption_method
 
         # Set the initial calibration property values.
         self.channel_id = None
@@ -2239,7 +2275,7 @@ class calibration(object):
                 'directivity_drop_at_2x_beam_width', 'transducer_offset_x', 'transducer_offset_y',
                 'transducer_offset_z', 'transducer_alpha_x', 'transducer_alpha_y', 'transducer_alpha_z',
                 'transducer_name', 'hw_channel_configuration', 'rx_sample_frequency', 'time_bias',
-                'transducer_mounting']
+                'transducer_mounting','transceiver_type']
         self._init_attributes(self._config_attributes)
 
         # These attributes are found in the environment datagrams
@@ -2247,6 +2283,23 @@ class calibration(object):
                 'latitude', 'transducer_sound_speed', 'sound_velocity_profile', 'drop_keel_offset',
                 'water_level_draft']
         self._init_attributes(self._environment_attributes)
+
+        # Add "special" attributes
+        self.absorption_coefficient = None
+
+        # Create a dict containing the hardware sampling frequencies of various
+        # Simrad hardware. In EK80 versions prior to 1.12.2 the rx_sampling_frequency
+        # configuration property didn't exist. When these files are read, they use
+        # the value here based in the transceiver_type configuration value.
+        self.default_sampling_frequency = {'GPT':500000,
+                                           'SBT':50000,
+                                           'WBAT':1500000,
+                                           'WBT TUBE':1500000,
+                                           'WBT MINI':1500000,
+                                           'WBT':1500000,
+                                           'WBT HP':187500,
+                                           'WBT LF':93750}
+
 
 
     def from_raw_data(self, raw_data, return_indices=None):
@@ -2286,6 +2339,10 @@ class calibration(object):
             self.set_attribute_from_raw(raw_data, param_name,
                     return_indices=return_indices)
 
+        # Handle the special attributes
+        self.set_attribute_from_raw(raw_data, 'absorption_coefficient',
+                    return_indices=return_indices)
+
 
     def read_ecs_file(self, ecs_file, channel):
         """Reads an echoview ecs file and parses out the
@@ -2318,48 +2375,88 @@ class calibration(object):
         elif param_name in self._config_attributes:
             # Extract configuration data
 
-            # Determine the data type of the param and create empty array
-            if isinstance(raw_data.configuration[0][param_name], np.ndarray):
-                dtype = raw_data.configuration[0][param_name].dtype
-            elif isinstance(raw_data.configuration[0][param_name], int):
-                dtype = np.int32
-            elif isinstance(raw_data.configuration[0][param_name], float):
-                dtype = np.float32
-            else:
-                dtype = 'object'
-            param_data = np.empty((return_indices.shape[0]), dtype=dtype)
+            # we need to handle rx_sample_frequency as a special case since
+            # this parameter was added fairly recently and it's possible
+            # we'll run into files recorded before it was added to the
+            # configuration datagram.
+            if param_name == 'rx_sample_frequency':
+                #  create the return array
+                param_data = np.empty((return_indices.shape[0]), dtype=np.float32)
 
-            # Populate the empty array
-            ret_idx = 0
-            for idx in return_indices:
-                p = raw_data.configuration[idx][param_name]
-                # Check if this is a table value that needs to be looked up
-                # TODO: Need to handle cases where lookup param is from pulse_duration_fm
-                if param_name in ['sa_correction', 'gain', 'pulse_duration', 'pulse_duration_fm']:
-                    p = p[raw_data.configuration[idx]['pulse_duration'] ==
-                            raw_data.pulse_duration[idx]][0]
-                param_data[ret_idx] = p
-                ret_idx += 1
+                #  loop thru the indices extracting the values
+                ret_idx = 0
+                for idx in return_indices:
+                    #  check if this config object has the rx_sample_frequency key
+                    conf_keys = raw_data.configuration[idx].keys()
+                    if 'rx_sample_frequency' in conf_keys:
+                        #  yes - get the value
+                        param_data[ret_idx] = raw_data.configuration[idx]['rx_sample_frequency']
+                    else:
+                        # no - this data is older. Get the value from the
+                        # default_sampling_frequency dict using the transceiver type as key
+                        t_type = raw_data.configuration[idx]['transceiver_type']
+                        param_data[ret_idx] = self.default_sampling_frequency[t_type]
+                    ret_idx += 1
+            else:
+
+                # Determine the data type of the param and create empty array
+                if isinstance(raw_data.configuration[0][param_name], np.ndarray):
+                    dtype = raw_data.configuration[0][param_name].dtype
+                elif isinstance(raw_data.configuration[0][param_name], int):
+                    dtype = np.int32
+                elif isinstance(raw_data.configuration[0][param_name], float):
+                    dtype = np.float32
+                else:
+                    dtype = 'object'
+                param_data = np.empty((return_indices.shape[0]), dtype=dtype)
+
+                # Populate the empty array
+                ret_idx = 0
+                for idx in return_indices:
+                    p = raw_data.configuration[idx][param_name]
+                    # Check if this is a table value that needs to be looked up
+                    # TODO: Need to handle cases where lookup param is from pulse_duration_fm
+                    if param_name in ['sa_correction', 'gain', 'pulse_duration', 'pulse_duration_fm']:
+                        p = p[raw_data.configuration[idx]['pulse_duration'] ==
+                                raw_data.pulse_duration[idx]][0]
+                    param_data[ret_idx] = p
+                    ret_idx += 1
 
         elif param_name in self._environment_attributes:
             # Extract environmental data
 
-            # Determine the data type of the param and create empty array
+            #  For the environmental data we do need to return both 1D and 2D arrays
+
+            # Determine the data type and size of the param and create empty array
             if isinstance(raw_data.environment[0][param_name], np.ndarray):
                 dtype = raw_data.environment[0][param_name].dtype
+                dsize = (return_indices.shape[0], raw_data.environment[0][param_name].shape[0])
             elif isinstance(raw_data.environment[0][param_name], int):
                 dtype = np.int32
+                dsize = (return_indices.shape[0])
             elif isinstance(raw_data.environment[0][param_name], float):
                 dtype = np.float32
+                dsize = (return_indices.shape[0])
             else:
                 dtype = 'object'
-            param_data = np.empty((return_indices.shape[0]), dtype='object')
+                dsize = (return_indices.shape[0])
+            param_data = np.empty(dsize, dtype=dtype)
 
             # Populate the empty array
             ret_idx = 0
             for idx in return_indices:
-                param_data[ret_idx] = raw_data.environment[idx][param_name]
+                if param_data.ndim == 1:
+                    param_data[ret_idx] = raw_data.environment[idx][param_name]
+                elif param_data.ndim == 2:
+                    param_data[ret_idx,:] = raw_data.environment[idx][param_name][:]
                 ret_idx += 1
+
+        elif param_name == 'absorption_coefficient':
+            # Absorption_coefficient is derived and requires a bit more work
+
+            # Compute absorption based on the specified absorption_method
+            if self.absorption_method.lower() == 'a&m':
+                param_data = self._compute_absorption_am(raw_data, return_indices)
 
         return param_data
 
@@ -2386,3 +2483,48 @@ class calibration(object):
             # Add the attribute
             setattr(self, attribute, None)
 
+
+    def _compute_absorption_am(self, raw_data, return_indices):
+        '''_compute_absorption computes seawater absorption based on the
+        method presened here:
+
+        Ainslie M. A., McColm J. G., "A simplified formula for viscous and
+          chemical absorption in sea water", Journal of the Acoustical Society
+          of America, 103(3), 1671-1672, 1998.
+
+        http://resource.npl.co.uk/acoustics/techguides/seaabsorption/physics.html
+
+        absorption is returned as dB/m
+
+        '''
+        # Get depth in km
+        D = self.get_attribute_from_raw(raw_data, 'depth',
+                return_indices=return_indices)
+        D = D / 1000.0
+
+        # Acidity pH
+        pH = self.get_attribute_from_raw(raw_data, 'acidity',
+                return_indices=return_indices)
+
+        # Salinity in PSU
+        S = self.get_attribute_from_raw(raw_data, 'salinity',
+                return_indices=return_indices)
+
+        # Temperature in deg c
+        T = self.get_attribute_from_raw(raw_data, 'temperature',
+                return_indices=return_indices)
+
+        # Frequency in kHz squared
+        fsq = np.square(raw_data.frequency / 1000.0)
+
+        # Compute relaxation frequencies
+        f1 = 0.78 * np.sqrt(S/35.0) * np.exp(T / 26.0)
+        f2 = 42.0 * np.exp(T / 17.0)
+
+        # Compute absorption in dB/m
+        a = 0.106 * (f1 / (np.square(f1) + fsq)) * np.exp((pH - 8.0) / 0.56)
+        a += 0.52 * (1 + T / 43.0) * (S / 35.0) * (f2 / (np.square(f2) + fsq)) * np.exp(-D / 6.0)
+        a += 0.00049 * np.exp(-(T / 27.0 + D / 17.0))
+        a = a * (fsq / 1000)
+
+        return a
