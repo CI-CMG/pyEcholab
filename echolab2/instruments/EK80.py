@@ -600,16 +600,16 @@ class EK80(object):
             #  to store this data.
             this_raw_data = None
             for raw_obj in self.raw_data[new_datagram['channel_id']]:
-                if raw_obj.datatype == '':
+                if raw_obj.data_type == '':
                     #  This raw_data object has no type so is empty and can store anything
                     this_raw_data = raw_obj
                     break
-                if new_datagram['data_type'] <= 3 and raw_obj.datatype == 'power/angle':
+                if new_datagram['data_type'] <= 3 and raw_obj.data_type == 'power/angle':
                     # This raw_data object contains power/angle data and this datagram
                     # also contains power/angle data
                     this_raw_data = raw_obj
                     break
-                if new_datagram['data_type'] > 3 and raw_obj.datatype == 'complex':
+                if new_datagram['data_type'] > 3 and raw_obj.data_type == 'complex':
                     # This raw_data object contains complex data and this datagram
                     # also contains complex data
                     this_raw_data = raw_obj
@@ -757,7 +757,7 @@ class EK80(object):
 
             for channel_id in self.channel_ids:
                 for raw in self.raw_data[channel_id]:
-                    msg = msg + ("        " + channel_id + " :: " + raw.datatype + " " + str(raw.shape) + "\n")
+                    msg = msg + ("        " + channel_id + " :: " + raw.data_type + " " + str(raw.shape) + "\n")
             msg = msg + ("    data start time: " + str(self.start_time) + "\n")
             msg = msg + ("      data end time: " + str(self.end_time) + "\n")
             msg = msg + ("    number of pings: " + str(self.end_ping -
@@ -871,15 +871,15 @@ class raw_data(ping_data):
         # Samples beyond this will be discarded.
         self.max_sample_number = max_sample_number
 
-        # datatype will be set to a string describing the type of sample data
+        # data_type will be set to a string describing the type of sample data
         # stored. This value is an empty string until the first raw datagram
-        # is added. At that point the datatype is set. A raw_data object can
-        # only store 1 type of data. The datatype are:
+        # is added. At that point the data_type is set. A raw_data object can
+        # only store 1 type of data. Thedata_type are:
         #
         #   power - contains power data
         #   power/angle - contains power and angle data
         #   complex - contains complex data
-        self.datatype = ''
+        self.data_type = ''
 
         # Data_attributes is an internal list that contains the names of all
         # of the class's "data" properties. The echolab2 package uses this
@@ -1017,8 +1017,8 @@ class raw_data(ping_data):
         max_data_samples = []
 
         # The contents of the first ping appended to a raw_data object defines
-        # the datatype and determines how the data arrays will be created. Also,
-        # since a raw_data object can only store one datatype, we disable saving
+        # thedata_type and determines how the data arrays will be created. Also,
+        # since a raw_data object can only store onedata_type, we disable saving
         # of the other types.
         if self.n_pings == -1:
 
@@ -1035,7 +1035,7 @@ class raw_data(ping_data):
                 n_complex = sample_datagram['complex'].shape[1]
                 self.store_power = False
                 self.store_angles = False
-                self.datatype = 'complex'
+                self.data_type = 'complex'
                 #  for complex data, we set the sample array type to complex64
                 self.sample_dtype = np.complex64
 
@@ -1046,20 +1046,20 @@ class raw_data(ping_data):
                     create_power = True
                     self.store_complex = False
                     power_samps = sample_datagram['power'].shape[0]
-                    self.datatype = 'power'
+                    self.data_type = 'power'
 
                 if sample_datagram['angle'] is not None:
                     create_angles = True
                     self.store_complex = False
                     angle_samps = sample_datagram['angle'].shape[0]
                     if create_power:
-                        self.datatype = 'power/angle'
+                        self.data_type = 'power/angle'
                     else:
                         self.store_power = False
-                        self.datatype = 'angle'
+                        self.data_type = 'angle'
 
                 # At this point if we're power, we're not storing angle data
-                if self.datatype == 'power':
+                if self.data_type == 'power':
                     self.store_angles = False
 
             #  determine the initial number of samples in our arrays

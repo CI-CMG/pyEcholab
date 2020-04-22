@@ -30,6 +30,7 @@
 |       Rick Towler   <rick.towler@noaa.gov>
 """
 
+import copy
 import numpy as np
 
 
@@ -134,7 +135,6 @@ class ping_data(object):
             ValueError: The attribute has a different number of pings than
                 the other attributes.
         """
-
         # Get the new data's dimensions.
         data_height = -1
         if isinstance(data, np.ndarray):
@@ -171,6 +171,9 @@ class ping_data(object):
 
         # Add or update ourself.
         setattr(self, name, data)
+
+        #  update the shape attribute
+        self.shape = self._shape()
 
 
     def add_object_attribute(self, name, data):
@@ -275,13 +278,13 @@ class ping_data(object):
                             str(self.__class__))
 
         # Make sure the data types are the same
-        if self.datatype != obj_to_insert.datatype:
+        if self.data_type != obj_to_insert.data_type:
             raise TypeError('The object you are inserting  does not have the same data ' +
-                    'type as this object. This data type: ' + self.datatype +
-                    ' object to insert data type: ' + obj_to_insert.datatype)
+                    'type as this object. This data type: ' + self.data_type +
+                    ' object to insert data type: ' + obj_to_insert.data_type)
 
         #  if complex, make sure the number of sectors are the same
-        if self.datatype == 'complex':
+        if self.data_type == 'complex':
             if self.n_complex != obj_to_insert.n_complex:
                 raise TypeError('The object you are inserting  does not have the same ' +
                     'number of complex samples as this object. This n_complex: ' + self.n_complex +
@@ -1261,12 +1264,14 @@ class ping_data(object):
         '''Internal method used to update the shape attribute
         '''
         shape = None
-        if self.datatype == 'power' or self.datatype == 'power/angle':
+        if self.data_type == 'power' or self.data_type == 'power/angle':
             shape = self.power.shape
-        elif self.datatype == 'angle':
+        elif self.data_type == 'angle':
             shape = self.angles_alongship_e.shape
-        elif self.datatype == 'complex':
+        elif self.data_type == 'complex':
             shape = self.complex.shape
+        elif hasattr(self, 'data'):
+            shape = self.data.shape
         return shape
 
 
@@ -1318,7 +1323,7 @@ class ping_data(object):
         # size or type checks.
         for attr_name in self._object_attributes:
             attr = getattr(self, attr_name)
-            setattr(obj, attr_name, attr.copy())
+            setattr(obj, attr_name, copy.deepcopy(attr))
 
         # Check if n_pings != self.n_pings.  If the new object's horizontal
         # axis is a different shape than this object's we can't copy

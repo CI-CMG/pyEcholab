@@ -116,7 +116,7 @@ class processed_data(ping_data):
         self.data_type = data_type
 
         # Data contains the 2d sample data.
-        self.data = None
+        self.data = np.array((),dtype=self.sample_dtype)
 
         # is_log should be set to True if the data contained within it is in log
         # form, and False otherwise. This is handled internally if you use the
@@ -1129,23 +1129,36 @@ class processed_data(ping_data):
 
         # Check the ping times and make sure they match.
         if not np.array_equal(self.ping_time, pd_object.ping_time):
-            raise ValueError("The processed_data object's ping times do not "
-                             "match our ping times.")
+            if not self.range.shape == pd_object.range.shape:
+                    raise ValueError("The processed_data object has a different "
+                            "number of ping times.")
+            # Try again, but allow for +- 1 ms
+            diff = np.abs((self.ping_time-pd_object.ping_time).astype(np.int32))
+            if not np.all(diff <= 1):
+                #  OK, these are too different
+                raise ValueError("The processed_data object's ping times do not "
+                                 "match our ping times.")
 
         # Make sure the vertical axis is the same.
         if hasattr(pd_object, 'range'):
             if hasattr(self, 'range'):
-                if not np.array_equal(self.range, pd_object.range):
-                    raise ValueError("The processed_data object's ranges do "
-                                     "not match our ranges.")
+                if not self.range.shape == pd_object.range.shape:
+                    raise ValueError("The processed_data object" + pd_object +
+                            " has a different number of range values that this object.")
+                if not np.allclose(self.range, pd_object.range):
+                    raise ValueError("The processed_data object " + pd_object +
+                            " ranges are different than our ranges.")
             else:
                 raise AttributeError('You cannot operate on a range based '
                                      'object with a depth based object.')
         else:
             if hasattr(self, 'depth'):
-                if not np.array_equal(self.depth, mask.depth):
-                    raise ValueError("The processed_data object's depths do "
-                                     "not match our depths.")
+                if not self.depth.shape == pd_object.depth.shape:
+                    raise ValueError("The processed_data object" + pd_object +
+                            " has a different number of depth values that this object.")
+                if not np.allclose(self.depth, mask.depth):
+                    raise ValueError("The processed_data object " + pd_object +
+                            "depths do not match our depths.")
             else:
                 raise AttributeError('You cannot operate on a depth based '
                                      'object with a range based object.')
@@ -1695,3 +1708,75 @@ class processed_data(ping_data):
             msg = msg + "  processed_data object contains no data\n"
 
         return msg
+
+
+def read_ev_mat(channel_id, frequency, ev_mat_filename, data_type='Sv',
+        sample_dtype=np.float32):
+    '''read_ev_mat will read a .mat file exported by Echoview v7 or newer and
+    return a processed data object containing the data.
+    '''
+
+    import os
+    from datetime import datetime
+    import scipy.io
+
+    #  read in the echoview data
+    ev_mat_filename = os.path.normpath(ev_mat_filename)
+    ev_data = scipy.io.loadmat(ev_mat_filename, struct_as_record=False,
+            squeeze_me=True)
+
+    #  determine the array sizes
+    n_pings = len(ev_data['PingNames'])
+    max_samples = -1
+    for p in ev_data['PingNames']:
+        if ev_data[p].Sample_count > max_samples:
+            max_samples = ev_data[p].Sample_count
+
+    #  create an empty processed_data object
+    p_data = processed_data(channel_id, frequency, data_type)
+
+    #  create the data arrays
+    data = np.empty((n_pings, max_samples), dtype=sample_dtype)
+    p_data.add_data_attribute('data', data)
+    ping_time = np.empty((n_pings), dtype='datetime64[ms]')
+    p_data.add_data_attribute('ping_time', ping_time)
+    latitude = np.empty((n_pings), dtype=sample_dtype)
+    p_data.add_data_attribute('latitude', latitude)
+    longitude = np.empty((n_pings), dtype=sample_dtype)
+    p_data.add_data_attribute('longitude', longitude)
+    trip_distance_nmi = np.empty((n_pings), dtype=sample_dtype)
+    p_data.add_data_attribute('trip_distance_nmi', trip_distance_nmi)
+    transducer_draft = np.empty((n_pings), dtype=sample_dtype)
+    p_data.add_data_attribute('transducer_draft', transducer_draft)
+
+    #  determine the transducer draft - again assume we're on a
+    #  fixed grid making this a constant value
+    draft = ev_data['P0'].Depth_start - ev_data['P0'].Range_start
+    transducer_draft.fill(draft)
+
+    #  set sample thickness - we assume that the the first sample is
+    #  centered on 0,0 and the samples are on a fixed grid
+    p_data.sample_thickness = np.abs(ev_data['P0'].Range_start) * 2
+
+    #  create the range attribute - this is built on our sample
+    #  thickness assumptions above.
+    range = np.arange(0, ev_data['P0'].Sample_count, dtype=sample_dtype)
+    range = range * p_data.sample_thickness
+    p_data.add_data_attribute('range', range)
+
+    if data_type == 'Sv':
+        p_data.is_log = True
+
+    #  extract the data
+    for idx, ping in enumerate(ev_data['PingNames']):
+        p_data.trip_distance_nmi[idx] = ev_data[ping].Distance_vl
+        p_data.latitude[idx] = ev_data[ping].Latitude
+        p_data.longitude[idx] = ev_data[ping].Longitude
+        this_time = ev_data[ping].Ping_date + ' ' + ev_data[ping].Ping_time + '.' + \
+                '%3.3i' % ev_data[ping].Ping_milliseconds
+        this_time = np.datetime64(datetime.strptime(this_time, "%m-%d-%Y %H:%M:%S.%f"))
+        p_data.ping_time[idx] = this_time
+        p_data.data[idx,:] = ev_data[ping].Data_values[:]
+
+    return p_data
+
