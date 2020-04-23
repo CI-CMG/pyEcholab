@@ -641,21 +641,37 @@ class processed_data(ping_data):
                 self.remove_data_attribute('depth')
 
 
-    def heave_correct(self, cal_object):
+    def heave_correct(self, cal_object, motion_obj=None):
         """heave_correct applies heave correction. Since heave correction implies
         conversion to depth, we simply call to_depth with heave_correct set.
 
 
-        This method will replace the range attribute with depth.
+        This method will replace the range attribute with depth and apply heave
+        correction, shifting samples vertically based on the heave attribute.
 
         """
+        if motion_obj is not None:
+            #  if the motion_obj is provided, get/update heave
+            attr_names, data = motion_obj.interpolate(self, 'heave')
 
+            # iterate through the returned data and add or update it
+            for attr_name in attr_names:
+                #  check if we had data for this attribute
+                if data[attr_name]:
+                    #  yes - add or update it
+                    if hasattr(self, attr_name):
+                        #  update existing attribute
+                        setattr(self, attr_name, data[attr_name])
+                    else:
+                        #  add attribute
+                        self.add_data_attribute(attr_name, data[attr_name])
 
+        #  call to_depth, setting heave_correct. If our vert axis already is
+        #  depth, to_depth will not apply the transducer draft again.
         self.to_depth(cal_object, heave_correct=True)
 
 
-
-    def shift_pings(self, vert_shift, to_depth=False):
+    def shift_pings(self, vert_shift):
         """Shifts sample data vertically.
 
         This method shifts sample data vertically by an arbitrary amount,
@@ -664,9 +680,7 @@ class processed_data(ping_data):
         Args:
             vert_shift (int): A scalar or vector n_pings long that contains the
                 constant shift for all pings or a per-ping shift respectively.
-            to_depth (bool): Set to_depth to True if you are converting from
-                range to depth.  This option will remove the range attribute
-                and replace it with the depth attribute.
+
         """
         # Determine the vertical extent of the shift.
         min_shift = np.min(vert_shift)
@@ -678,8 +692,6 @@ class processed_data(ping_data):
             vert_axis = self.range
         else:
             vert_axis = self.depth
-            # If we've already converted to depth, unset the to_depth keyword.
-            to_depth = False
 
         # If there is a new vertical extent resize our arrays.
         if vert_ext != 0:

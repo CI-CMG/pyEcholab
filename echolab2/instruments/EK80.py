@@ -113,10 +113,10 @@ class EK80(object):
     """
 
     def __init__(self):
-        """Initializes EK60 class object.
+        """Initializes EK80 class object.
 
         Creates and sets several internal properties used to store information
-        about data and control operation of file reading with EK60 object
+        about data and control operation of file reading with EK80 object
         instance. Code is heavily commented to facilitate use.
         """
 
@@ -470,6 +470,9 @@ class EK80(object):
                     # channel's raw_data objects
                     self.raw_data[channel_id] = []
 
+                    #  and an empty dict to store this channel's filters
+                    self._filters[channel_id] = {}
+
                     #  add the channel to our list of channel IDs
                     self.channel_ids.append(channel_id)
 
@@ -572,10 +575,6 @@ class EK80(object):
 
             # Check if we're storing this channel
             if new_datagram['channel_id'] in self.channel_ids:
-                #  check if we have an existing dict for this channel
-                if (new_datagram['channel_id'] not in self._filters.keys()):
-                    #  nope, create it
-                    self._filters[new_datagram['channel_id']] = {}
 
                 #  add the filter parameters for this filter stage
                 self._filters[new_datagram['channel_id']][new_datagram['stage']] = \
@@ -623,6 +622,9 @@ class EK80(object):
                         store_angles=self.store_angles,
                         store_complex=self.store_complex,
                         max_sample_number=self.read_max_sample_count)
+                # Set the transceiver type
+                this_raw_data.transceiver_type = \
+                        self._config[new_datagram['channel_id']]['transceiver_type']
                 #  and add it to this channel's list of raw_data objects
                 self.raw_data[new_datagram['channel_id']].append(this_raw_data)
 
@@ -638,7 +640,7 @@ class EK80(object):
         elif new_datagram['type'].startswith('NME'):
             # Add the datagram to our nmea_data object.
             self.nmea_data.add_datagram(new_datagram['timestamp'],
-                                        new_datagram['nmea_string'])
+                    new_datagram['nmea_string'])
 
         # TAG datagrams contain time-stamped annotations inserted via the
         # recording software.
@@ -880,6 +882,20 @@ class raw_data(ping_data):
         #   power/angle - contains power and angle data
         #   complex - contains complex data
         self.data_type = ''
+
+        # transceiver_type stores the hardware identifier of the transceiver
+        # used to collect the data. This is set when reading the file.
+        # I believe that the types are:
+        #
+        #   GPT - Ex60 General Purpose Transceiver
+        #   WBT - Ex80 Wide Band Transceiver
+        #   WBT MINI -
+        #   WBT TUBE -
+        #   WBT HP -
+        #   WBT LF -
+        #   WBAT - Wide Band Autonomous Transceiver
+        #   SBT
+        self.transceiver_type = None
 
         # Data_attributes is an internal list that contains the names of all
         # of the class's "data" properties. The echolab2 package uses this
@@ -1994,22 +2010,33 @@ class raw_data(ping_data):
                 dtype=self.sample_dtype)
         cal_parms['sound_speed'].fill(power_data.sound_velocity)
 
+        #  COMPUTE THE EFFECTIVE PULSE DURATION HERE
+        #  THIS IS BOGUS - IT ONLY WORKS FOR A SINGLE KNOWN CASE - 38 kHz 2000W  1024 us pulse duration
+        effective_pulse_length = cal_parms['pulse_duration'] * 0.811523438
+
         # Calculate the system gains.
         wavelength = cal_parms['sound_speed'] / power_data.frequency
         if convert_to in ['sv','Sv']:
             gains = 10 * np.log10((cal_parms['transmit_power'] * (10**(
                 cal_parms['gain']/10.0))**2 * wavelength**2 * cal_parms[
-                'sound_speed'] * cal_parms['pulse_duration'] * 10**(
+                'sound_speed'] * effective_pulse_length * 10**( # 0.000830999999 * 10**(
                 cal_parms['equivalent_beam_angle']/10.0)) / (32 * np.pi**2))
         else:
             gains = 10 * np.log10((cal_parms['transmit_power'] * (10**(
                 cal_parms['gain']/10.0))**2 * wavelength**2) / (16 * np.pi**2))
 
-        # Get the range for TVG calculation.  For the EK80, the corrected
-        # TVG range is computed c_range = range - sound speed * pulse length / 4
-        # This is equivalent to sample_thickness/ 2
+        # Get the range for TVG calculation.  The method used depends on the
+        # hardware used to collect the data.
         if tvg_correction:
-            c_range = power_data.range.copy() - (power_data.sample_thickness / 2.0)
+            if self.transceiver_type == 'GPT':
+                # For the Ex60 hardware, the range is computed as:
+                #   c_range = range - (2 * sample_thickness)
+                c_range = power_data.range.copy() - (2 * power_data.sample_thickness)
+            else:
+                # For the Ex80 WBT style hardware TVG range is computed as:
+                #    c_range = range - (sound speed * pulse length / 4)
+                c_range = power_data.range.copy() - (power_data.sound_velocity *
+                        cal_parms['pulse_duration'][0]) /4.0
             c_range[c_range < 0] = 0
         else:
             c_range = power_data.range
@@ -2192,7 +2219,7 @@ class raw_data(ping_data):
             msg = msg + "    frequency (first ping): " + str(
                 self.frequency[0]) + "\n"
             msg = msg + " pulse length (first ping): " + str(
-                self.pulse_length[0]) + "\n"
+                self.pulse_duration[0]) + "\n"
             msg = msg + "           data start time: " + str(
                 self.ping_time[0]) + "\n"
             msg = msg + "             data end time: " + str(
@@ -2399,6 +2426,10 @@ class calibration(object):
                     ret_idx += 1
             else:
 
+                #  bail if we don't have this particular parameter
+                if param_name not in raw_data.configuration[0]:
+                    return None
+
                 # Determine the data type of the param and create empty array
                 if isinstance(raw_data.configuration[0][param_name], np.ndarray):
                     dtype = raw_data.configuration[0][param_name].dtype
@@ -2413,13 +2444,16 @@ class calibration(object):
                 # Populate the empty array
                 ret_idx = 0
                 for idx in return_indices:
-                    p = raw_data.configuration[idx][param_name]
-                    # Check if this is a table value that needs to be looked up
-                    # TODO: Need to handle cases where lookup param is from pulse_duration_fm
-                    if param_name in ['sa_correction', 'gain', 'pulse_duration', 'pulse_duration_fm']:
-                        p = p[raw_data.configuration[idx]['pulse_duration'] ==
-                                raw_data.pulse_duration[idx]][0]
-                    param_data[ret_idx] = p
+                    if param_name not in raw_data.configuration[idx]:
+                        p = None
+                    else:
+                        p = raw_data.configuration[idx][param_name]
+                        # Check if this is a table value that needs to be looked up
+                        # TODO: Need to handle cases where lookup param is from pulse_duration_fm
+                        if param_name in ['sa_correction', 'gain', 'pulse_duration', 'pulse_duration_fm']:
+                            p = p[raw_data.configuration[idx]['pulse_duration'] ==
+                                    raw_data.pulse_duration[idx]][0]
+                        param_data[ret_idx] = p
                     ret_idx += 1
 
         elif param_name in self._environment_attributes:
