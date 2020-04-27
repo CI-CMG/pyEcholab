@@ -1792,3 +1792,93 @@ def read_ev_mat(channel_id, frequency, ev_mat_filename, data_type='Sv',
 
     return p_data
 
+
+def read_ev_csv(channel_id, frequency, ev_csv_filename, data_type='Ts',
+        sample_dtype=np.float32):
+    '''read_ev_csv will read a .csv file exported by Echoview v7 or newer and
+    return a processed data object containing the data.
+    '''
+
+    import os
+    from datetime import datetime
+    import csv
+
+    def convert_float(val):
+        try:
+            val = float(val)
+        except:
+            val = np.nan
+
+        return val
+
+    #  read in the echoview data
+    ev_csv_filename = os.path.normpath(ev_csv_filename)
+
+    # First determine the array size - this is a bit inefficient but I
+    # am feeling lazy. You can implement chunked allocation and skip the
+    # double read if you feel you need the performance.
+    with open(ev_csv_filename, 'r') as csvfile:
+        csv_reader = csv.reader(csvfile, delimiter=',')
+        #  skip the header
+        next(csv_reader)
+        n_pings = 0
+        max_samples = -1
+        for row in csv_reader:
+            this_samples = int(row[12])
+            if this_samples > max_samples:
+                max_samples = this_samples
+            n_pings += 1
+
+    #  create an empty processed_data object
+    p_data = processed_data(channel_id, frequency, data_type)
+
+    #  create the data arrays
+    data = np.empty((n_pings, max_samples), dtype=sample_dtype)
+    p_data.add_data_attribute('data', data)
+    ping_time = np.empty((n_pings), dtype='datetime64[ms]')
+    p_data.add_data_attribute('ping_time', ping_time)
+    latitude = np.empty((n_pings), dtype=sample_dtype)
+    p_data.add_data_attribute('latitude', latitude)
+    longitude = np.empty((n_pings), dtype=sample_dtype)
+    p_data.add_data_attribute('longitude', longitude)
+    trip_distance_nmi = np.empty((n_pings), dtype=sample_dtype)
+    p_data.add_data_attribute('trip_distance_nmi', trip_distance_nmi)
+    transducer_draft = np.empty((n_pings), dtype=sample_dtype)
+    p_data.add_data_attribute('transducer_draft', transducer_draft)
+
+    # Now read the file again, loading the data
+    idx = 0
+    with open(ev_csv_filename, 'r') as csvfile:
+        csv_reader = csv.reader(csvfile, delimiter=',')
+        #  skip the header
+        next(csv_reader)
+        for row in csv_reader:
+            if idx == 0:
+                #  determine the transducer draft - again assume we're on a
+                #  fixed grid making this a constant value
+                draft = convert_float(row[8]) - convert_float(row[10])
+                transducer_draft.fill(draft)
+
+                #  set sample thickness - we assume that the the first sample is
+                #  centered on 0,0 and the samples are on a fixed grid
+                p_data.sample_thickness = np.abs(convert_float(row[10])) * 2
+
+                #  create the range attribute - this is built on our sample
+                #  thickness assumptions above.
+                range = np.arange(0, int(row[12]), dtype=sample_dtype)
+                range = range * p_data.sample_thickness
+                p_data.add_data_attribute('range', range)
+
+                if data_type == 'Ts':
+                    p_data.is_log = True
+
+            p_data.trip_distance_nmi[idx] = convert_float(row[2])
+            p_data.latitude[idx] = convert_float(row[6])
+            p_data.longitude[idx] = convert_float(row[7])
+            this_time = row[3].strip() + ' ' + row[4].strip() + '.' + '%3.3i' % int(float(row[5]))
+            this_time = np.datetime64(datetime.strptime(this_time, "%Y-%m-%d %H:%M:%S.%f"))
+            p_data.ping_time[idx] = this_time
+            p_data.data[idx,:] = row[13:int(row[12]) + 13]
+            idx += 1
+
+    return p_data

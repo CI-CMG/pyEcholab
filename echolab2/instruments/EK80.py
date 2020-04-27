@@ -44,9 +44,11 @@ import os
 import datetime
 import numpy as np
 from pytz import timezone
+from . import calibration
 from .util.simrad_raw_file import RawSimradFile, SimradEOF
 from .util.nmea_data import nmea_data
 from .util.simrad_motion_data import simrad_motion_data
+from .util import simrad_signal_proc
 from ..ping_data import ping_data
 from ..processing.processed_data import processed_data
 from ..processing import line
@@ -465,19 +467,21 @@ class EK80(object):
                     continue
 
                 #  we're reading this channel - check if it's new to us
-                if (channel_id not in self.raw_data):
+                if channel_id not in self.raw_data:
                     # This is a new channel, create a list to store this
                     # channel's raw_data objects
                     self.raw_data[channel_id] = []
-
-                    #  and an empty dict to store this channel's filters
-                    self._filters[channel_id] = {}
 
                     #  add the channel to our list of channel IDs
                     self.channel_ids.append(channel_id)
 
                     #  and increment the channel counter
                     self.n_channels += 1
+
+                #  check if we need to create an entry for this channel's filters
+                if channel_id not in self._filters:
+                    #  and an empty dict to store this channel's filters
+                    self._filters[channel_id] = {}
 
         #  return the configuration datagram dict
         return config_datagram
@@ -1302,7 +1306,7 @@ class raw_data(ping_data):
 
         """
 
-        cal_obj = calibration()
+        cal_obj = ek80_calibration()
         cal_obj.from_raw_data(self)
 
         return cal_obj
@@ -1594,7 +1598,7 @@ class raw_data(ping_data):
         # Next, iterate through the dict, calling the method to extract the
         # values for each parameter.
         for key in cal_parms:
-            cal_parms[key] = self._get_calibration_param(calibration,
+            cal_parms[key] = self.get_calibration_param(calibration,
                     key, return_indices)
 
         # Check if we have to adjust the depth due to a change in sound speed.
@@ -1641,7 +1645,7 @@ class raw_data(ping_data):
         # Next, iterate through the dict, calling the method to extract the
         # values for each parameter.
         for key in cal_parms:
-            cal_parms[key] = self._get_calibration_param(calibration, key,
+            cal_parms[key] = self.get_calibration_param(calibration, key,
                     return_indices)
 
         # Compute the physical angles.
@@ -1870,7 +1874,7 @@ class raw_data(ping_data):
         # Next, iterate through the dictionary calling the method to extract
         # the values for each parameter.
         for key in cal_parms:
-            cal_parms[key] = self._get_calibration_param(calibration, key,
+            cal_parms[key] = self.get_calibration_param(calibration, key,
                     return_indices)
 
         # Check if we have multiple sample offset values and get the minimum.
@@ -1996,12 +2000,14 @@ class raw_data(ping_data):
                      'equivalent_beam_angle':None,
                      'pulse_duration':None,
                      'absorption_coefficient':None,
-                     'sa_correction':None}
+                     'sa_correction':None,
+                     'effective_pulse_duration':None}
 
         # Next, iterate through the dictionary, calling the method to extract
         # the values for each parameter.
         for key in cal_parms:
-            cal_parms[key] = self._get_calibration_param(calibration, key,
+            print(key)
+            cal_parms[key] = self.get_calibration_param(calibration, key,
                     return_indices)
 
         # Get sound_velocity from the power data since get_power might have
@@ -2010,16 +2016,12 @@ class raw_data(ping_data):
                 dtype=self.sample_dtype)
         cal_parms['sound_speed'].fill(power_data.sound_velocity)
 
-        #  COMPUTE THE EFFECTIVE PULSE DURATION HERE
-        #  THIS IS BOGUS - IT ONLY WORKS FOR A SINGLE KNOWN CASE - 38 kHz 2000W  1024 us pulse duration
-        effective_pulse_length = cal_parms['pulse_duration'] * 0.811523438
-
         # Calculate the system gains.
         wavelength = cal_parms['sound_speed'] / power_data.frequency
         if convert_to in ['sv','Sv']:
             gains = 10 * np.log10((cal_parms['transmit_power'] * (10**(
                 cal_parms['gain']/10.0))**2 * wavelength**2 * cal_parms[
-                'sound_speed'] * effective_pulse_length * 10**( # 0.000830999999 * 10**(
+                'sound_speed'] * cal_parms['effective_pulse_duration'] * 10**(
                 cal_parms['equivalent_beam_angle']/10.0)) / (32 * np.pi**2))
         else:
             gains = 10 * np.log10((cal_parms['transmit_power'] * (10**(
@@ -2099,7 +2101,7 @@ class raw_data(ping_data):
         # Next, iterate through the dictionary, calling the method to extract
         # the values for each parameter.
         for key in cal_parms:
-            cal_parms[key] = self._get_calibration_param(calibration,
+            cal_parms[key] = self.get_calibration_param(calibration,
                     key, return_indices)
 
         # Check if we're applying heave correction and/or returning depth by
@@ -2243,7 +2245,7 @@ class raw_data(ping_data):
         return msg
 
 
-class calibration(object):
+class ek80_calibration(calibration.calibration):
     """
     The calibration class contains parameters required for transforming power,
     electrical angle, and complex data to Sv/sv TS/SigmaBS and physical angles.
@@ -2282,17 +2284,22 @@ class calibration(object):
 
         '''
 
+        #  call the parent init
+        super(ek80_calibration, self).__init__(absorption_method=absorption_method)
+
+        # Set up the attributes that are specific to the EK80 system. In general
+        # this wttribute names will match the parameter names found within the
+        # EK80 formatted .raw file except that
+
         # Absorption_method stores the string identifying the method used to
         # compute seawater absorption. Unlike EK60, EK80 doesn't compute this
         # and instead provides the variables to do it.
         self.absorption_method = absorption_method
 
-        # Set the initial calibration property values.
-        self.channel_id = None
-
         #  these attributes are properties of the raw_data class
         self._raw_attributes = ['sample_offset', 'channel_mode', 'pulse_form', 'frequency',
-                'pulse_duration' ,'sample_interval' ,'slope' ,'sample_count', 'transmit_power']
+                'pulse_duration' ,'sample_interval' ,'slope' ,'sample_count', 'transmit_power',
+                'filters']
         self._init_attributes(self._raw_attributes)
 
         #  these attributes are found in the configuration datagram
@@ -2302,7 +2309,7 @@ class calibration(object):
                 'directivity_drop_at_2x_beam_width', 'transducer_offset_x', 'transducer_offset_y',
                 'transducer_offset_z', 'transducer_alpha_x', 'transducer_alpha_y', 'transducer_alpha_z',
                 'transducer_name', 'hw_channel_configuration', 'rx_sample_frequency', 'time_bias',
-                'transducer_mounting','transceiver_type']
+                'transducer_mounting','transceiver_type','impedance']
         self._init_attributes(self._config_attributes)
 
         # These attributes are found in the environment datagrams
@@ -2311,8 +2318,14 @@ class calibration(object):
                 'water_level_draft']
         self._init_attributes(self._environment_attributes)
 
-        # Add "special" attributes
+
+        # Add "special" attributes - These are attributes that require specific handling
+
+        # For the EK80, absorption_coefficient is computed so we compute it when requested
         self.absorption_coefficient = None
+
+        # effective_pulse_length is also computed
+        self.effective_pulse_length = None
 
         # Create a dict containing the hardware sampling frequencies of various
         # Simrad hardware. In EK80 versions prior to 1.12.2 the rx_sampling_frequency
@@ -2328,7 +2341,6 @@ class calibration(object):
                                            'WBT LF':93750}
 
 
-
     def from_raw_data(self, raw_data, return_indices=None):
         """Populates the calibration object.
 
@@ -2341,224 +2353,73 @@ class calibration(object):
             return_indices (array): A numpy array of indices to return.
         """
 
-        # Set the channel_id.
-        self.channel_id = raw_data.channel_id
+        #  call the parent method
+        super(ek80_calibration, self).from_raw_data(raw_data,
+                return_indices=return_indices)
 
-        # If we're not given specific indices, grab everything.
-        if return_indices is None:
-            return_indices = np.arange(raw_data.ping_time.shape[0])
+        # Handle our special attributes
 
-        # Extract the direct attributes - these are calibration params
-        # stored as top level attributes in the raw_data class
-        for param_name in self._raw_attributes:
-            self.set_attribute_from_raw(raw_data, param_name,
-                    return_indices=return_indices)
-
-        # Extract attributes from the configuration dict - these are
-        # attribues that are stored in the .raw file configuration
-        # datagram and apply to all data within a .raw file
-        for param_name in self._config_attributes:
-            self.set_attribute_from_raw(raw_data, param_name,
-                    return_indices=return_indices)
-
-        # Extract attributes from the environment datagrams
-        for param_name in self._environment_attributes:
-            self.set_attribute_from_raw(raw_data, param_name,
-                    return_indices=return_indices)
-
-        # Handle the special attributes
-        self.set_attribute_from_raw(raw_data, 'absorption_coefficient',
-                    return_indices=return_indices)
-
-
-    def read_ecs_file(self, ecs_file, channel):
-        """Reads an echoview ecs file and parses out the
-        parameters for a given channel.
-        """
-
-        current_section = ''
-        current_transceiver = ''
-
-
-        with open(ecs_file, 'r') as fp:
-            line = fp.readline()
+        # EK80 doesn't store absorption directly, but instead it
+        # stores the bits needed to compute it.
+        self.absorption_coefficient = self._compute_absorption(raw_data,
+            return_indices, self.absorption_method)
 
 
     def get_attribute_from_raw(self, raw_data, param_name, return_indices=None):
         """get_attribute_from_raw gets an individual attribute using the data
         within the provided raw_data object.
         """
-        param_data = None
 
-        # If we're not given specific indices, grab everything.
-        if return_indices is None:
-            return_indices = np.arange(raw_data.ping_time.shape[0])
+        #  first call the parent method to get the "standard" attributes
+        param_data, return_indices = super(ek80_calibration, self).get_attribute_from_raw(
+                raw_data, param_name, return_indices=return_indices)
 
-        if param_name in self._raw_attributes:
-            # Extract data from raw_data attribues
-            raw_param = getattr(raw_data, param_name)
-            param_data = raw_param[return_indices]
+        # Now handle attributes that need some special handling
 
-        elif param_name in self._config_attributes:
-            # Extract configuration data
+        # rx_sample_frequency is a special case because it is a parameter
+        # that was recently added to the EK80 raw file configuration datagram
+        # and there will be files that do not contain it. In these cases we
+        # look up a default value based on the transceiver hardware.
+        if param_name == 'rx_sample_frequency':
+            #  create the return array
+            param_data = np.empty((return_indices.shape[0]), dtype=np.float32)
 
-            # we need to handle rx_sample_frequency as a special case since
-            # this parameter was added fairly recently and it's possible
-            # we'll run into files recorded before it was added to the
-            # configuration datagram.
-            if param_name == 'rx_sample_frequency':
-                #  create the return array
-                param_data = np.empty((return_indices.shape[0]), dtype=np.float32)
-
-                #  loop thru the indices extracting the values
-                ret_idx = 0
-                for idx in return_indices:
-                    #  check if this config object has the rx_sample_frequency key
-                    conf_keys = raw_data.configuration[idx].keys()
-                    if 'rx_sample_frequency' in conf_keys:
-                        #  yes - get the value
-                        param_data[ret_idx] = raw_data.configuration[idx]['rx_sample_frequency']
-                    else:
-                        # no - this data is older. Get the value from the
-                        # default_sampling_frequency dict using the transceiver type as key
-                        t_type = raw_data.configuration[idx]['transceiver_type']
-                        param_data[ret_idx] = self.default_sampling_frequency[t_type]
-                    ret_idx += 1
-            else:
-
-                #  bail if we don't have this particular parameter
-                if param_name not in raw_data.configuration[0]:
-                    return None
-
-                # Determine the data type of the param and create empty array
-                if isinstance(raw_data.configuration[0][param_name], np.ndarray):
-                    dtype = raw_data.configuration[0][param_name].dtype
-                elif isinstance(raw_data.configuration[0][param_name], int):
-                    dtype = np.int32
-                elif isinstance(raw_data.configuration[0][param_name], float):
-                    dtype = np.float32
-                else:
-                    dtype = 'object'
-                param_data = np.empty((return_indices.shape[0]), dtype=dtype)
-
-                # Populate the empty array
-                ret_idx = 0
-                for idx in return_indices:
-                    if param_name not in raw_data.configuration[idx]:
-                        p = None
-                    else:
-                        p = raw_data.configuration[idx][param_name]
-                        # Check if this is a table value that needs to be looked up
-                        # TODO: Need to handle cases where lookup param is from pulse_duration_fm
-                        if param_name in ['sa_correction', 'gain', 'pulse_duration', 'pulse_duration_fm']:
-                            p = p[raw_data.configuration[idx]['pulse_duration'] ==
-                                    raw_data.pulse_duration[idx]][0]
-                        param_data[ret_idx] = p
-                    ret_idx += 1
-
-        elif param_name in self._environment_attributes:
-            # Extract environmental data
-
-            #  For the environmental data we do need to return both 1D and 2D arrays
-
-            # Determine the data type and size of the param and create empty array
-            if isinstance(raw_data.environment[0][param_name], np.ndarray):
-                dtype = raw_data.environment[0][param_name].dtype
-                dsize = (return_indices.shape[0], raw_data.environment[0][param_name].shape[0])
-            elif isinstance(raw_data.environment[0][param_name], int):
-                dtype = np.int32
-                dsize = (return_indices.shape[0])
-            elif isinstance(raw_data.environment[0][param_name], float):
-                dtype = np.float32
-                dsize = (return_indices.shape[0])
-            else:
-                dtype = 'object'
-                dsize = (return_indices.shape[0])
-            param_data = np.empty(dsize, dtype=dtype)
-
-            # Populate the empty array
+            #  loop thru the indices extracting the values
             ret_idx = 0
             for idx in return_indices:
-                if param_data.ndim == 1:
-                    param_data[ret_idx] = raw_data.environment[idx][param_name]
-                elif param_data.ndim == 2:
-                    param_data[ret_idx,:] = raw_data.environment[idx][param_name][:]
+                #  check if this config object has the rx_sample_frequency key
+                conf_keys = raw_data.configuration[idx].keys()
+                if 'rx_sample_frequency' in conf_keys:
+                    #  yes - get the value
+                    param_data[ret_idx] = raw_data.configuration[idx]['rx_sample_frequency']
+                else:
+                    # no - this data is older. Get the value from the
+                    # default_sampling_frequency dict using the transceiver type as key
+                    t_type = raw_data.configuration[idx]['transceiver_type']
+                    param_data[ret_idx] = self.default_sampling_frequency[t_type]
                 ret_idx += 1
 
-        elif param_name == 'absorption_coefficient':
-            # Absorption_coefficient is derived and requires a bit more work
+        # These parameters are arrays where we need to extract a single value based
+        # on the pulse duration the system is using
+        elif param_name in ['sa_correction', 'gain']:
+            new_data = np.empty((return_indices.shape[0]), dtype=np.float32)
+            # TODO: Need to handle cases where lookup param is from pulse_duration_fm
+            for idx, config_obj in enumerate(raw_data.configuration):
+                #  param_data will be 1d for data that is constant throughout the raw
+                #  object or it will be 2d for data that changes.
+                if param_data.ndim > 1:
+                    new_data[idx] = param_data[0,config_obj['pulse_duration'] == raw_data.pulse_duration[idx]]
+                else:
+                     new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
+            param_data = new_data
 
-            # Compute absorption based on the specified absorption_method
-            if self.absorption_method.lower() == 'a&m':
-                param_data = self._compute_absorption_am(raw_data, return_indices)
+
+        elif param_name == 'effective_pulse_duration':
+            # For now we're brute forcing the effective pulse length
+
+            param_data = simrad_signal_proc.compute_effective_pulse_duration(raw_data, self,
+                    return_indices=return_indices)
+
 
         return param_data
 
-
-    def set_attribute_from_raw(self, raw_data, param_name, return_indices=None):
-        """set_attribute_from_raw updates an individual attribute using the data
-        within the provided raw_data object.
-        """
-        param_data = self.get_attribute_from_raw(raw_data, param_name,
-            return_indices=return_indices)
-
-        # If param_data is not none, update the attribute
-        if not param_data is None:
-
-            # Update the attribute.
-            setattr(self, param_name, param_data)
-
-
-    def _init_attributes(self, attributes):
-        """ Internal method to initialize the provided attribute to None
-        """
-
-        for attribute in attributes:
-            # Add the attribute
-            setattr(self, attribute, None)
-
-
-    def _compute_absorption_am(self, raw_data, return_indices):
-        '''_compute_absorption computes seawater absorption based on the
-        method presened here:
-
-        Ainslie M. A., McColm J. G., "A simplified formula for viscous and
-          chemical absorption in sea water", Journal of the Acoustical Society
-          of America, 103(3), 1671-1672, 1998.
-
-        http://resource.npl.co.uk/acoustics/techguides/seaabsorption/physics.html
-
-        absorption is returned as dB/m
-
-        '''
-        # Get depth in km
-        D = self.get_attribute_from_raw(raw_data, 'depth',
-                return_indices=return_indices)
-        D = D / 1000.0
-
-        # Acidity pH
-        pH = self.get_attribute_from_raw(raw_data, 'acidity',
-                return_indices=return_indices)
-
-        # Salinity in PSU
-        S = self.get_attribute_from_raw(raw_data, 'salinity',
-                return_indices=return_indices)
-
-        # Temperature in deg c
-        T = self.get_attribute_from_raw(raw_data, 'temperature',
-                return_indices=return_indices)
-
-        # Frequency in kHz squared
-        fsq = np.square(raw_data.frequency / 1000.0)
-
-        # Compute relaxation frequencies
-        f1 = 0.78 * np.sqrt(S/35.0) * np.exp(T / 26.0)
-        f2 = 42.0 * np.exp(T / 17.0)
-
-        # Compute absorption in dB/m
-        a = 0.106 * (f1 / (np.square(f1) + fsq)) * np.exp((pH - 8.0) / 0.56)
-        a += 0.52 * (1 + T / 43.0) * (S / 35.0) * (f2 / (np.square(f2) + fsq)) * np.exp(-D / 6.0)
-        a += 0.00049 * np.exp(-(T / 27.0 + D / 17.0))
-        a = a * (fsq / 1000)
-
-        return a

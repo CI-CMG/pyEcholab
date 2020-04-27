@@ -926,7 +926,7 @@ class ping_data(object):
         return primary_index[mask]
 
 
-    def _get_calibration_param(self, cal_object, param_name, return_indices,
+    def get_calibration_param(self, cal_object, param_name, return_indices,
                                dtype='float32'):
         """Retrieves calibration parameter values.
 
@@ -969,46 +969,63 @@ class ping_data(object):
             A numpy array, param_data, with calibration parameter values.
         """
 
-        param = getattr(cal_object, param_name)
+        # If we're not given specific indices, grab everything.
+        if return_indices is None:
+            return_indices = np.arange(self.ping_time.shape[0])
+        # Ensure that return_indices is a numpy array
+        elif type(return_indices) is not np.ndarray:
+            return_indices = np.array(return_indices, ndmin=1)
 
-        if not param is None:
+        # Check if the provided calibration object has the requested attribute
+        if hasattr(cal_object, param_name):
 
-            # Check if the input param is a numpy array.
-            if isinstance(param, np.ndarray):
-                # Check if it is a single value array.
-                if param.shape[0] == 1:
-                    param_data = np.empty((return_indices.shape[0]),
-                                          dtype=dtype)
+            # Yes. Get a reference to it
+            param = getattr(cal_object, param_name)
+
+            # Check if it contains data
+            if not param is None:
+
+                # Check if the input param is a numpy array.
+                if isinstance(param, np.ndarray):
+                    # Check if it is a single value array.
+                    if param.shape[0] == 1:
+                        param_data = np.empty((return_indices.shape[0]), dtype=dtype)
+                        param_data.fill(param)
+                    # Check if it is an array the same length as contained in the
+                    # raw data.
+                    elif param.shape[0] == self.ping_time.shape[0]:
+                        # Calibration parameters provided as full length
+                        # array.  Get the selection subset.
+                        param_data = param[return_indices]
+                    # Check if it is an array the same length as return_indices.
+                    elif param.shape[0] == return_indices.shape[0]:
+                        # Calibration parameters provided as a subset, so no need
+                        # to index with return_indices.
+                        param_data = param
+                    else:
+                        # It is an array that is the wrong shape.
+                        raise ValueError("The calibration parameter array " +
+                                param_name + " is the wrong length.")
+                # It is not an array.  Check if it is a scalar int or float.
+                elif type(param) in [int, float, np.int32, np.int64, np.float32, np.float64]:
+                    param_data = np.empty((return_indices.shape[0]), dtype=dtype)
                     param_data.fill(param)
-                # Check if it is an array the same length as contained in the
-                # raw data.
-                elif param.shape[0] == self.ping_time.shape[0]:
-                    # Calibration parameters provided as full length
-                    # array.  Get the selection subset.
-                    param_data = param[return_indices]
-                # Check if it is an array the same length as return_indices.
-                elif param.shape[0] == return_indices.shape[0]:
-                    # Calibration parameters provided as a subset, so no need
-                    # to index with return_indices.
-                    param_data = param
+                elif type(param) in [str, object, dict, list]:
+                    param_data = np.empty((return_indices.shape[0]), dtype='object')
+                    param_data.fill(param)
                 else:
-                    # It is an array that is the wrong shape.
-                    raise ValueError("The calibration parameter array " +
-                                     param_name + " is the wrong length.")
-            # It is not an array.  Check if it is a scalar int or float.
-            elif type(param) in [int, float, np.float32, np.float64]:
-                    param_data = np.empty((return_indices.shape[0]),
-                                              dtype=dtype)
-                    param_data.fill(param)
+                    # Invalid type provided.
+                    raise ValueError("The calibration parameter " + param_name +
+                            " must be an ndarray or scalar value.")
             else:
-                # Invalid type provided.
-                raise ValueError("The calibration parameter " + param_name +
-                        " must be an ndarray or scalar float.")
+                # Parameter is not provided in the calibration object, extract it
+                # from the raw data.
+                param_data = cal_object.get_attribute_from_raw(self, param_name,
+                        return_indices=return_indices)
+
         else:
-            # Parameter is not provided in the calibration object, extract it
-            # from the raw data.
-            param_data = cal_object.get_attribute_from_raw(self, param_name,
-                    return_indices=return_indices)
+            # The requested parameter is not availailable
+            param_data = None
 
         return param_data
 
