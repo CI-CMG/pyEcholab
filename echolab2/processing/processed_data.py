@@ -1143,7 +1143,7 @@ class processed_data(ping_data):
         if not np.array_equal(self.ping_time, pd_object.ping_time):
             if not self.range.shape == pd_object.range.shape:
                     raise ValueError("The processed_data object has a different "
-                            "number of ping times.")
+                            "number of range elements.")
             # Try again, but allow for +- 1 ms
             diff = np.abs((self.ping_time-pd_object.ping_time).astype(np.int32))
             if not np.all(diff <= 1):
@@ -1880,5 +1880,6 @@ def read_ev_csv(channel_id, frequency, ev_csv_filename, data_type='Ts',
             p_data.ping_time[idx] = this_time
             p_data.data[idx,:] = row[13:int(row[12]) + 13]
             idx += 1
+    p_data.data[p_data.data < -9.9000003e+36] = np.nan
 
     return p_data

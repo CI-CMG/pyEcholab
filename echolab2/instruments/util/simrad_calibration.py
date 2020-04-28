@@ -113,6 +113,112 @@ class calibration(object):
         self._environment_attributes = []
 
 
+    def get_calibration_param(self, raw_data, param_name, return_indices,
+                               dtype='float32'):
+        """Retrieves calibration parameter values.
+
+        This method returns appropriately sized arrays containing the calibration
+        parameter specified in param_name. The calibration object's attributes
+        can be set to None, to a scalar value, or to a 1d array and this function
+        creates and fills these arrays based on the data in the calibration object
+        and the value passed to return_indices. It handles 4 cases:
+
+            If the calibration object's parameter is a scalar value, the function
+            will return a 1D array the length of return_indices filled with
+            that scalar.
+
+            If the calibration object's parameter is a 1D array the length of
+            return_indices, it will return that array without modification.
+
+            If the calibration object's parameter is a 1D array the length of
+            self.ping_time, it will return a 1D array the length of return_indices
+            that is the subset of this data defined by the return_indices index
+            array.
+
+            Lastly, If the calibration object's parameter is None this function will
+            return a 1D array the length of return_indices filled with data
+            extracted from the raw data object.
+
+        Args:
+            cal_object (calibration object): The calibration object from which
+                parameter values will be retrieved.
+            param_name (str):  Attribute name needed to get parameter value in
+                calibration object.
+            return_indices (array): A numpy array of indices to return.
+            dtype (str): Numpy data type of the returned array.
+
+        Raises:
+            ValueError: The calibration parameter array is the wrong length.
+            ValueError: The calibration parameter isn't a ndarray or scalar
+                float.
+
+        Returns:
+            A numpy array, param_data, with calibration parameter values.
+        """
+
+        # If we're not given specific indices, grab everything.
+        if return_indices is None:
+            return_indices = np.arange(raw_data.ping_time.shape[0])
+        # Ensure that return_indices is a numpy array
+        elif type(return_indices) is not np.ndarray:
+            return_indices = np.array(return_indices, ndmin=1)
+
+        # Check if the provided calibration object has the requested attribute
+        if hasattr(self, param_name):
+
+            # Yes. Get a reference to it
+            param = getattr(self, param_name)
+
+            # Check if it contains data
+            if not param is None:
+
+                # Check if the input param is a numpy array.
+                if isinstance(param, np.ndarray):
+                    # Check if it is a single value array.
+                    if param.shape[0] == 1:
+                        param_data = np.empty((return_indices.shape[0]), dtype=dtype)
+                        param_data.fill(param)
+                    # Check if it is an array the same length as contained in the
+                    # raw data.
+                    elif param.shape[0] == raw_data.ping_time.shape[0]:
+                        # Calibration parameters provided as full length
+                        # array.  Get the selection subset.
+                        param_data = param[return_indices]
+                    # Check if it is an array the same length as return_indices.
+                    elif param.shape[0] == return_indices.shape[0]:
+                        # Calibration parameters provided as a subset, so no need
+                        # to index with return_indices.
+                        param_data = param
+                    else:
+                        # It is an array that is the wrong shape.
+                        raise ValueError("The calibration parameter array " +
+                                param_name + " is the wrong length.")
+                # It is not an array.  Check if it is a scalar int or float.
+                elif type(param) in [int, float, np.int32, np.int64, np.float32, np.float64]:
+                    param_data = np.empty((return_indices.shape[0]), dtype=dtype)
+                    param_data.fill(param)
+                elif type(param) in [str, object, dict, list]:
+                    param_data = np.empty((return_indices.shape[0]), dtype='object')
+                    param_data.fill(param)
+                else:
+                    # Invalid type provided.
+                    raise ValueError("The calibration parameter " + param_name +
+                            " must be an ndarray or scalar value.")
+            else:
+                # Parameter is not provided in the calibration object, extract it
+                # from the raw data.
+                param_data = self.get_attribute_from_raw(raw_data, param_name,
+                        return_indices=return_indices)
+
+        else:
+            # The requested parameter is not availailable
+            param_data = None
+
+        return param_data
+
+
+
+
     def from_raw_data(self, raw_data, return_indices=None):
         """Populates the calibration object using the data from the provided raw_data
         object.
@@ -154,12 +260,57 @@ class calibration(object):
         parameters for a given channel.
         """
 
+        ecs_version = None
+        sourcecal = {}
+        localcal = {}
+        fileset = {}
         current_section = ''
         current_transceiver = ''
 
-
         with open(ecs_file, 'r') as fp:
             line = fp.readline()
+
+            line = line.strip()
+            if line[0] == "#":
+                #  this is a comment line - process for section headers
+                if line.find('FILESET SETTINGS'):
+                    current_section = 'FILESET SETTINGS'
+
+                elif line.find('SOURCECAL SETTINGS'):
+                    current_section = 'SOURCECAL SETTINGS'
+
+                elif line.find('LOCALCAL SETTINGS'):
+                    current_section = 'LOCALCAL SETTINGS'
+
+            else:
+                if line:
+                    line_parts = line.split(' ')
+
+                    if current_section == '':
+                        if line_parts[0].lower() == 'version':
+                            ecs_version = line_parts[2]
+
+                    elif current_section == 'FILESET SETTINGS':
+                        #  not sure how localcal section is laid out
+                        #  for now just dump into the top level
+                        fileset[line_parts[0]] = line_parts[2]
+
+                    elif current_section == 'SOURCECAL SETTINGS':
+                        if line_parts[0].lower() == 'sourcecal':
+                            current_transceiver = line_parts[1]
+                        else:
+                            #  this must be a param in the current xcvr sourcecal section
+                            if not current_transceiver in sourcecal.keys():
+                                sourcecal[current_transceiver] = {}
+
+                            sourcecal[current_transceiver][line_parts[0]] = line_parts[2]
+
+                    elif current_section == 'LOCALCAL SETTINGS':
+                        #  not sure how localcal section is laid out
+                        #  for now just dump into the top level
+                        localcal[line_parts[0]] = line_parts[2]
+
+        return (ecs_version, sourcecal, localcal, fileset)
 
 
     def get_attribute_from_raw(self, raw_data, param_name, return_indices=None):

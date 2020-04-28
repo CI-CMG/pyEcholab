@@ -37,7 +37,7 @@ ek80 = EK80.EK80()
 ek80.read_raw(raw_filename)
 
 #  get the 38kHz data
-raw_38 = ek80.raw_data[ek80.channel_ids[1]]
+raw_38 = ek80.raw_data[ek80.channel_ids[0]]
 #  take the first data type
 raw_data = raw_38[0]
 
@@ -75,7 +75,7 @@ eg2.axes.set_title("Echoview Sv")
 
 fig6 = figure()
 eg6 = echogram.Echogram(fig6, ev_Ts_data, threshold=[-70,-34])
-eg6.axes.set_title("Echoview Sv")
+eg6.axes.set_title("Echoview Ts")
 
 #  compute the difference of these data
 diff = ek80_Sv - ev_Sv_data

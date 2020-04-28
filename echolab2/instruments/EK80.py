@@ -44,7 +44,7 @@ import os
 import datetime
 import numpy as np
 from pytz import timezone
-from . import calibration
+from .util.simrad_calibration import calibration
 from .util.simrad_raw_file import RawSimradFile, SimradEOF
 from .util.nmea_data import nmea_data
 from .util.simrad_motion_data import simrad_motion_data
@@ -1300,13 +1300,13 @@ class raw_data(ping_data):
                 self.angles_athwartship_e[this_ping,:] = athwartship_e
 
 
-    def get_calibration(self):
+    def get_calibration(self, **kwargs):
         """Returns a calibration object populated from the data contained in this
         raw_data object.
 
         """
 
-        cal_obj = ek80_calibration()
+        cal_obj = ek80_calibration(**kwargs)
         cal_obj.from_raw_data(self)
 
         return cal_obj
@@ -1588,6 +1588,11 @@ class raw_data(ping_data):
             # Get an array of index values to return.
             return_indices = self.get_indices(**kwargs)
 
+        # Check if user provided a cal object
+        if calibration is None:
+            # No - create an empty one - all cal values will come from the raw data
+            calibration = ek80_calibration()
+
         # Extract the recorded sound velocity.
         sv_recorded = self.sound_velocity[return_indices]
 
@@ -1598,8 +1603,8 @@ class raw_data(ping_data):
         # Next, iterate through the dict, calling the method to extract the
         # values for each parameter.
         for key in cal_parms:
-            cal_parms[key] = self.get_calibration_param(calibration,
-                    key, return_indices)
+            cal_parms[key] = calibration.get_calibration_param(self, key,
+                    return_indices)
 
         # Check if we have to adjust the depth due to a change in sound speed.
         if np.all(np.isclose(sv_recorded, cal_parms['sound_velocity'])):
@@ -1632,6 +1637,11 @@ class raw_data(ping_data):
             Processed data objects with alongship and athwartship angle data.
         """
 
+        # Check if user provided a cal object
+        if calibration is None:
+            # No - create an empty one - all cal values will come from the raw data
+            calibration = ek80_calibration()
+
         # Get the electrical angles.
         alongship, athwartship, return_indices = \
                 self._get_electrical_angles(calibration=calibration, **kwargs)
@@ -1645,7 +1655,7 @@ class raw_data(ping_data):
         # Next, iterate through the dict, calling the method to extract the
         # values for each parameter.
         for key in cal_parms:
-            cal_parms[key] = self.get_calibration_param(calibration, key,
+            cal_parms[key] = calibration.get_calibration_param(self, key,
                     return_indices)
 
         # Compute the physical angles.
@@ -1847,6 +1857,11 @@ class raw_data(ping_data):
             # Get an array of index values to return.
             return_indices = self.get_indices(**kwargs)
 
+        # Check if user provided a cal object
+        if calibration is None:
+            # No - create an empty one - all cal values will come from the raw data
+            calibration = ek80_calibration()
+
         # Create the processed_data object we will return.
         p_data = processed_data(self.channel_id, self.frequency[0], None)
 
@@ -1874,7 +1889,7 @@ class raw_data(ping_data):
         # Next, iterate through the dictionary calling the method to extract
         # the values for each parameter.
         for key in cal_parms:
-            cal_parms[key] = self.get_calibration_param(calibration, key,
+            cal_parms[key] = calibration.get_calibration_param(self, key,
                     return_indices)
 
         # Check if we have multiple sample offset values and get the minimum.
@@ -2006,8 +2021,7 @@ class raw_data(ping_data):
         # Next, iterate through the dictionary, calling the method to extract
         # the values for each parameter.
         for key in cal_parms:
-            print(key)
-            cal_parms[key] = self.get_calibration_param(calibration, key,
+            cal_parms[key] = calibration.get_calibration_param(self, key,
                     return_indices)
 
         # Get sound_velocity from the power data since get_power might have
@@ -2101,8 +2115,8 @@ class raw_data(ping_data):
         # Next, iterate through the dictionary, calling the method to extract
         # the values for each parameter.
         for key in cal_parms:
-            cal_parms[key] = self.get_calibration_param(calibration,
-                    key, return_indices)
+            cal_parms[key] = calibration.get_calibration_param(self, key,
+                    return_indices)
 
         # Check if we're applying heave correction and/or returning depth by
         # applying a transducer offset.
@@ -2245,7 +2259,7 @@ class raw_data(ping_data):
         return msg
 
 
-class ek80_calibration(calibration.calibration):
+class ek80_calibration(calibration):
     """
     The calibration class contains parameters required for transforming power,
     electrical angle, and complex data to Sv/sv TS/SigmaBS and physical angles.
@@ -2325,7 +2339,7 @@ class ek80_calibration(calibration.calibration):
         self.absorption_coefficient = None
 
         # effective_pulse_length is also computed
-        self.effective_pulse_length = None
+        self.effective_pulse_duration = None
 
         # Create a dict containing the hardware sampling frequencies of various
         # Simrad hardware. In EK80 versions prior to 1.12.2 the rx_sampling_frequency

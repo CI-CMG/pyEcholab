@@ -13,6 +13,13 @@
 #  (1) FOR THE USE OF THE SOFTWARE AND DOCUMENTATION; OR (2) TO PROVIDE TECHNICAL
 #  SUPPORT TO USERS.
 """
+.. module:: echolab2.simrad_signal_proc
+
+    :synopsis: Functions for processing Simrad EK80 data. Based on work
+               by Chris Bassett, Lars Nonboe Anderson, Gavin Macaulay,
+               Dezhang Chu, and many others.
+
+
 | Developed by:  Rick Towler   <rick.towler@noaa.gov>
 | National Oceanic and Atmospheric Administration (NOAA)
 | Alaska Fisheries Science Center (AFSC)
@@ -51,15 +58,26 @@ def create_ek80_tx(raw_data, calibration, return_indices=None):
                  'rx_sample_frequency':None,
                  'filters':None}
 
+    #  now create a dict that will track these params
+    last_parms = {'slope':None,
+                 'transmit_power':None,
+                 'pulse_duration':None,
+                 'frequency_start':None,
+                 'frequency_end':None,
+                 'frequency':None,
+                 'impedance':None,
+                 'rx_sample_frequency':None,
+                 'filters':None}
+
     # create the return array
     tx_data = np.empty(return_indices.shape[0], dtype=np.ndarray)
 
-    # Iterate thru the return
+    # Iterate thru the return indices - We're
     for idx, ping_index in enumerate(return_indices):
 
         # Get the cal params we need for this ping
         for key in cal_parms:
-            cal_parms[key] = raw_data.get_calibration_param(calibration, key, ping_index)
+            cal_parms[key] = calibration.get_calibration_param(raw_data, key, ping_index)
 
         # if this is CW data, we will not have the start/end params so we
         # set them to cal_parms['frequency']
@@ -67,14 +85,33 @@ def create_ek80_tx(raw_data, calibration, return_indices=None):
             cal_parms['frequency_start'] = cal_parms['frequency']
             cal_parms['frequency_end'] = cal_parms['frequency']
 
-        #  get the theoretical tx signal
-        t, y = ek80_chirp(cal_parms['transmit_power'], cal_parms['frequency_start'],
-                cal_parms['frequency_end'], cal_parms['slope'],
-                cal_parms['pulse_duration'], cal_parms['impedance'],
-                cal_parms['rx_sample_frequency'])
+        # Check if this ping's Tx is the same as the last pings
+        if last_parms['slope'] == None:
+            #  this is the first ping, populate the initial values in last_parms
+            for key in last_parms:
+                last_parms[key] = cal_parms[key]
+            compute_tx = True
+        else:
+            #  check if all params are the same
+            #  assume they are and set compute_tx to False
+            compute_tx = False
+            #  now compare the params
+            for key in last_parms:
+                # if one of the params is different - compute_tx will be True
+                compute_tx &= last_parms[key] != cal_parms[key]
+                # after checking we update
+                last_parms[key] = cal_parms[key]
 
-        #  apply the stage 1 and stage 2 filters
-        y = filter_and_decimate(y, cal_parms['filters'][0], [1, 2])
+        #  only generate, filter and decimate the new signal if needed
+        if compute_tx:
+            #  get the theoretical tx signal
+            t, y = ek80_chirp(cal_parms['transmit_power'], cal_parms['frequency_start'],
+                    cal_parms['frequency_end'], cal_parms['slope'],
+                    cal_parms['pulse_duration'], cal_parms['impedance'],
+                    cal_parms['rx_sample_frequency'])
+
+            #  apply the stage 1 and stage 2 filters
+            y = filter_and_decimate(y, cal_parms['filters'][0], [1, 2])
 
         #  store this ping's tx signal
         tx_data[idx] = y
@@ -116,10 +153,16 @@ def compute_effective_pulse_duration(raw_data, calibration, return_indices=None)
 
 def filter_and_decimate(y, filters, stages):
     '''filter_and_decimate will apply one or more convolution and
-    decimation operations on the provided y.
+    decimation operations on the provided data.
+
+        y (complex) - The signal to be filtered
+        filters (dict) - The filters dictionary associated with the signal
+                         being filtered.
+        stages (int, list) - A scalar integer or list of integers containing
+                             the filter stage(s) to apply. Stages are applied
+                             in the order they are added to the list.
 
     '''
-
     #  make sure stages is iterable - make it so if not.
     try:
         iter(stages)
