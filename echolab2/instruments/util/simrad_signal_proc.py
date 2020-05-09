@@ -77,7 +77,7 @@ def create_ek80_tx(raw_data, calibration, return_indices=None):
 
         # Get the cal params we need for this ping
         for key in cal_parms:
-            cal_parms[key] = calibration.get_calibration_param(raw_data, key, ping_index)
+            cal_parms[key] = calibration.get_parameter(raw_data, key, ping_index)
 
         # if this is CW data, we will not have the start/end params so we
         # set them to cal_parms['frequency']
@@ -176,7 +176,7 @@ def filter_and_decimate(y, filters, stages):
     for stage in stages:
         #  make sure this filter exists
         if not stage in filter_stages:
-            raise ValueError("Filter stage " + stage + " is not in the " +
+            raise ValueError("Filter stage " + str(stage) + " is not in the " +
                     "supplied filters dictionary.")
 
         # get the filter coefficients and decimation factor
@@ -221,7 +221,7 @@ def ek80_chirp(txpower, fstart, fstop, slope, tau, z, rx_freq):
     nwtxh = int(np.round(nwtx / 2))
     wtx = np.concatenate([wtx_tmp[0:nwtxh], np.ones((nt - nwtx)), wtx_tmp[nwtxh:]])
     beta = (fstop - fstart) * (tau ** -1)
-    chirp = np.cos(2 * np.pi * (beta / 2 * (t ** 2) + fstart * t))
+    chirp = np.cos(2.0 * np.pi * (beta / 2.0 * (t ** 2) + fstart * t))
     y_tmp = a * chirp * wtx
     # The transmit signal must have a max amplitude of 1
     y = y_tmp / np.max(np.abs(y_tmp))

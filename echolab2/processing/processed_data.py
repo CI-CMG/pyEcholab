@@ -1155,10 +1155,10 @@ class processed_data(ping_data):
         if hasattr(pd_object, 'range'):
             if hasattr(self, 'range'):
                 if not self.range.shape == pd_object.range.shape:
-                    raise ValueError("The processed_data object" + pd_object +
+                    raise ValueError("The processed_data object" + pd_object.channel_id +
                             " has a different number of range values that this object.")
                 if not np.allclose(self.range, pd_object.range):
-                    raise ValueError("The processed_data object " + pd_object +
+                    raise ValueError("The processed_data object " + pd_object.channel_id +
                             " ranges are different than our ranges.")
             else:
                 raise AttributeError('You cannot operate on a range based '
@@ -1166,10 +1166,10 @@ class processed_data(ping_data):
         else:
             if hasattr(self, 'depth'):
                 if not self.depth.shape == pd_object.depth.shape:
-                    raise ValueError("The processed_data object" + pd_object +
+                    raise ValueError("The processed_data object" + pd_object.channel_id +
                             " has a different number of depth values that this object.")
                 if not np.allclose(self.depth, mask.depth):
-                    raise ValueError("The processed_data object " + pd_object +
+                    raise ValueError("The processed_data object " + pd_object.channel_id +
                             "depths do not match our depths.")
             else:
                 raise AttributeError('You cannot operate on a depth based '

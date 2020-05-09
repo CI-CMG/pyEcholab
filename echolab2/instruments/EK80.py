@@ -1889,7 +1889,7 @@ class raw_data(ping_data):
         # Next, iterate through the dictionary calling the method to extract
         # the values for each parameter.
         for key in cal_parms:
-            cal_parms[key] = calibration.get_calibration_param(self, key,
+            cal_parms[key] = calibration.get_parameter(self, key,
                     return_indices)
 
         # Check if we have multiple sample offset values and get the minimum.
@@ -1972,6 +1972,7 @@ class raw_data(ping_data):
         p_data.sound_velocity = sound_velocity
         p_data.sample_thickness = sample_thickness
         p_data.sample_offset = min_sample_offset
+        p_data.sample_interval = sample_interval
 
         # Add the transducer draft attribute
         # First check if we apply the drop keel offset
@@ -1992,7 +1993,7 @@ class raw_data(ping_data):
         """Converts power to Sv/sv/Sp/sp
 
         Args:
-            power_data (ping_data): A ping_data object with the raw power
+            power_data (processed_data): A processed_data object with the raw power
                 data read from the file.
             calibration (calibration object): The data calibration object where
                 calibration data will be retrieved.
@@ -2021,55 +2022,60 @@ class raw_data(ping_data):
         # Next, iterate through the dictionary, calling the method to extract
         # the values for each parameter.
         for key in cal_parms:
-            cal_parms[key] = calibration.get_calibration_param(self, key,
+            cal_parms[key] = calibration.get_parameter(self, key,
                     return_indices)
 
         # Get sound_velocity from the power data since get_power might have
-        # manipulated this value.
+        # manipulated this value. Remember that we're operating on a
+        # processed_data object so all pings share the same sound speed.
         cal_parms['sound_speed'] = np.empty((return_indices.shape[0]),
                 dtype=self.sample_dtype)
         cal_parms['sound_speed'].fill(power_data.sound_velocity)
 
+        # For EK60 hardware use pulse duration when computing gains
+        # but for EK80 hardware use effectve pulse length.
+        if self.transceiver_type == 'GPT':
+            effective_pulse_duration = cal_parms['pulse_duration']
+        else:
+            effective_pulse_duration = cal_parms['effective_pulse_duration']
+
         # Calculate the system gains.
         wavelength = cal_parms['sound_speed'] / power_data.frequency
         if convert_to in ['sv','Sv']:
-            gains = 10 * np.log10((cal_parms['transmit_power'] * (10**(
-                cal_parms['gain']/10.0))**2 * wavelength**2 * cal_parms[
-                'sound_speed'] * cal_parms['effective_pulse_duration'] * 10**(
-                cal_parms['equivalent_beam_angle']/10.0)) / (32 * np.pi**2))
+            gains = 10 * np.log10((cal_parms['transmit_power'] * (10**( cal_parms['gain'] / 10.0))**2 *
+                    wavelength**2 * cal_parms['sound_speed'] * effective_pulse_duration *
+                10**(cal_parms['equivalent_beam_angle']/10.0)) / (32 * np.pi**2))
         else:
             gains = 10 * np.log10((cal_parms['transmit_power'] * (10**(
                 cal_parms['gain']/10.0))**2 * wavelength**2) / (16 * np.pi**2))
 
         # Get the range for TVG calculation.  The method used depends on the
         # hardware used to collect the data.
+        c_range = np.empty(power_data.shape, dtype=power_data.sample_dtype)
+        c_range [:,:] = power_data.range.copy()
         if tvg_correction:
             if self.transceiver_type == 'GPT':
-                # For the Ex60 hardware, the range is computed as:
+                # For the Ex60 hardware, the corrected range is computed as:
                 #   c_range = range - (2 * sample_thickness)
-                c_range = power_data.range.copy() - (2 * power_data.sample_thickness)
+                c_range -= (2.0 * power_data.sample_thickness)
             else:
-                # For the Ex80 WBT style hardware TVG range is computed as:
+                # For the Ex80 WBT style hardware corrected range is computed as:
                 #    c_range = range - (sound speed * pulse length / 4)
-                c_range = power_data.range.copy() - (power_data.sound_velocity *
-                        cal_parms['pulse_duration'][0]) /4.0
+                c_range -= (power_data.sound_velocity * cal_parms['pulse_duration'] / 4.0)[:,np.newaxis]
+
+            #  zero out negative ranges
             c_range[c_range < 0] = 0
-        else:
-            c_range = power_data.range
 
         # Calculate time varied gain.
         tvg = c_range.copy()
-        tvg[tvg <= 0] = 1
+        tvg[tvg < 1] = 1
         if convert_to in ['sv','Sv']:
-            tvg[:] = 20.0 * np.log10(tvg)
+            tvg = 20.0 * np.log10(tvg)
         else:
-            tvg[:] = 40.0 * np.log10(tvg)
-        tvg[tvg < 0] = 0
+            tvg = 40.0 * np.log10(tvg)
 
-        # Calculate absorption.  This is the outer product of our corrected
-        # range and 2 * absorption_coefficient.  We'll use this for our output
-        # array to minimize the arrays we're creating.
-        data = np.outer(2.0 * cal_parms['absorption_coefficient'], c_range)
+        # Calculate absorption - our starting point.
+        data = (2.0 * cal_parms['absorption_coefficient'])[:,np.newaxis] * c_range
 
         # Add in power and TVG.
         data += power_data.data + tvg
@@ -2115,7 +2121,7 @@ class raw_data(ping_data):
         # Next, iterate through the dictionary, calling the method to extract
         # the values for each parameter.
         for key in cal_parms:
-            cal_parms[key] = calibration.get_calibration_param(self, key,
+            cal_parms[key] = calibration.get_parameter(self, key,
                     return_indices)
 
         # Check if we're applying heave correction and/or returning depth by
@@ -2282,19 +2288,8 @@ class ek80_calibration(calibration):
     object.
     """
 
-    def __init__(self, absorption_method='A&M'):
-        '''
-
-            absorption_method (str): specifies the method used to calculate
-                                     absorption of sound in seawater. Currently
-                                     the default and only method implemented is
-                                     "A&M" for Ainslie and McColm:
-
-                Ainslie M. A., McColm J. G., "A simplified formula for viscous and
-                  chemical absorption in sea water", Journal of the Acoustical Society
-                  of America, 103(3), 1671-1672, 1998.
-
-                http://resource.npl.co.uk/acoustics/techguides/seaabsorption/physics.html
+    def __init__(self, absorption_method='F&G'):
+        '''Create an instance of an ek80_calibration object.
 
         '''
 
@@ -2306,9 +2301,22 @@ class ek80_calibration(calibration):
         # EK80 formatted .raw file except that
 
         # Absorption_method stores the string identifying the method used to
-        # compute seawater absorption. Unlike EK60, EK80 doesn't compute this
-        # and instead provides the variables to do it.
+        # compute seawater absorption. Unlike ER60, EK80 doesn't compute this
+        # and instead provides the data to do it.
         self.absorption_method = absorption_method
+
+        # Create a dict containing the hardware sampling frequencies of various
+        # Simrad hardware. In EK80 versions prior to 1.12.2 the rx_sampling_frequency
+        # configuration property didn't exist. When these files are read, they use
+        # the value here based in the transceiver_type configuration value.
+        self.default_sampling_frequency = {'GPT':500000,
+                                           'SBT':50000,
+                                           'WBAT':1500000,
+                                           'WBT TUBE':1500000,
+                                           'WBT MINI':1500000,
+                                           'WBT':1500000,
+                                           'WBT HP':187500,
+                                           'WBT LF':93750}
 
         #  these attributes are properties of the raw_data class
         self._raw_attributes = ['sample_offset', 'channel_mode', 'pulse_form', 'frequency',
@@ -2341,18 +2349,6 @@ class ek80_calibration(calibration):
         # effective_pulse_length is also computed
         self.effective_pulse_duration = None
 
-        # Create a dict containing the hardware sampling frequencies of various
-        # Simrad hardware. In EK80 versions prior to 1.12.2 the rx_sampling_frequency
-        # configuration property didn't exist. When these files are read, they use
-        # the value here based in the transceiver_type configuration value.
-        self.default_sampling_frequency = {'GPT':500000,
-                                           'SBT':50000,
-                                           'WBAT':1500000,
-                                           'WBT TUBE':1500000,
-                                           'WBT MINI':1500000,
-                                           'WBT':1500000,
-                                           'WBT HP':187500,
-                                           'WBT LF':93750}
 
 
     def from_raw_data(self, raw_data, return_indices=None):
@@ -2429,10 +2425,13 @@ class ek80_calibration(calibration):
 
 
         elif param_name == 'effective_pulse_duration':
-            # For now we're brute forcing the effective pulse length
-
-            param_data = simrad_signal_proc.compute_effective_pulse_duration(raw_data, self,
-                    return_indices=return_indices)
+            # The EK60 does not use effective_pulse_duration so we only compute
+            # it for EK80 hardware
+            if self.transceiver_type != 'GPT':
+                param_data = simrad_signal_proc.compute_effective_pulse_duration(raw_data, self,
+                        return_indices=return_indices)
+            else:
+                param_data = None
 
 
         return param_data

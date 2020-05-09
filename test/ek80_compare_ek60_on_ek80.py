@@ -1,14 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 
-
 @author: rick.towler
 
 This is a simple script to plot up the differences between pyEcholab outputs
-and outputs created by the MATLAB based echolab toolbox using a common raw file
-as input.
-
-
+and data exported from echoview.
 
 """
 import sys
@@ -20,31 +16,31 @@ from echolab2.plotting.matplotlib import echogram
 import matplotlib.pyplot as plt
 
 
-input_path = 'C:/EK80 Test Data/EK80/CW/reduced/'
+input_path = 'C:/EK80 Test Data/EK60/'
 
 #  define the paths to the reference data files
-raw_filename = 'DY2000_EK80_Cal-D20200126-T061004.raw'
+raw_filename = 'DY1803-D20180312-T212915.raw'
 
 ev_Sv_filename = {}
-ev_Sv_filename['Echoview Sv - 18 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-18kHz-Sv.mat'
-ev_Sv_filename['Echoview Sv - 38 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-38kHz-Sv.mat'
-ev_Sv_filename['Echoview Sv - 70 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-70kHz-Sv.mat'
-ev_Sv_filename['Echoview Sv - 120 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-120kHz-Sv.mat'
-ev_Sv_filename['Echoview Sv - 200 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-200kHz-Sv.mat'
+ev_Sv_filename['Echoview Sv - 18 kHz'] = 'DY1803-D20180312-T212915-18kHz-Sv.mat'
+ev_Sv_filename['Echoview Sv - 38 kHz'] = 'DY1803-D20180312-T212915-38kHz-Sv.mat'
+ev_Sv_filename['Echoview Sv - 70 kHz'] = 'DY1803-D20180312-T212915-70kHz-Sv.mat'
+ev_Sv_filename['Echoview Sv - 120 kHz'] = 'DY1803-D20180312-T212915-120kHz-Sv.mat'
+ev_Sv_filename['Echoview Sv - 200 kHz'] = 'DY1803-D20180312-T212915-200kHz-Sv.mat'
 
 ev_Ts_filename = {}
-ev_Ts_filename['Echoview TS - 18 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-18kHz-Ts.ts.csv'
-ev_Ts_filename['Echoview TS - 38 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-38kHz-Ts.ts.csv'
-ev_Ts_filename['Echoview TS - 70 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-70kHz-Ts.ts.csv'
-ev_Ts_filename['Echoview TS - 120 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-120kHz-Ts.ts.csv'
-ev_Ts_filename['Echoview TS - 200 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-200kHz-Ts.ts.csv'
+ev_Ts_filename['Echoview TS - 18 kHz'] = 'DY1803-D20180312-T212915-18kHz-Ts.ts.csv'
+ev_Ts_filename['Echoview TS - 38 kHz'] = 'DY1803-D20180312-T212915-38kHz-Ts.ts.csv'
+ev_Ts_filename['Echoview TS - 70 kHz'] = 'DY1803-D20180312-T212915-70kHz-Ts.ts.csv'
+ev_Ts_filename['Echoview TS - 120 kHz'] = 'DY1803-D20180312-T212915-120kHz-Ts.ts.csv'
+ev_Ts_filename['Echoview TS - 200 kHz'] = 'DY1803-D20180312-T212915-200kHz-Ts.ts.csv'
 
 ev_power_filename = {}
-ev_power_filename['Echoview power - 18 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-18kHz-Power.power.csv'
-ev_power_filename['Echoview power - 38 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-38kHz-Power.power.csv'
-ev_power_filename['Echoview power - 70 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-70kHz-Power.power.csv'
-ev_power_filename['Echoview power - 120 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-120kHz-Power.power.csv'
-ev_power_filename['Echoview power - 200 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-200kHz-Power.power.csv'
+ev_power_filename['Echoview power - 18 kHz'] = 'DY1803-D20180312-T212915-18kHz-Power.power.csv'
+ev_power_filename['Echoview power - 38 kHz'] = 'DY1803-D20180312-T212915-38kHz-Power.power.csv'
+ev_power_filename['Echoview power - 70 kHz'] = 'DY1803-D20180312-T212915-70kHz-Power.power.csv'
+ev_power_filename['Echoview power - 120 kHz'] = 'DY1803-D20180312-T212915-120kHz-Power.power.csv'
+ev_power_filename['Echoview power - 200 kHz'] = 'DY1803-D20180312-T212915-200kHz-Power.power.csv'
 
 
 
@@ -56,6 +52,9 @@ ek80.read_raw(input_path + raw_filename)
 #  now iterate through the reference files and display results
 
 for idx, sv_chan in enumerate(ev_Sv_filename):
+
+    #idx = 4
+    #sv_chan = 'Echoview Sv - 200 kHz'
 
     #  get the list of raw_data objects by channel - I know
     #  in this case the channels are ordered from low to high
@@ -74,7 +73,7 @@ for idx, sv_chan in enumerate(ev_Sv_filename):
     #  interface to get and set these values and ultimately deliver right
     #  sized arrays to methods that convert the complex or power/angle
     #  data into "processed" data.
-    calibration = raw_data.get_calibration(absorption_method='A&M')
+    calibration = raw_data.get_calibration()
 
     #  convert to power
     ek80_power = raw_data.get_power(calibration=calibration)
@@ -115,6 +114,7 @@ for idx, sv_chan in enumerate(ev_Sv_filename):
 
     #  compute the difference of EV and Echolab Sv data
     diff = ek80_Sv - ev_Sv_data
+    print(diff[0:0:15])
     fig = plt.figure()
     eg = echogram.Echogram(fig, diff, threshold=[-0.25,0.25])
     eg.axes.set_title("Echolog Sv - EV Sv " + str(frequency) + " kHz")
@@ -143,4 +143,6 @@ for idx, sv_chan in enumerate(ev_Sv_filename):
 
     # Show our figures.
     plt.show()
+
+    print()
 

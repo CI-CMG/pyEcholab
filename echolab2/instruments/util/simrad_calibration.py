@@ -35,7 +35,7 @@ import numpy as np
 
 class calibration(object):
     """
-    The calibration class contains parameters required for transforming power,
+    The calibration class provides parameters required for transforming power,
     electrical angle, and complex data to Sv/sv TS/SigmaBS and physical angles.
 
     Calibration objects are specific to the hardware and/or data file format
@@ -61,7 +61,7 @@ class calibration(object):
     object.
     """
 
-    def __init__(self, absorption_method='A&M'):
+    def __init__(self, absorption_method='F&G'):
         '''
 
             absorption_method (str): specifies the method used to calculate
@@ -113,7 +113,7 @@ class calibration(object):
         self._environment_attributes = []
 
 
-    def get_calibration_param(self, raw_data, param_name, return_indices,
+    def get_parameter(self, raw_data, param_name, return_indices,
                                dtype='float32'):
         """Retrieves calibration parameter values.
 
@@ -215,8 +215,6 @@ class calibration(object):
             param_data = None
 
         return param_data
-
-
 
 
     def from_raw_data(self, raw_data, return_indices=None):
@@ -384,7 +382,7 @@ class calibration(object):
 
         # Bail if we don't have this particular parameter
         if param_name not in raw_attribute[0]:
-            param_data = None
+            return None
 
         # Determine the data type and size of the param and create empty array
         if isinstance(raw_attribute[0][param_name], np.ndarray):
@@ -462,10 +460,9 @@ class calibration(object):
 
         absorption is returned as dB/m
         '''
-        # Get depth in km
+        # Get depth in m
         D = self.get_attribute_from_raw(raw_data, 'depth',
                 return_indices=return_indices)
-        D = D / 1000.0
 
         # Acidity pH
         pH = self.get_attribute_from_raw(raw_data, 'acidity',
@@ -479,22 +476,29 @@ class calibration(object):
         T = self.get_attribute_from_raw(raw_data, 'temperature',
                 return_indices=return_indices)
 
+        # Compute absorption using the specified method
         if method.lower() in ['am', 'a&m']:
+            # Ainslie M. A., McColm J. G.
 
             # Frequency in kHz squared
             fsq = np.square(raw_data.frequency / 1000.0)
+
+            # Depth in km
+            D = D / 1000.0
 
             # Compute relaxation frequencies
             f1 = 0.78 * np.sqrt(S/35.0) * np.exp(T / 26.0)
             f2 = 42.0 * np.exp(T / 17.0)
 
             # Compute absorption in dB/m
-            a = 0.106 * (f1 / (np.square(f1) + fsq)) * np.exp((pH - 8.0) / 0.56)
-            a += 0.52 * (1 + T / 43.0) * (S / 35.0) * (f2 / (np.square(f2) + fsq)) * np.exp(-D / 6.0)
-            a += 0.00049 * np.exp(-(T / 27.0 + D / 17.0))
-            a = a * (fsq / 1000)
+            a = 0.106 * ((f1 * fsq) / (np.square(f1) + fsq)) * np.exp((pH - 8.0) / 0.56)
+            a += 0.52 * (1 + T / 43.0) * (S / 35.0) * ((f2 * fsq) / (np.square(f2) + fsq)) * np.exp(-D / 6.0)
+            a += 0.00049 * fsq * np.exp(-(T / 27.0 + D / 17.0))
+            #  return value in dB/m
+            a = a / 1000
 
         elif method.lower() in ['fg', 'f&g']:
+            # Francois R. E., Garrison G. R.
 
             # Frequency in kHz
             f = raw_data.frequency / 1000.0
