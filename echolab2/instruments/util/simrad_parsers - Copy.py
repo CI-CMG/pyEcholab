@@ -1009,15 +1009,7 @@ class SimradFILParser(_SimradDatagramParser):
 
 class SimradConfigParser(_SimradDatagramParser):
     '''
-    Simrad Configuration Datagram parser. The CONx datagrams are present in data files
-    collected using the ES/EK60, ES70, and ME70.
-
-    5-15-20 - RHT: The output from this parser has been changed to follow the output
-                   format of the XML parser configuration datagram. This introduces
-                   a number of changes...
-
-
-  operates on dictonaries with the following keys:
+    Simrad Configuration Datagram parser operates on dictonaries with the following keys:
 
         type:         string == 'CON0'
         low_date:     long uint representing LSBytes of 64bit NT date
@@ -1124,10 +1116,6 @@ class SimradConfigParser(_SimradDatagramParser):
 
         _SimradDatagramParser.__init__(self, 'CON', headers)
 
-        #  for CON0 datagrams, the data are not in XML format so the naming and
-        #  typing system used for parsing XML data doesn't come into play. Here
-        #  we define the dict keys and binary data types for CON0 headers.
-
         self._transducer_headers = {'ER60':[('channel_id', '128s'),
                                        ('beam_type', 'l'),
                                        ('frequency', 'f'),
@@ -1214,46 +1202,37 @@ class SimradConfigParser(_SimradDatagramParser):
     def _unpack_contents(self, raw_string, bytes_read, version):
 
         data = {}
-        header_data = {}
-        common_params = {}
-
-
         round6 = lambda x: round(x, ndigits=6)
         header_values = struct.unpack(self.header_fmt(version), raw_string[:self.header_size(version)])
 
         for indx, field in enumerate(self.header_fields(version)):
-            header_data[field] = header_values[indx]
+            data[field] = header_values[indx]
 
             #  handle Python 3 strings
-            if (sys.version_info.major > 2) and isinstance(header_data[field], bytes):
-                header_data[field] = header_data[field].decode('latin_1')
+            if (sys.version_info.major > 2) and isinstance(data[field], bytes):
+                data[field] = data[field].decode('latin_1')
 
-        #  add the common fields to the return dict
-        data['low_date'] = header_data['low_date']
-        data['high_date'] = header_data['high_date']
-        data['timestamp'] = nt_to_unix((header_data['low_date'], header_data['high_date']))
-        data['type'] = header_data['type']
-        data['subtype'] = 'configuration'
-        data['configuration'] = {}
-        data['dg_version'] = version
+        data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
         data['bytes_read'] = bytes_read
 
         if version == 0:
 
-            for field in ['transect_name', 'version', 'survey_name', 'sounder_name']:
-                common_params[field] = header_data[field].strip('\x00')
+            data['transceivers'] = {}
 
-            sounder_name = common_params['sounder_name']
+            for field in ['transect_name', 'version', 'survey_name', 'sounder_name']:
+                data[field] = data[field].strip('\x00')
+
+            sounder_name = data['sounder_name']
             if sounder_name == 'MBES':
-                _me70_extra_values = struct.unpack('=hLff', header_data['spare0'][:14])
-                common_params['multiplexing'] = _me70_extra_values[0]
-                common_params['time_bias'] = _me70_extra_values[1]
-                common_params['sound_velocity_avg'] = _me70_extra_values[2]
-                common_params['sound_velocity_transducer'] = _me70_extra_values[3]
-                common_params['spare0'] = data['spare0'][:14] + data['spare0'][14:].strip('\x00')
+                _me70_extra_values = struct.unpack('=hLff', data['spare0'][:14])
+                data['multiplexing'] = _me70_extra_values[0]
+                data['time_bias'] = _me70_extra_values[1]
+                data['sound_velocity_avg'] = _me70_extra_values[2]
+                data['sound_velocity_transducer'] = _me70_extra_values[3]
+                data['spare0'] = data['spare0'][:14] + data['spare0'][14:].strip('\x00')
 
             else:
-                common_params['spare0'] = header_data['spare0'].strip('\x00')
+                data['spare0'] = data['spare0'].strip('\x00')
 
             buf_indx = self.header_size(version)
 
@@ -1272,17 +1251,15 @@ class SimradConfigParser(_SimradDatagramParser):
             txcvr_header_fmt    = '=' + ''.join([x[1] for x in transducer_header])
             txcvr_header_size   = struct.calcsize(txcvr_header_fmt)
 
-            for txcvr_indx in range(1, header_data['transceiver_count'] + 1):
-                txcvr_header_values_encoded = struct.unpack(txcvr_header_fmt,
-                        raw_string[buf_indx:buf_indx + txcvr_header_size])
+            for txcvr_indx in range(1, data['transceiver_count'] + 1):
+                txcvr_header_values_encoded = struct.unpack(txcvr_header_fmt, raw_string[buf_indx:buf_indx + txcvr_header_size])
                 txcvr_header_values = list(txcvr_header_values_encoded)
                 for tx_idx, tx_val in enumerate(txcvr_header_values_encoded):
                     if isinstance(tx_val, bytes):
                         txcvr_header_values[tx_idx] = tx_val.decode()
 
-                channel_id = txcvr_header_values[0].strip('\x00')
-                txcvr = data['configuration'].setdefault(channel_id, {})
-                txcvr.update(common_params)
+
+                txcvr = data['transceivers'].setdefault(txcvr_indx, {})
 
                 if _sounder_name_used in ['ER60', 'ES60']:
                     for txcvr_field_indx, field in enumerate(txcvr_header_fields[:17]):
@@ -1304,7 +1281,7 @@ class SimradConfigParser(_SimradDatagramParser):
                 else:
                     raise RuntimeError('Unknown _sounder_name_used (Should not happen, this is a bug!)')
 
-                txcvr['channel_id']           = channel_id
+                txcvr['channel_id']           = txcvr['channel_id'].strip('\x00')
                 txcvr['spare1']               = txcvr['spare1'].strip('\x00')
                 txcvr['spare2']               = txcvr['spare2'].strip('\x00')
                 txcvr['spare3']               = txcvr['spare3'].strip('\x00')

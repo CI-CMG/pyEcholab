@@ -170,45 +170,43 @@ class calibration(object):
             param = getattr(self, param_name)
 
             # Check if it contains data
-            if not param is None:
+            if param is None:
+                # It doesn't, extract from the raw_data object
+                param = self.get_attribute_from_raw(raw_data, param_name,
+                        return_indices=return_indices)
 
-                # Check if the input param is a numpy array.
-                if isinstance(param, np.ndarray):
-                    # Check if it is a single value array.
-                    if param.shape[0] == 1:
-                        param_data = np.empty((return_indices.shape[0]), dtype=dtype)
-                        param_data.fill(param)
-                    # Check if it is an array the same length as contained in the
-                    # raw data.
-                    elif param.shape[0] == raw_data.ping_time.shape[0]:
-                        # Calibration parameters provided as full length
-                        # array.  Get the selection subset.
-                        param_data = param[return_indices]
-                    # Check if it is an array the same length as return_indices.
-                    elif param.shape[0] == return_indices.shape[0]:
-                        # Calibration parameters provided as a subset, so no need
-                        # to index with return_indices.
-                        param_data = param
-                    else:
-                        # It is an array that is the wrong shape.
-                        raise ValueError("The calibration parameter array " +
-                                param_name + " is the wrong length.")
-                # It is not an array.  Check if it is a scalar int or float.
-                elif type(param) in [int, float, np.int32, np.int64, np.float32, np.float64]:
+            # Check if the input param is a numpy array.
+            if isinstance(param, np.ndarray):
+                # Check if it is a single value array.
+                if param.shape[0] == 1:
                     param_data = np.empty((return_indices.shape[0]), dtype=dtype)
                     param_data.fill(param)
-                elif type(param) in [str, object, dict, list]:
-                    param_data = np.empty((return_indices.shape[0]), dtype='object')
-                    param_data.fill(param)
+                # Check if it is an array the same length as contained in the
+                # raw data.
+                elif param.shape[0] == raw_data.ping_time.shape[0]:
+                    # Calibration parameters provided as full length
+                    # array.  Get the selection subset.
+                    param_data = param[return_indices]
+                # Check if it is an array the same length as return_indices.
+                elif param.shape[0] == return_indices.shape[0]:
+                    # Calibration parameters provided as a subset, so no need
+                    # to index with return_indices.
+                    param_data = param
                 else:
-                    # Invalid type provided.
-                    raise ValueError("The calibration parameter " + param_name +
-                            " must be an ndarray or scalar value.")
+                    # It is an array that is the wrong shape.
+                    raise ValueError("The calibration parameter array " +
+                            param_name + " is the wrong length.")
+            # It is not an array.  Check if it is a scalar int or float.
+            elif type(param) in [int, float, np.int32, np.uint32, np.int64, np.float32, np.float64]:
+                param_data = np.empty((return_indices.shape[0]), dtype=dtype)
+                param_data.fill(param)
+            elif type(param) in [str, object, dict, list]:
+                param_data = np.empty((return_indices.shape[0]), dtype='object')
+                param_data.fill(param)
             else:
-                # Parameter is not provided in the calibration object, extract it
-                # from the raw data.
-                param_data = self.get_attribute_from_raw(raw_data, param_name,
-                        return_indices=return_indices)
+                # Invalid type provided.
+                raise ValueError("The calibration parameter " + param_name +
+                        " must be an ndarray or scalar value.")
 
         else:
             # The requested parameter is not availailable

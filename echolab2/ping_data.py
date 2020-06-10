@@ -1162,11 +1162,18 @@ class ping_data(object):
         # Copy object attributes
         for attr_name in self._object_attributes:
             attr = getattr(self, attr_name)
-            setattr(obj, attr_name, attr.copy())
+            # check if this attribute is a numpy array
+            if isinstance(attr, np.ndarray):
+                # it is - use ndarray's copy method
+                setattr(obj, attr_name, attr.copy())
+            else:
+                # it's not - use the copy module
+                setattr(obj, attr_name, copy.deepcopy(attr))
 
         # Copy the data attributes
         for attr_name in obj._data_attributes:
             attr = getattr(self, attr_name)
+            # data attributes are always numpy arrays so use ndarray's copy method
             setattr(obj, attr_name, attr.copy())
 
         # Return the copy.
@@ -1236,7 +1243,13 @@ class ping_data(object):
         # size or type checks.
         for attr_name in self._object_attributes:
             attr = getattr(self, attr_name)
-            setattr(obj, attr_name, copy.deepcopy(attr))
+            # check if attribute is a numpy array
+            if isinstance(attr, np.ndarray):
+                # it is - use ndarray's copy method
+                setattr(obj, attr_name, attr.copy())
+            else:
+                # it's not - use the copy module
+                setattr(obj, attr_name, copy.deepcopy(attr))
 
         # Check if n_pings != self.n_pings.  If the new object's horizontal
         # axis is a different shape than this object's we can't copy

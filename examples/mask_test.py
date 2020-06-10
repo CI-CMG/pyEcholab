@@ -21,10 +21,10 @@ ek60.read_raw(rawfiles)
 
 # Get a reference to the RawData object.
 raw_data_38 = ek60.get_raw_data(channel_number=2)
-print(raw_data_38)
+print(raw_data_38[0])
 
-# Get a ProcessedData object containing Sv.
-Sv = raw_data_38.get_Sv()
+# Get a processed_data object containing Sv.
+Sv = raw_data_38[0].get_Sv()
 print(Sv)
 
 # Create a copy of Sv to compare against the copy we will manipulate.
@@ -38,33 +38,33 @@ orig_Sv = Sv.copy()
 # two 1d arrays containing the axes for the array.  When applying masks,
 # the axes are checked against the axes of the object you're applying the
 # mask to and they must be the same.  Because of this, most of the time you
-# will create a mask that is "like" an existing ProcessedData object, which
-# results in the mask array being sized correctly for the ProcessedData
-# object and the axes are copied from the ProcessedData object and thus are
+# will create a mask that is "like" an existing processed_data object, which
+# results in the mask array being sized correctly for the processed_data
+# object and the axes are copied from the processed_data object and thus are
 # the same.
 
 # The default behavior of the constructor is to create a sample mask so we'll
-# create a sample mask that is like our "Sv" ProcessedData object.
-sample_mask = mask.Mask(like=Sv)
+# create a sample mask that is like our "Sv" processed_data object.
+sample_mask = mask.mask(like=Sv)
 print(sample_mask)
 
 # Masks are by default created with all elements set to "False".  You can use
 # the value keyword of the constructor to set it to True if you so desire.
 
 # Create a ping mask like Sv, setting all values to True.
-ping_mask = mask.Mask(like=Sv, type='ping', value=True)
+ping_mask = mask.mask(like=Sv, type='ping', value=True)
 print(ping_mask)
 
 # Masks can be used on their own to present data (though mask plotting isn't
 # implemented yet) or more commonly used as a logical index array to operate on
-# specific samples in a ProcessedData object.  Since mask plotting isn't
+# specific samples in a processed_data object.  Since mask plotting isn't
 # implemented, we'll focus on the second, more common use.
 
 # At the most basic level, setting mask elements to True will specify that
 # an operation occurs on that element.  For example, if we wanted to set
 # a block of samples between sample 50 and 800 from ping 20-500 to -999
 # we could set those mask values to True and then use the mask to "index"
-# into our ProcessedData object Sv.
+# into our processed_data object Sv.
 sample_mask.mask[20:500, 50:800] = True
 
 # Now use the mask to set these samples to -999.
@@ -89,10 +89,10 @@ ax2.set_title('Modified Sv data')
 show()
 
 # But that's not really how you would use a mask since you can set
-# rectangular regions directly by slicing the ProcessedData object.
+# rectangular regions directly by slicing the processed_data object.
 # Thresholding is a more realistic example of using a mask.
 
-# Using Python comparison operators with ProcessedData objects will return
+# Using Python comparison operators with processed_data objects will return
 # masks so thresholding is as simple as using <, >, <=, >=, etc.
 
 Sv = orig_Sv.copy()
@@ -107,11 +107,11 @@ mask_3 = Sv > -25
 mask_2 = (Sv >= -50) & (Sv <= -25)
 
 # Instead of using the masks to set values in the original Sv object, let's
-# create a ProcessedData object that is a copy of Sv with the sample data set
+# create a processed_data object that is a copy of Sv with the sample data set
 # to zeros.
 synth_data = Sv.zeros_like()
 
-# Now set the values in our new ProcessedData object.
+# Now set the values in our new processed_data object.
 synth_data[mask_1] = 0
 synth_data[mask_2] = 10
 synth_data[mask_3] = 15

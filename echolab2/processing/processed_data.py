@@ -422,7 +422,7 @@ class processed_data(ping_data):
 
 
     def view(self, ping_slice, sample_slice):
-        """Creates a processed_data object who's data attributes are views
+        """Creates a processed_data object whose data attributes are views
         into this instance's data.
 
         This method is intended to be a convenient method for displaying or
@@ -1689,16 +1689,16 @@ class processed_data(ping_data):
         #  print some more info about the processed_data instance
         n_pings = len(self.ping_time)
         if n_pings > 0:
-            msg = msg + "                channel(s): [" + self.channel_id + "]\n"
-            msg = (msg + "                 frequency: " + str(self.frequency)
+            msg =  msg + "                channel(s): [" + self.channel_id + "]\n"
+            msg = (msg + "            frequency (Hz): " + str(self.frequency)
                    + "\n")
             msg = (msg + "           data start time: " + str(self.ping_time[
                                                                   0]) + "\n")
             msg = (msg + "             data end time: " + str(self.ping_time[
                                                                   n_pings-1])
                    + "\n")
-            msg = msg + "            number of pings: " + str(n_pings) + "\n"
-            msg = msg + "            data attributes:"
+            msg = msg + "           number of pings: " + str(n_pings) + "\n"
+            msg = msg + "           data attributes:"
             n_attr = 0
             padding = " "
             for attr_name in self._data_attributes:

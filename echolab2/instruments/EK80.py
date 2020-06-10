@@ -209,7 +209,7 @@ class EK80(object):
         #  to extract, parse, and interpolate the NMEA data.
         self.nmea_data = nmea_data()
 
-        #  motion_data stores the util.simrad_motion_data object which will
+        #  motion_data is the util.simrad_motion_data object which will
         #  contain data from the MRU datagrams contained in the raw file.
         #  This object has methods to extract and interpolate the motion data.
         self.motion_data = simrad_motion_data()
@@ -245,7 +245,7 @@ class EK80(object):
 
     def read_raw(self, *args, **kwargs):
         """Reads one or more Simrad EK80 .raw files into memory. Overwrites
-        existing data (if any). The data are stored in an EK80.RawData object.
+        existing data (if any). The data are stored in an EK80.raw_data object.
 
 
         Args:

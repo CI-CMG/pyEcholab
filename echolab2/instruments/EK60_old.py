@@ -41,8 +41,8 @@ import numpy as np
 from pytz import timezone
 from .util.simrad_raw_file import RawSimradFile, SimradEOF
 from .util.nmea_data import nmea_data
-from ..ping_data import PingData
-from ..processing.processed_data import ProcessedData
+from ..ping_data import ping_data
+from ..processing.processed_data import processed_data
 from ..processing import line
 
 
@@ -52,7 +52,7 @@ class EK60(object):
     The Ek60 class can read in one or more EK60 files and generates a RawData
     class instance for each unique channel ID in the files. The class also
     contains numerous methods used to extract the raw sample data from one
-    channel, or create ProcessedData objects containing.
+    channel, or create processed_data objects containing.
 
     Attributes:
         start_time: Start_time is a datetime object that defines the start
@@ -676,7 +676,7 @@ class EK60(object):
         return msg
 
 
-class RawData(PingData):
+class RawData(ping_data):
     """
     the RawData class contains a single channel's data extracted from a
     Simrad raw file collected from an EK/ES60 or ES70.  A RawData object is
@@ -784,6 +784,8 @@ class RawData(PingData):
         self.store_power = store_power
         self.store_angles = store_angles
 
+        self.data_type = 'power/angle'
+
         # Max_sample_number can be set to an integer specifying the maximum
         # number of samples that will be stored in the sample data arrays.
         self.max_sample_number = max_sample_number
@@ -844,7 +846,7 @@ class RawData(PingData):
         """
 
         # Create an instance of echolab2.EK60.paw_data and set the same basic
-        # properties as this object.  Return the empty ProcessedData object.
+        # properties as this object.  Return the empty processed_data object.
         empty_obj = RawData(self.channel_id, n_pings=n_pings,
                              n_samples=self.n_samples,
                              rolling=self.rolling_array, chunk_width=n_pings,
@@ -915,14 +917,14 @@ class RawData(PingData):
         # does not.
         if not hasattr(self, 'detected_bottom'):
             data = np.full(self.ping_time.shape[0], np.nan)
-            self.add_attribute('detected_bottom', data)
+            self.add_data_attribute('detected_bottom', data)
 
         # If storing reflectivity, check if it exists and create it if it
         # does not.
         if reflectivity is not None:
             if not hasattr(self, 'bottom_reflectivity'):
                 data = np.full(self.ping_time.shape[0], np.nan)
-                self.add_attribute('bottom_reflectivity', data)
+                self.add_data_attribute('bottom_reflectivity', data)
 
         # Determine the array element associated with this ping and update it
         # with the detection depth and optional reflectivity.
@@ -1214,7 +1216,7 @@ class RawData(PingData):
         an index array.
 
         This method is identical to get_power except that it also returns an
-        index array that maps the pings in the ProcessedData object to the
+        index array that maps the pings in the processed_data object to the
         same pings in the "this" object. This is used internally.
 
         Args:
@@ -1280,7 +1282,7 @@ class RawData(PingData):
             **kwargs (dict): A keyworded argument list.
 
         Returns:
-            A ProcessedData object, p_data, containing Sv (or sv if linear is
+            A processed_data object, p_data, containing Sv (or sv if linear is
             True).
         """
 
@@ -1303,7 +1305,7 @@ class RawData(PingData):
         sv_data = self._convert_power(p_data, calibration, attribute_name,
                                       linear, return_indices, tvg_correction)
 
-        # Set the data attribute in the ProcessedData object.
+        # Set the data attribute in the processed_data object.
         p_data.data = sv_data
 
         # Check if we need to convert to depth.
@@ -1323,7 +1325,7 @@ class RawData(PingData):
             **kwargs (dict): A keyworded argument list.
 
         Returns:
-            returns a ProcessedData object containing sp
+            returns a processed_data object containing sp
         """
 
         # Remove the linear keyword.
@@ -1366,7 +1368,7 @@ class RawData(PingData):
             **kwargs
 
         Returns:
-            A ProcessedData object, p_data, containing Sp (or sp if linear is
+            A processed_data object, p_data, containing Sp (or sp if linear is
             True).
         """
 
@@ -1388,7 +1390,7 @@ class RawData(PingData):
         sp_data = self._convert_power(p_data, calibration, attribute_name,
                                       linear, return_indices, tvg_correction)
 
-        # Set the data attribute in the ProcessedData object.
+        # Set the data attribute in the processed_data object.
         p_data.data = sp_data
 
         # Check if we need to convert to depth.
@@ -1543,7 +1545,7 @@ class RawData(PingData):
 
         # Call the generalized _get_sample_data method requesting the
         # 'angles_alongship_e' sample attribute. The method will return a
-        # reference to a newly created iProcessedData instance.
+        # reference to a newly created processed_data instance.
         pd_alongship, return_indices = self._get_sample_data(
             'angles_alongship_e', **kwargs)
 
@@ -1571,7 +1573,7 @@ class RawData(PingData):
 
         _get_electrical_angles is identical to get_electrical_angles except
         that it also returns an index array that maps the pings in the
-        ProcessedData object to the same pings in the "this" object. This is
+        processed_data object to the same pings in the "this" object. This is
         used internally.
 
         Args:
@@ -1590,7 +1592,7 @@ class RawData(PingData):
 
         # Call the generalized _get_sample_data method requesting the
         # 'angles_alongship_e' sample attribute. The method will return a
-        # reference to a newly created iProcessedData instance.
+        # reference to a newly created processed_data instance.
         alongship, return_indices = self._get_sample_data(
             'angles_alongship_e', **kwargs)
 
@@ -1681,8 +1683,8 @@ class RawData(PingData):
             # Get an array of index values to return.
             return_indices = self.get_indices(**kwargs)
 
-        # Create the ProcessedData object we will return.
-        p_data = ProcessedData(self.channel_id,
+        # Create the processed_data object we will return.
+        p_data = processed_data(self.channel_id,
                                                self.frequency[0], None)
 
         # Populate it with time and ping number.
@@ -1784,20 +1786,20 @@ class RawData(PingData):
             range = get_range_vector(output.shape[1], sample_interval,
                     sound_velocity, min_sample_offset)
 
-        # Assign the results to the "data" ProcessedData object.
-        p_data.add_attribute('data', output)
+        # Assign the results to the "data" processed_data object.
+        p_data.add_data_attribute('data', output)
 
         # Calculate the sample thickness.
         sample_thickness = sample_interval * sound_velocity / 2.0
 
         # Now assign range, sound_velocity, sample thickness and offset to
-        # the ProcessedData object.
-        p_data.add_attribute('range', range)
+        # the processed_data object.
+        p_data.add_data_attribute('range', range)
         p_data.sound_velocity = sound_velocity
         p_data.sample_thickness = sample_thickness
         p_data.sample_offset = min_sample_offset
 
-        # Return the ProcessedData object containing the requested data.
+        # Return the processed_data object containing the requested data.
         return p_data, return_indices
 
 

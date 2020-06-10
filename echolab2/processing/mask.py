@@ -86,7 +86,7 @@ class mask(ping_data):
         this mask is not based on an existing object, the axes will be empty.
 
         99% of the time you will call "like" to create a mask size to an
-        existing ProcessedData object but this method can be used to create
+        existing processed_data object but this method can be used to create
         masks of any size.
 
         Args:
@@ -117,10 +117,10 @@ class mask(ping_data):
         """Creates a mask that matches a provided data object.
 
         This method creates a mask with shape and axes properties that match an
-        existing ProcessedData object.
+        existing processed_data object.
 
         Args:
-            like_obj (ProcessedData obj): The object to base the mask off of.
+            like_obj (processed_data obj): The object to base the mask off of.
             value (bool): Set to True to fill array with values.
             mask_type (str): The mask type.
 
@@ -138,12 +138,12 @@ class mask(ping_data):
         self.ping_time = like_obj.ping_time.copy()
         self.sample_offset = like_obj.sample_offset
 
-        # Masks must be based on ProcessedData objects or other masks.  Use
+        # Masks must be based on processed_data objects or other masks.  Use
         # type().__name__ to determine if class of "like_obj" is a
-        # ProcessedData object to avoid circular import references
-        # (ProcessedData imports mask so mask cannot import ProcessedData)
-        if type(like_obj).__name__ == 'ProcessedData':
-            # Base this mask off of a ProcessedData object.
+        # processed_data object to avoid circular import references
+        # (processed_data imports mask so mask cannot import processed_data)
+        if type(like_obj).__name__ == 'processed_data':
+            # Base this mask off of a processed_data object.
 
             # Create the type specific attributes.
             if mask_type.lower() == 'sample':
@@ -187,7 +187,7 @@ class mask(ping_data):
             self.mask = np.full(like_obj.mask.shape, value, dtype=bool)
 
         else:
-            # We only can base masks on ProcessedData or mask objects.
+            # We only can base masks on processed_data or mask objects.
             raise TypeError('"like_obj" argument must be an instance of '
                             'echolab2 ProcesedData or Mask classes.')
 
@@ -221,7 +221,7 @@ class mask(ping_data):
         line to the value specified by the below keyword.
 
         Args:
-            line_obj (ProcessedData obj): The line object the mask refers to.
+            line_obj (processed_data obj): The line object the mask refers to.
             apply_above (bool):
             value (bool):
 
@@ -267,7 +267,7 @@ class mask(ping_data):
         https://stackoverflow.com/questions/3654289/scipy-create-2d-polygon-mask
 
         Args:
-            poly_obj (ProcessedData obj):
+            poly_obj (processed_data obj):
             inside (bool):
             outside (bool):
 
@@ -539,7 +539,7 @@ class mask(ping_data):
 
         to_sample_mask returns a new 2d sample based mask created when called
         by a ping based mask and provided with another sample mask or
-        ProcessedData object to obtain the sample count from.
+        processed_data object to obtain the sample count from.
 
         Args:
             other (Mask obj): A sample mask object used to create a new sample
