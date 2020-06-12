@@ -536,6 +536,7 @@ class ping_data(object):
                              'defined or an index array needs to be provided ' +
                              'to specify an insertion point.')
 
+
         # Make sure that obj_to_insert class matches "this" class.
         if not isinstance(self, obj_to_insert.__class__):
             raise TypeError('The object you are inserting/appending must ' +
@@ -1081,7 +1082,7 @@ class ping_data(object):
                 # Assign new values to output array.  At the same time,
                 # we will shift the data by sample offset.
                 unique_sample_offsets = np.unique(
-                    sample_offsets_this_interval[sample_interval])
+                    sample_offsets_this_interval[sample_interval]).astype('int')
                 for offset in unique_sample_offsets:
                     resampled_data[rows_this_interval_count,
                     offset:offset + this_data.shape[1]] = this_data

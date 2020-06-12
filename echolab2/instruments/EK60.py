@@ -160,7 +160,7 @@ class EK60(object):
 
     def _init(self):
         '''_init is an internal method that initializes the data fields of
-        the EK80 class.
+        the EK60 class.
         '''
 
         # The start_time and end_time will define the time span of the
@@ -180,10 +180,15 @@ class EK60(object):
         self.n_files = 0
 
         # A list of stings identifying the channel IDs that have been read.
+        # Channel IDs are used as keys into the raw_data attribute.
         self.channel_ids = []
 
-        # channel_id_map maps channel number to channel ID
-        self.channel_id_map = {}
+        # frequency_map maps frequency in Hz to channel ID.
+        self.frequency_map = {}
+
+        # channel_map maps channel number to channel ID. Channel numbers
+        # are based on the order each channel is added to the ER60 object.
+        self.channel_map = {}
 
         # n_channels stores the total number of channels in the object.
         self.n_channels = 0
@@ -225,9 +230,11 @@ class EK60(object):
         #  file in percent as integer.
         self._last_progress = -1
 
-        #  initialize some internal attributes
+        # _config stores a reference to the current file's configuration datagram.
         self._config = None
 
+        # file_channel_map maps channel number to channel ID for the current file.
+        self._file_channel_map = {}
 
 
     def read_bot(self, bot_files):
@@ -364,6 +371,8 @@ class EK60(object):
         for filename in raw_files:
             #  reset attributes that store the most recent configuration datagram
             self._config = None
+            self._file_channel_map = {}
+            self._file_channels = 0
 
             #  get the total file size
             total_bytes = os.stat(filename).st_size
@@ -378,7 +387,7 @@ class EK60(object):
             fid = RawSimradFile(filename, 'r')
 
             #  read the configuration datagram - this will always be the
-            #  first datagram in an EK80 raw file.
+            #  first datagram in an EK60 raw file.
             _config = self._read_config(fid)
 
             #  extract the per channel data into our internal config attribute
@@ -468,13 +477,21 @@ class EK60(object):
                     #  add the channel to our list of channel IDs
                     self.channel_ids.append(channel_id)
 
-                    #  increment the channel counter
+                    #  increment the global and per file channel counters
                     self.n_channels += 1
+                    self._file_channels += 1
 
+                    #  populate the _file_channel_map which maps channel
+                    #  number to channel id *for this file only*.
+                    self._file_channel_map[self._file_channels] = channel_id
 
-                    #  and populate the channel_id_map which maps channel
-                    #  number to channel id.
-                    self.channel_id_map[self.n_channels] = channel_id
+                    #  and populate the frequency and channel maps
+                    this_freq = config_datagram['configuration'][channel_id]['frequency']
+                    if this_freq in self.frequency_map:
+                        self.frequency_map[this_freq].append(channel_id)
+                    else:
+                        self.frequency_map[this_freq] = [channel_id]
+                    self.channel_map[self.n_channels] = channel_id
 
         #  return the configuration datagram dict
         return config_datagram
@@ -538,12 +555,12 @@ class EK60(object):
                 self._this_ping_time = new_datagram['timestamp']
 
             # check if we're storing this channel
-            if new_datagram['channel'] not in self.channel_id_map.keys():
+            if new_datagram['channel'] not in self._file_channel_map.keys():
                 #  no, it's not in the list - just return
                 return result
             else:
                 #  add the channel_id to our datagram
-                new_datagram['channel_id'] = self.channel_id_map[new_datagram['channel']]
+                new_datagram['channel_id'] = self._file_channel_map[new_datagram['channel']]
 
         # Check if we should store this data based on ping bounds.
         if self.read_start_ping is not None:
@@ -695,30 +712,86 @@ class EK60(object):
         return time
 
 
-    def get_raw_data(self, channel_id=None, channel_number=None):
+    def get_raw_data(self, frequency=None, channel_number=None, channel_id=None):
         """Gets the raw data for a specific channel.
 
-        This method returns a reference to the specified raw_data object for
-        the specified channel id. If no channel id are specified, it returns a dictionary keyed by channel id
-        containing all of the channels.
+        This method returns a list of one or more lists that contain references to
+        one or more raw_data objects. The specific object(s) returned depends on
+        the argument passed. You can specify a frequency, channel number, OR
+        channel ID string.
+
+        If you specify a frequency, this method will return a list containing one or
+        more lists that contain the raw_data objects associated with the specified
+        frequency. The length of the outer list is equal to the number of channels
+        sharing that transmit frequency. The length of each inner list depends on the
+        number of distinct data types encountered when reading data associated with
+        each channel ID.
+
+        If you specify a channel ID, this method will return a list containing a single
+        list which contains the raw_data objects associated with that channel ID.
+        Again, the length of the inner list depends on the number of distinct data
+        types encountered when reading data associated with each channel ID.
+
+        If you specify a channel number, this method will return a list containing
+        a single list which contains the raw_data objects associated with that
+        channel number. Channel numbers are assigned to channel IDs incrementally
+        as new channels are read.
+
+        If called with no keywords, it returns all of the raw_data objects in a
+        list of lists.
 
         Args:
-            channel_id (str): The channel ID from which to return the raw data.
-
+            frequency (float): Specify a frequency in Hz to return a list of raw_data objects
+                               sharing that frequency.
+            channel_id (str): Specify a channel ID to return a list of raw_data objects
+                              sharing that channel ID.
+            channel_number (int): Specify a channel number to return a list of raw_data objects
+                                  sharing that channel number.
         Returns:
-            Raw data object from the specified channel.
+            List of lists of raw_data objects from the specified channel/frequency
         """
+
+        def isclose(a, b, rel_tol=1e-09, abs_tol=0.0):
+            return abs(a-b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
+
 
         if channel_id is not None:
             # Channel id is specified.
-            channel_data = self.raw_data.get(channel_id, None)
+            channel_data = [self.raw_data.get(channel_id, None)]
+
+        elif frequency is not None:
+            # frequency is specified
+
+            # this comparison may need to be re-worked if the floats
+            # don't reliably match. Will need to use the isclose function
+            # defined above.
+            if frequency in self.frequency_map:
+                channel_ids = self.frequency_map[frequency]
+
+                # and extract the associated raw_data
+                channel_data = []
+                for channel_id in channel_ids:
+                    channel_data.append(self.raw_data.get(channel_id, []))
+            else:
+                channel_data = [[]]
+
         elif channel_number is not None:
-            # Channel id is specified.
-            channel_data = self.raw_data.get(self.channel_id_map[channel_number], None)
+            # channel_number id is specified.
+
+            # channel numbers are always unique so we know there will
+            # be at most one match
+            try:
+                channel_id = self.channel_map[channel_number]
+                channel_data = [self.raw_data.get(channel_id, [])]
+            except:
+                channel_data = [[]]
+
         else:
-            # Channel id not specified - return all in a dictionary,
-            # keyed by channel ID.
-            channel_data = self.raw_data
+            # Channel id not specified - return all in a list of lists
+            # This is not that useful, but
+            channel_data = []
+            for chan in self.channel_ids:
+                channel_data.append(self.raw_data[chan])
 
         return channel_data
 
@@ -726,37 +799,35 @@ class EK60(object):
     def __str__(self):
         """
         Reimplemented string method that provides some basic info about the
-        EK80 class instance's contents.
+        EK60 class instance's contents.
 
-        Returns: Message to print when calling print method on EK80 class
+        Returns: Message to print when calling print method on EK60 class
         instance object.
         """
 
         # Print the class and address.
         msg = str(self.__class__) + " at " + str(hex(id(self))) + "\n"
 
-
-
-
         # Print some more info about the EK60 instance.
         if self.channel_ids:
             n_channels = len(self.channel_ids)
             if n_channels > 1:
-                msg = msg + ("    EK80 object contains data from " + str(
+                msg = msg + ("    EK60 object contains data from " + str(
                     n_channels) + " channels:\n")
             else:
-                msg = msg + ("    EK80 object contains data from 1 channel:\n")
+                msg = msg + ("    EK60 object contains data from 1 channel:\n")
 
-            for channel_id in self.channel_ids:
+            for channel_num in self.channel_map.keys():
+                channel_id = self.channel_map[channel_num]
                 for raw in self.raw_data[channel_id]:
-                    msg = msg + ("        " + channel_id + " :: " + raw.data_type + " " + str(raw.shape) + "\n")
+                    msg = msg + ("        " + str(channel_num) + " :: " + channel_id + " :: " +
+                            raw.data_type + " " + str(raw.shape) + "\n")
             msg = msg + ("    data start time: " + str(self.start_time) + "\n")
             msg = msg + ("      data end time: " + str(self.end_time) + "\n")
             msg = msg + ("    number of pings: " + str(self.end_ping -
                                                        self.start_ping + 1) + "\n")
-
         else:
-            msg = msg + ("  EK80 object contains no data\n")
+            msg = msg + ("  EK60 object contains no data\n")
 
         return msg
 
@@ -920,55 +991,6 @@ class raw_data(ping_data):
         return self._like(empty_obj, n_pings, np.nan, empty_times=True)
 
 
-    def insert(self, obj_to_insert, ping_number=None, ping_time=None,
-               insert_after=True, index_array=None):
-        """Inserts data from one raw_data object into another. Pings within the
-        obj_to_insert can be inserted as a block, or they can be inserted
-        individually.
-
-        Args:
-            obj_to_insert: An instance of echolab2.EK60.raw_data that contains
-                the data to insert.If obj_to_insert is None, pings are inserted
-                with all fields set to NaN.
-
-            ping_number, ping_time, and index_array are exclusive. Only set 1.
-
-            ping_number (int): Set to an integer indicating the ping number where the
-                data should be inserted.
-            ping_time (datetime):Set to an integer indicating the ping number where the
-                data should be inserted.
-            index_array (array):Set to a numpy array that is the same length
-                as the raw_data object you're inserting where each element is
-                an index into the array you're inserting into which maps each
-                inserted ping into the raw_data object.
-            insert_after (bool): Set to True to insert data after the ping/time/index
-                specified.
-
-        """
-        # Determine how many pings we're inserting.
-        if index_array is None:
-            in_idx = self.get_indices(start_time=ping_time, end_time=ping_time,
-                    start_ping=ping_number, end_ping=ping_number)[0]
-            n_inserting = self.n_pings - in_idx
-        else:
-            n_inserting = index_array.shape[0]
-
-        # When obj_to_insert is None, we automatically create a matching
-        # object that contains no data (all NaNs).
-        if obj_to_insert is None:
-            obj_to_insert = self.empty_like(n_inserting)
-
-        # Check that the data types are the same.
-        if not isinstance(obj_to_insert, raw_data):
-            raise TypeError('The object you are inserting must be an instance '
-                    + 'of echolab2.EK60.raw_data')
-
-        # We are now coexisting in harmony - call parent's insert.
-        super(raw_data, self).insert(obj_to_insert, ping_number=ping_number,
-                ping_time=ping_time, insert_after=insert_after,
-                index_array=index_array)
-
-
     def append_ping(self, sample_datagram, config_params, start_sample=None,
             end_sample=None):
         """Adds a "pings" worth of data to the object.
@@ -991,7 +1013,7 @@ class raw_data(ping_data):
         index 0 is moved to index n_pings - 1. Additional samples are discarded
         and pings with fewer samples are padded with NaNs as required.
 
-        This method is typically only called by the EK80 class when reading a raw file.
+        This method is typically only called by the EK60 class when reading a raw file.
 
         Args:
             sample_datagram (dict): The dictionary containing the parsed sample datagram.
@@ -1248,7 +1270,7 @@ class raw_data(ping_data):
         return much faster if the raw data share the same sample thickness,
         offset and sound speed.
 
-        If calibration is set to an instance of EK80.calibration the
+        If calibration is set to an instance of EK60.calibration the
         values in that object (if set) will be used when performing the
         transformations required to return the results. If the required
         parameters are not set in the calibration object or if no object is
@@ -1522,7 +1544,7 @@ class raw_data(ping_data):
         # Next, iterate through the dict, calling the method to extract the
         # values for each parameter.
         for key in cal_parms:
-            cal_parms[key] = calibration.get_calibration_param(self, key,
+            cal_parms[key] = calibration.get_parameter(self, key,
                     return_indices)
 
         # Check if we have to adjust the depth due to a change in sound speed.
@@ -1572,7 +1594,7 @@ class raw_data(ping_data):
         # Next, iterate through the dict, calling the method to extract the
         # values for each parameter.
         for key in cal_parms:
-            cal_parms[key] = calibration.get_calibration_param(self, key,
+            cal_parms[key] = calibration.get_parameter(self, key,
                     return_indices)
 
         # Compute the physical angles.
@@ -1723,7 +1745,7 @@ class raw_data(ping_data):
         return much faster if the raw data share the same sample thickness,
         offset and sound speed.
 
-        If calibration is set to an instance of an EK80.calibration object
+        If calibration is set to an instance of an EK60.calibration object
         the values in that object (if set) will be used when performing the
         transformations required to return the results. If the required
         parameters are not set in the calibration object or if no object is
@@ -1731,12 +1753,12 @@ class raw_data(ping_data):
 
         Args:
             property_name (str): The attribute name of the sample data
-                to be returned. For the EK80 the sample data attributes
+                to be returned. For the EK60 the sample data attributes
                 are 'complex', 'power', 'angles_alongship_e', and
                 'angles_athwartship_e' and the available attributes will
                 depend on how the data were collected and stored.
 
-            calibration (EK80.calibration object): The calibration object where
+            calibration (EK60.calibration object): The calibration object where
                 calibration data will be retrieved. If this is set to None,
                 calibration data will be directly extracted from the raw
 

@@ -21,7 +21,7 @@ from echolab2.plotting.matplotlib import echogram
 
 # The descriptions below apply to reading these 2 files in the following order.
 rawfiles = ['./data/EK60/DY1201_EK60-D20120214-T231011.raw',
-               './data/EK60/DY1706_EK60-D20170609-T005736.raw']
+            './data/EK60/DY1706_EK60-D20170609-T005736.raw']
 
 # Create a matplotlib figure to plot our echograms on.
 fig = figure()
@@ -42,31 +42,47 @@ ek60.read_raw(rawfiles)
 # transceiver number in the ER60 software changed.
 print(ek60)
 
-# Now, get a reference to the RawData object that contains data from the first
-# 38 kHz channel.
-raw_data_38_1 = ek60.get_raw_data(channel_number=2)
+# A digression - .raw files can contain power, angle, power AND angle, or with
+# EK80 hardware complex data. Following this, raw_data objects can contain power,
+# angle, power AND angle, or complex data. If a new data type is encountered while
+# reading data from a specific channel ID, a new raw_data object is created for
+# that data. If you look at the output of the print() statmement above, you will
+# see that data type listed after the channel ID.
 
-# The sample data from channel 2 is contained in a 136x994 array.  The data was
-# recorded with a 1024us transmit pulse length, which on the EK60 and related
-# hardware results in a sample interval of 256us (sample interval = pulse
-# length / 4).  The data were recorded in 2012.
+# Now, get a reference to the raw_data objects that contain data at 38 kHz. Since
+# we read data at 38 kHz from two channels, this will return a list 2 items long.
+# Each item in this list will be a list containing the raw_data objects containing the
+# 38 kHz data associate with a channel. These inner lists will contain a raw_data
+# object for each of the distinct data types (described above) encountered in the
+# raw files. In this example the data files only have power/angle data so there
+# will only be a single raw_data object.
+raw_data_38 = ek60.get_raw_data(frequency=38000.0)
 
+# When working with this library, you are either going to know something about the
+# data you are reading and you will be able to make assumptions about the list that
+# is returned or you'll know nothing and need to iterate through both the outer and
+# inner lists. Here we know that the outer list is 2 elements long and each inner
+# list is 1 element long.
+raw_data_38_1 = raw_data_38[0][0]
+raw_data_38_2 = raw_data_38[1][0]
+
+
+# The sample data from the first 38 kHz channel is contained in a 136x994 array.
+# The data was recorded with a 1024us transmit pulse length, which on the EK60
+# and related hardware results in a sample interval of 256us (sample interval = pulse
+# length / 4). The data were recorded in 2012.
 print(raw_data_38_1)
 
-# Also get a reference to the RawData object that contains data from the
-# second 38 kHz channel.
-raw_data_38_2 = ek60.get_raw_data(channel_number=7)
-
-# Channel 7's sample data is a 763x1059 array recoded with a 512us pulse length
-# resulting in a sample interval of 128us.  These data were recorded in 2017.
-
+# The sample data from the first 38 kHz channel is contained in a 763x1059 array
+# recoded with a 512us pulse length resulting in a sample interval of 128us.
+# These data were recorded in 2017.
 print(raw_data_38_2)
 
 # Append the 2nd object's data to the first and print out the results.
 raw_data_38_1.append(raw_data_38_2)
 
 # The result of this append is that raw_data_38_1 now contains data from 899
-# pings.  The first 136 pings are the 2012 data and the next 763 the 2017
+# pings. The first 136 pings are the 2012 data and the next 763 the 2017
 # data.  The sample data arrays are 899x1059 and the object contains 2 unique
 # sample intervals.
 
