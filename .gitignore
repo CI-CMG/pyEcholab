@@ -124,3 +124,5 @@ venv.bak/
 .DS_Store
 *.m
 examples/python code/rick_test.py
+*.csv
+examples/rht_debug.py

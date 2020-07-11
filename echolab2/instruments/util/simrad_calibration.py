@@ -129,11 +129,16 @@ class calibration(object):
 
             If the calibration object's parameter is a 1D array the length of
             return_indices, it will return that array without modification.
+            IT IS ASSUMED THE PARAMETER VALUES WILL BE ORDERED CORRECTLY FOR
+            THE return_indices ARRAY PROVIDED. That is, the first param value
+            will be applied to the raw_data at return_indices[0], the second
+            will be applied to the raw_data at return_indices[1], and so on.
 
             If the calibration object's parameter is a 1D array the length of
             self.ping_time, it will return a 1D array the length of return_indices
             that is the subset of this data defined by the return_indices index
-            array.
+            array. In this case it is assumed the parameter is ordered to match
+            the order of the data in the raw_data object.
 
             Lastly, If the calibration object's parameter is None this function will
             return a 1D array the length of return_indices filled with data
@@ -171,26 +176,31 @@ class calibration(object):
 
             # Check if it contains data
             if param is None:
-                # It doesn't, extract from the raw_data object
-                param = self.get_attribute_from_raw(raw_data, param_name,
-                        return_indices=return_indices)
+                # It doesn't, extract from the raw_data object - do not
+                # provide the return_indices - we want this ordered as
+                # it is stored in the raw_data object.
+                param = self.get_attribute_from_raw(raw_data, param_name)
 
-            # Check if the input param is a numpy array.
+            # Check if the param is a numpy array.
             if isinstance(param, np.ndarray):
                 # Check if it is a single value array.
                 if param.shape[0] == 1:
                     param_data = np.empty((return_indices.shape[0]), dtype=dtype)
                     param_data.fill(param)
                 # Check if it is an array the same length as contained in the
-                # raw data.
+                # raw data. This check must come *before* checking if our param's
+                # shape is the same as return_indices.
                 elif param.shape[0] == raw_data.ping_time.shape[0]:
-                    # Calibration parameters provided as full length
-                    # array.  Get the selection subset.
+                    # Calibration parameters provided as full length array.
+                    # When provided this way, we assume they are ordered as
+                    # the same as the data in raw_data. In this case we must
+                    # get the selection subset.
                     param_data = param[return_indices]
                 # Check if it is an array the same length as return_indices.
                 elif param.shape[0] == return_indices.shape[0]:
                     # Calibration parameters provided as a subset, so no need
-                    # to index with return_indices.
+                    # to index with return_indices because we assume they are
+                    # in the correct order.
                     param_data = param
                 else:
                     # It is an array that is the wrong shape.
@@ -198,7 +208,7 @@ class calibration(object):
                             param_name + " is the wrong length.")
             # It is not an array.  Check if it is a scalar int or float.
             elif type(param) in [int, float, np.int32, np.uint32, np.int64, np.float32, np.float64]:
-                param_data = np.empty((return_indices.shape[0]), dtype=dtype)
+                param_data = np.empty((return_indices.shape[0]), dtype=type(param))
                 param_data.fill(param)
             elif type(param) in [str, object, dict, list]:
                 param_data = np.empty((return_indices.shape[0]), dtype='object')

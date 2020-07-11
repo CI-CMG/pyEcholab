@@ -683,7 +683,7 @@ class ping_data(object):
 
         # Now update our global properties.
         if obj_to_insert.channel_id not in self.channel_id:
-            self.channel_id += obj_to_insert.channel_id
+            self.channel_id += " :: " + obj_to_insert.channel_id
 
         # Update the size/shape attributes.
         self.n_pings = self.ping_time.shape[0]
@@ -870,11 +870,11 @@ class ping_data(object):
 
     def get_indices(self, start_ping=None, end_ping=None, start_time=None,
                     end_time=None, time_order=True):
-        """Returns a boolean index array containing where the indices in the
+        """Returns a index array containing where the indices in the
         range defined by the times and/or ping numbers provided are True.
 
-        By default, the indices are in time order. If time_order is set to
-        False, the data will be returned in the order they occur in the data
+        By default, the indices are returned in time order. If time_order is set
+        to False, the data will be returned in the order they occur in the data
         arrays.
 
         Note that pings with "empty" times (ping time == NaT) will be sorted
@@ -908,7 +908,7 @@ class ping_data(object):
         if time_order:
             # Return indices in time order.  Note that empty ping times will be
             # sorted to the front.
-            primary_index = self.ping_time.argsort()
+            primary_index = self.ping_time.argsort(kind='stable')
         else:
             # Return indices in ping order.
             primary_index = ping_number - 1
@@ -919,7 +919,7 @@ class ping_data(object):
         elif start_ping >= 1:
             mask = ping_number[primary_index] >= start_ping
         if end_time:
-            mask = np.logical_and(mask, self.ping_time[primary_index] <=  end_time)
+            mask = np.logical_and(mask, self.ping_time[primary_index] <= end_time)
         elif end_ping >= 2:
             mask = np.logical_and(mask, ping_number[primary_index] <= end_ping)
 
@@ -957,15 +957,14 @@ class ping_data(object):
         if resample_interval == 0:
             # Resample to the shortest sample interval in our data.
             resample_interval = min(unique_sample_intervals)
-        elif resample_interval == 1:
+        elif resample_interval >= 1:
             # Resample to the longest sample interval in our data.
             resample_interval = max(unique_sample_intervals)
 
         # Generate a vector of sample counts.  The generalized method works
         # with both raw_data and processed_data classes and finds the first
         # non-NaN value searching from the "bottom up".
-        sample_counts = data.shape[1] - np.argmax(~np.isnan(np.fliplr(data)),
-                                                  axis=1)
+        sample_counts = data.shape[1] - np.argmax(~np.isnan(np.fliplr(data)), axis=1)
 
         # Create a couple of dictionaries to store resampling parameters by
         # sample interval.  They will be used when we fill the output array
@@ -1023,7 +1022,7 @@ class ping_data(object):
             (n_pings, new_sample_dims),dtype=self.sample_dtype, order='C')
         resampled_data.fill(np.nan)
 
-        # Also fill the array with data.  We loop through the sample intervals
+        # Now fill the array with data.  We loop through the sample intervals
         # and within an interval, extract slices of data that share the same
         # number of samples (to reduce looping).  We then determine if we're
         # expanding or shrinking the number of samples.  If expanding we

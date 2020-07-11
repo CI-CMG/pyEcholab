@@ -1288,7 +1288,7 @@ class raw_data(ping_data):
         if hasattr(self, 'power'):
             p_data, return_indices = self._get_sample_data('power', **kwargs)
         else:
-            raise AttributeError('Raw data object does not contain power ' +
+            raise AttributeError('raw_data object does not contain power ' +
                     'data required to return, er, power.')
 
         # Set the data type.
@@ -1733,19 +1733,19 @@ class raw_data(ping_data):
         sample data from the property name provided. It performs all of the
         required transformations to place the raw data into a rectangular
         array where all samples in all pings share the same thickness and are
-        correctly arranged relative to each other.
+        correctly arranged relative to each other (i.e. gridded)
 
         This process happens in 3 steps:
 
                 Data are resampled so all samples have the same thickness.
                 Data are shifted vertically to account for the sample offsets.
-                Data are then regridded to a fixed time, range grid.
+                Data are then regridded to a common time, range grid.
 
         Each step is performed only when required. Calls to this method will
         return much faster if the raw data share the same sample thickness,
         offset and sound speed.
 
-        If calibration is set to an instance of an EK60.calibration object
+        If calibration is set to an instance of an ek60_calibration object
         the values in that object (if set) will be used when performing the
         transformations required to return the results. If the required
         parameters are not set in the calibration object or if no object is
@@ -1758,9 +1758,9 @@ class raw_data(ping_data):
                 'angles_athwartship_e' and the available attributes will
                 depend on how the data were collected and stored.
 
-            calibration (EK60.calibration object): The calibration object where
+            calibration (ek60_calibration object): The calibration object where
                 calibration data will be retrieved. If this is set to None,
-                calibration data will be directly extracted from the raw
+                calibration data will be directly extracted from the raw data.
 
             resample_interval (float): The echosounder sampling interval used to
                 define the vertical position of the samples. If data was collected
@@ -2120,7 +2120,7 @@ class raw_data(ping_data):
         # Print some more info about the EK60.raw_data instance.
         n_pings = len(self.ping_time)
         if n_pings > 0:
-            msg = msg + "                   channel: " + self.channel_id + "\n"
+            msg = msg + "                channel(s): " + self.channel_id + "\n"
             msg = msg + "    frequency (first ping): " + str(
                 self.frequency[0]) + " Hz\n"
             msg = msg + " pulse length (first ping): " + str(
