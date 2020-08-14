@@ -43,6 +43,8 @@ from .util.simrad_calibration import calibration
 from .util.simrad_raw_file import RawSimradFile, SimradEOF
 from .util.nmea_data import nmea_data
 from .util.simrad_motion_data import simrad_motion_data
+from .util import simrad_parsers
+from .util import date_conversion
 from ..ping_data import ping_data
 from ..processing.processed_data import processed_data
 from ..processing import line
@@ -794,6 +796,286 @@ class EK60(object):
                 channel_data.append(self.raw_data[chan])
 
         return channel_data
+
+
+
+    def write_raw(self, output_filenames, power=True, angles=True,
+                 max_sample_count=None, start_time=None, end_time=None,
+                 start_ping=None, end_ping=None, frequencies=None,
+                 channel_ids=None, time_format_string='%Y-%m-%d %H:%M:%S',
+                 start_sample=None, end_sample=None, progress_callback=None,
+                 overwrite=False):
+        """Writes one or more Simrad Ex60/ES70/ME70 .raw files.
+
+
+        Args:
+            output_filenames (str, dict): A string specifying the full path and
+                output filename header that will be used to generate all of the
+                output filenames OR a dict, keyed by *input* filename where the
+                values specify the full path and *full* output filename that will
+                be used when writing data associated with that input file.
+
+                Providing a string will result in behavior similar to ER60 software
+                where you provide the folder and filename header and it generates
+                data in that folder naming the files with the header and appending
+                the date and time:
+
+                    output_filenames = 'C:\temp\test_ek60_file'
+
+                would result in files named similar to:
+
+                    C:\temp\test_ek60_file-D202020101-T120000.raw
+                    C:\temp\test_ek60_file-D202020101-T122513.raw
+
+                If, in the off chance that you have read data from two files that
+                both start at the same time, the subsequent files will have a
+                "-#" appended to the time, to ensure that the file names are
+                unique.
+
+                Providing a dict, keyed by input filename will allow full control
+                of the output file naming. It is your responsibility to provide a
+                dict where the keys map 1:1 to the input file names. If they do
+                not, an error will be raised.
+
+            power (bool): Controls whether power data is written
+            angles (bool): Controls whether angle data is written
+            start_time (str): Specify a start time if you do not want to write
+                from the first ping. The format of the time string must
+                match the format specified in time_format_string.
+            end_time (str): Specify an end time if you do not want to write
+                to the last ping. The format of the time string must
+                match the format specified in time_format_string.
+            start_ping (int): Specify starting ping number if you do not want
+                to start writing at first ping.
+            end_ping (int): Specify end ping number if you do not want
+                to write all pings.
+            frequencies (list): List of floats (i.e. 18000.0) if you
+                only want to write specific frequencies.
+            channel_ids (list): A list of strings that contain the unique
+                channel IDs to write. If no list is supplied, all channels are
+                written.
+            time_format_string (str): String containing the format of the
+                start and end time arguments. Format is used to create datetime
+                objects from the start and end time strings
+            start_sample (int): Specify starting sample number if not
+                writing from first sample.
+            end_sample (int): Specify ending sample number if not
+                writing to last sample.
+        """
+
+        # Update the reader state variables.
+        if start_time:
+            start_time = self._convert_time_bound(
+                    start_time, format_string=time_format_string)
+        else:
+            start_time = self.start_time
+        if end_time:
+            end_time = self._convert_time_bound(
+                    end_time, format_string=time_format_string)
+        else:
+            end_time = self.end_time
+        if channel_ids is None:
+            channel_ids = self.channel_ids
+
+        DGRAM_PARSE_KEY = {'RAW': simrad_parsers.SimradRawParser(),
+                           'CON': simrad_parsers.SimradConfigParser(),
+                           'TAG': simrad_parsers.SimradAnnotationParser(),
+                           'NME': simrad_parsers.SimradNMEAParser(),
+                           'BOT': simrad_parsers.SimradBottomParser(),
+                           'DEP': simrad_parsers.SimradDepthParser()}
+
+        # Because a user can load multiple .raw files into an ER60 object, and those
+        # .raw files can contain data from various system configurations, we need to
+        # write potentially different configurations as separate files to ensure the
+        # new data are interpreted correctly when read.
+        #
+        # Each ping in a raw_data object references a dict containing the system
+        # configuration data for that channel as written in the .raw file header. That
+        # dict also contains the input raw file name. The unique raw file names can be
+        # used to determine how many files to write and the channel data that will be
+        # in them.
+
+        # The first thing we need to do is identify all of the data that meets our
+        # time/ping number, channel/frequency constraints. Then we group that by input
+        # file name and again by channel. The result is a dict, keyed by file name,
+        # with values that are dicts keyed by the channel ID
+
+        # Work thru the specified channels
+        data_by_file = {}
+        n_datagrams_by_file = {}
+        for channel in channel_ids:
+            # and then this channel's raw_data objects
+
+            for data in self.raw_data[channel]:
+                # Get the indices of data from this channel/data that fall within the
+                # time span provided.
+                this_idx = data.get_indices(start_time=start_time,
+                        end_time=end_time, start_ping=start_ping,
+                        end_ping=end_ping)
+
+                # check if we have any data from this channel/data
+                if this_idx.size > 0:
+                    # Find the unique configuration objects for this data/time range
+                    # The config objects are different for each file read and we use
+                    # that to determine what data goes in what output file.
+                    # We can't use np.unique on dicts so we do it the hard way...
+                    unique_configs = []
+                    for c in data.configuration[this_idx]:
+                        if c not in unique_configs:
+                            # this is a convienient place to filter by frequency...
+                            if frequencies:
+                                #  freqs specified, check if this is one of them
+                                if c['frequency'] in frequencies:
+                                    unique_configs.append(c)
+                            else:
+                                # writing all freqs
+                                unique_configs.append(c)
+
+                    # Determine the indices for each config
+                    for conf in unique_configs:
+                        # Get the indices for each unique config
+                        conf_idx = this_idx[data.configuration[this_idx] == conf]
+
+                        # To track progress, we'll total up the number of raw
+                        # datagrams that we will ultimately write for this file.
+                        n_datagrams = conf_idx.size
+
+                        # Store the channel ID, condif dict, reference to the
+                        # raw data, and the index to the data by filename
+                        this_data = {'channel_id':channel, 'configuration':conf,
+                                'data':data, 'index':conf_idx}
+
+                        if conf['file_name'] not in data_by_file:
+                            # this is a new file, add it
+                            data_by_file[conf['file_name']] = {channel:[this_data]}
+                            # and set the initial datagram count
+                            n_datagrams_by_file[conf['file_name']] = n_datagrams
+                        else:
+                            # this file is already on the list, check if the channel exists (this
+                            # is the rare, but possible, multiple data types per channel case.)
+                            if channel in data_by_file[conf['file_name']]:
+                                data_by_file[conf['file_name']][channel].append(this_data)
+                            else:
+                                data_by_file[conf['file_name']][channel] = [this_data]
+                            n_datagrams_by_file[conf['file_name']] += n_datagrams
+
+        # Now that we have references to the data we need to write, grouped by input
+        # filename, we can iterate through the this dict and write the data to disk.
+        for infile in data_by_file:
+
+            outfile_name = ''
+
+            # check if we've been given a dict of filenames and if we have one for
+            # this input file.
+            if isinstance(output_filenames, dict):
+                if infile in output_filenames:
+                    outfile_name = output_filenames[infile]
+                else:
+                    raise ValueError("Input filename '" + infile + "' not found in " +
+                        "output_filenames dictionary. No output filename available to " +
+                        "map to.")
+
+
+            # .raw files are always written in time order. We need to create a vector
+            # of timestamps from all of our data sources (raw data, NMEA data, annotations,
+            # and motion data)and use the sort indices to create a our datagram roadmap.
+
+            # create the map arrays
+            dg_times = np.array([], dtype='datetime64[ms]')
+            dg_objects = np.array([], dtype='object')
+            dg_obj_idx = np.array([])
+            dg_type = np.array([], dtype='S1')
+
+            # Add the NMEA data first - this should ensure that NMEA datagrams precede
+            # raw datagrams when they share the same timestamp.
+            nmea_idx = self.nmea_data.get_indices(start_time=start_time,
+                        end_time=end_time)
+            times = self.nmea_data.nmea_times[nmea_idx]
+            dg_times = np.concatenate((dg_times, times))
+            dg_objects = np.concatenate((dg_objects, np.repeat(self.nmea_data, times.size)))
+            dg_obj_idx = np.concatenate((dg_obj_idx, nmea_idx))
+            dg_type = np.concatenate((dg_type, np.repeat('N', times.size)))
+
+            # Next add the motion data
+            motion_idx = self.motion_data.get_indices(start_time=start_time,
+                        end_time=end_time)
+            times = self.motion_data.time[motion_idx]
+            dg_times = np.concatenate((dg_times, times))
+            dg_objects = np.concatenate((dg_objects, np.repeat(self.motion_data, times.size)))
+            dg_obj_idx = np.concatenate((dg_obj_idx, motion_idx))
+            dg_type = np.concatenate((dg_type, np.repeat('M', times.size)))
+
+            # Then add the raw data
+            for channel in data_by_file[infile]:
+                for data in data_by_file[infile][channel]:
+                    times = data['data'].ping_time[data['index']]
+                    dg_times = np.concatenate((dg_times, times))
+                    dg_objects = np.concatenate((dg_objects, np.repeat(data['data'], times.size)))
+                    dg_obj_idx = np.concatenate((dg_obj_idx, data['index']))
+                    dg_type = np.concatenate((dg_type, np.repeat('R', times.size)))
+
+            # And finally add the annotations
+            # ANNOTATION CLASS NEEDS TO BE UPDATED USING A PATTERN SIMILAR TO
+            # THE NMEA AND MOTION CLASSES.
+
+
+
+            # Now sort the time vector - must use stable sort to ensure proper dg order
+            sorted_time_idx = np.argsort(dg_times, kind='stable')
+
+            # Now update the map arrays
+            dg_times = dg_times[sorted_time_idx]
+            dg_objects = dg_objects[sorted_time_idx]
+            dg_obj_idx = dg_obj_idx[sorted_time_idx]
+            dg_type = dg_type[sorted_time_idx]
+            n_datagrams = dg_times.size
+
+            # we are finally ready to write...
+
+
+            # Generate output filename if needed - we assume we're passed
+            # a valid path and filename prefix. e.g. 'c:/test/DY2020'
+            if outfile_name == '':
+                timestamp = date_conversion.dt64_to_datetime(dg_times[0])
+                timestamp = timestamp.strftime("D%Y%m%d-T%H%M%S")
+                outfile_name = output_filenames + '-' + timestamp + '.raw'
+
+
+            # open the raw file
+            outfile_name = os.path.normpath(outfile_name)
+            if not overwrite and os.path.exists(outfile_name):
+                raise IOError('File %s already exists and overwrite == False.' %(outfile_name))
+
+
+            # build the configuration dict
+            configuration = ''
+
+
+            parser = DGRAM_PARSE_KEY['CON']
+
+            nice_dgram = parser.to_string(data)
+
+        print()
+
+
+
+        #
+        #sorted_time_index = np.argsort(combined_time, kind='stable')
+        #
+        #sorted_time = combined_time[sorted_time_index]
+        #sorted_index = combined_index[sorted_time_index]
+        #sorted_objs = combined_objs[sorted_time_index]
+
+
+        print()
+
+
+
+
+
+
+
+
 
 
     def __str__(self):

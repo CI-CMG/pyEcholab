@@ -100,8 +100,7 @@ class simrad_motion_data(object):
             return out_data
 
         # Get the index for all datagrams within the time span.
-        return_idxs = self._get_indices(start_time, end_time,
-                time_order=True)
+        return_idxs = self.get_indices(start_time=start_time, end_time=end_time)
 
         # Check if we're been given specific attributes to interpolate
         if data_type is None:
@@ -127,11 +126,11 @@ class simrad_motion_data(object):
         return (attributes, out_data)
 
 
-    def _get_indices(self, start_time, end_time, time_order=True):
+    def get_indices(self, start_time=None, end_time=None, time_order=True):
         """
         Return index of data contained in speciofied time range.
 
-        _get_indices returns an index array containing the indices contained
+        get_indices returns an index array containing the indices contained
         in the range defined by the times provided. By default the indexes
         are in time order.
 

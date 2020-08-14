@@ -878,7 +878,8 @@ class ping_data(object):
         arrays.
 
         Note that pings with "empty" times (ping time == NaT) will be sorted
-        to the beginning of the index array.
+        to the beginning of the index array for numpy versions < 1.18 and the
+        END for versions >= 1.18
 
         Args:
             start_ping (int): The starting ping of the range of pings specified.
@@ -907,7 +908,8 @@ class ping_data(object):
         # Get the primary index.
         if time_order:
             # Return indices in time order.  Note that empty ping times will be
-            # sorted to the front.
+            # sorted to the front for numpy versions < 1.18 and at the end for
+            # versions >= 1.18
             primary_index = self.ping_time.argsort(kind='stable')
         else:
             # Return indices in ping order.

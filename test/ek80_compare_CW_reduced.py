@@ -54,7 +54,6 @@ ek80 = EK80.EK80()
 ek80.read_raw(input_path + raw_filename)
 
 #  now iterate through the reference files and display results
-
 for idx, sv_chan in enumerate(ev_Sv_filename):
 
     #  get the list of raw_data objects by channel - I know
@@ -67,14 +66,13 @@ for idx, sv_chan in enumerate(ev_Sv_filename):
     #  only 1 raw_data object in the list and it will be at index 0.
     raw_data = raw_list[0]
 
-
     #  get a cal object populated with params from the raw_data object.
     #  the calibration object stores the data from the EK80 configuration
     #  datagram as well as some computed values and provides a simple
     #  interface to get and set these values and ultimately deliver right
     #  sized arrays to methods that convert the complex or power/angle
     #  data into "processed" data.
-    calibration = raw_data.get_calibration(absorption_method='A&M')
+    calibration = raw_data.get_calibration()
 
     #  convert to power
     ek80_power = raw_data.get_power(calibration=calibration)

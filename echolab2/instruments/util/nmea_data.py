@@ -210,8 +210,8 @@ class nmea_data(object):
             msg_type = msg_type.upper()
 
             # Get the index for all datagrams within the time span.
-            return_idxs = self._get_indices(start_time, end_time,
-                    time_order=True)
+            return_idxs = self.get_indices(start_time=start_time,
+                end_time=end_time)
 
             # Build a mask based on the message type and talker ID.
             keep_mask = self.messages[return_idxs] == msg_type
@@ -229,8 +229,7 @@ class nmea_data(object):
                 # Add raw data - do not parse.
                 if n_messages > 0:
                     datagrams[msg_type] = {'time':self.nmea_times[return_idxs],
-                                           'raw_string': (self.raw_datagrams[
-                                            return_idxs].copy())}
+                        'raw_string': (self.raw_datagrams[return_idxs].copy())}
                 else:
                     # No messages to return.
                     datagrams[msg_type] = {'time':None, 'raw_string':None}
@@ -241,8 +240,7 @@ class nmea_data(object):
                         # We are only returning the fields specified in
                         # return_fields. First build the return dictionary by
                         # adding time values.
-                        datagrams[msg_type] = {
-                                           'time': self.nmea_times[return_idxs]}
+                        datagrams[msg_type] = {'time': self.nmea_times[return_idxs]}
 
                         # TODO: Work out setting the numpy type based on the
                         # data type of the parsed field. Parse one message
@@ -420,11 +418,11 @@ class nmea_data(object):
         return (interp_fields, out_data)
 
 
-    def _get_indices(self, start_time, end_time, time_order=True):
+    def get_indices(self, start_time=None, end_time=None, time_order=True):
         """
         Return index of data contained in speciofied time range.
 
-        _get_indices returns an index array containing the indices contained
+        get_indices returns an index array containing the indices contained
         in the range defined by the times provided. By default the indexes
         are in time order.
 

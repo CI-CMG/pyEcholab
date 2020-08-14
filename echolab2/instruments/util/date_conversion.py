@@ -41,6 +41,7 @@ $Id$
 
 
 import datetime
+import numpy as np
 from pytz import utc as pytz_utc
 import logging
 
@@ -55,6 +56,25 @@ EPOCH_DELTA_SECONDS = (UTC_UNIX_EPOCH - UTC_NT_EPOCH).total_seconds()
 __all__ = ['nt_to_unix', 'unix_to_nt']
 
 log = logging.getLogger(__name__)
+
+
+def dt64_to_datetime(dt64):
+    '''
+    :param dt64: Numpy datetime64 objectto convert to datetime
+    :type dt64: datetime64
+
+    Returns a datetime.datetime object representing the same time as the
+    provided datetime64 object.
+
+    source:
+    https://stackoverflow.com/questions/13703720/converting-between-datetime-timestamp-and-datetime64
+
+    '''
+
+    ts = (dt64 - np.datetime64('1970-01-01T00:00:00Z')) / np.timedelta64(1, 's')
+
+    return datetime.datetime.utcfromtimestamp(ts)
+
 
 def nt_to_unix(nt_timestamp_tuple, return_datetime=True):
     '''

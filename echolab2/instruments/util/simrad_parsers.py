@@ -42,7 +42,8 @@ from .date_conversion import nt_to_unix
 
 
 __all__ = ['SimradNMEAParser', 'SimradDepthParser', 'SimradBottomParser',
-            'SimradAnnotationParser', 'SimradConfigParser', 'SimradRawParser']
+            'SimradAnnotationParser', 'SimradConfigParser', 'SimradRawParser',
+            'SimradFILParser', 'SimradXMLParser', 'SimradMRUParser']
 
 log = logging.getLogger(__name__)
 
@@ -115,6 +116,7 @@ class _SimradDatagramParser(object):
         final_fmt = '=l%dsl' % (datagram_size)
         return struct.pack(final_fmt, datagram_size, datagram_content_str, datagram_size)
 
+
 class SimradDepthParser(_SimradDatagramParser):
     '''
     ER60 Depth Detection datagram (from .bot files) contain the following keys:
@@ -140,11 +142,11 @@ class SimradDepthParser(_SimradDatagramParser):
     '''
     def __init__(self):
         headers = {0: [('type', '4s'),
-                     ('low_date', 'L'),
-                     ('high_date', 'L'),
-                     ('transceiver_count', 'L')
-                     ]
-                }
+                       ('low_date', 'L'),
+                       ('high_date', 'L'),
+                       ('transceiver_count', 'L')
+                      ]
+                  }
         _SimradDatagramParser.__init__(self, "DEP", headers)
 
     def _unpack_contents(self, raw_string, bytes_read, version):
@@ -1013,16 +1015,27 @@ class SimradConfigParser(_SimradDatagramParser):
     collected using the ES/EK60, ES70, and ME70.
 
     5-15-20 - RHT: The output from this parser has been changed to follow the output
-                   format of the XML parser configuration datagram. This introduces
-                   a number of changes...
+                   format of the XML parser configuration datagram.
 
+  The parser operates on dictonaries with the following keys:
 
-  operates on dictonaries with the following keys:
+        type:           string == 'CON0'
+        subtype:        string == 'configuration'
+        low_date:       long uint representing LSBytes of 64bit NT date
+        high_date:      long uint representing MSBytes of 64bit NT date
+        timestamp:      datetime.datetime object of NT date, assumed to be UTC
+        dg_version:     int representing the datagram version
+        bytes_read:     int representing the number of bytes read from disk
+        configuration:  dict, keyed by channel ID, containing the configuration header
+                        data by channel. Common field values are replicated across
+                        channels.
 
-        type:         string == 'CON0'
-        low_date:     long uint representing LSBytes of 64bit NT date
-        high_date:    long uint representing MSBytes of 64bit NT date
-        timestamp:    datetime.datetime object of NT date, assumed to be UTC
+        The configuration dict contains the configuration parameters keyed by Channel ID.
+        The common configuration field values like survery_name and sounder_name are
+        replicated across channels. Note that when these data are packed, the values for
+        the common fields are taken from the first channel.
+
+    The common configuration fields are:
 
         survey_name                     [str]
         transect_name                   [str]
@@ -1041,8 +1054,7 @@ class SimradConfigParser(_SimradDatagramParser):
         sound_velocity_transducer       [float] [m/s]
         beam_config                     [str] Raw XML string containing beam config. info
 
-
-    Transducer Config Keys (ER60/ES60 sounders):
+    transceiver specific keys (ER60/ES60 sounders):
         channel_id                      [str]   channel ident string
         beam_type                       [long]  Type of channel (0 = Single, 1 = Split)
         frequency                       [float] channel frequency
@@ -1068,7 +1080,7 @@ class SimradConfigParser(_SimradDatagramParser):
         gpt_software_version            [str]
         spare4                          [str]
 
-    Transducer Config Keys (ME70 sounders):
+    transceiver specific keys (ME70 sounders):
         channel_id                      [str]   channel ident string
         beam_type                       [long]  Type of channel (0 = Single, 1 = Split)
         reserved1                       [float] channel frequency
@@ -1103,8 +1115,6 @@ class SimradConfigParser(_SimradDatagramParser):
     to_string(dict):    Returns raw string (including leading/trailing size fields)
                         ready for writing to disk
     '''
-
-
 
     def __init__(self):
         headers = {0:[('type', '4s'),
@@ -1316,6 +1326,7 @@ class SimradConfigParser(_SimradDatagramParser):
         elif version == 1:
             #CON1 only has a single data field:  beam_config, holding an xml string
             data['beam_config'] = raw_string[self.header_size(version):].strip('\x00')
+
 
         return data
 
