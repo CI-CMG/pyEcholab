@@ -483,6 +483,10 @@ class EK60(object):
                     self.n_channels += 1
                     self._file_channels += 1
 
+                    # Set the file channel number in the configuration - we need this
+                    # in certain cases when writing data.
+                    config_datagram['configuration'][channel_id]['channel_number'] = self._file_channels
+
                     #  populate the _file_channel_map which maps channel
                     #  number to channel id *for this file only*.
                     self._file_channel_map[self._file_channels] = channel_id
@@ -1194,7 +1198,7 @@ class EK60(object):
                 #  now assemble the datagram dict based on the type
                 if dg_type[idx] == 'RAW':
                     #  set the raw datagram values
-                    dgram_dict['channel'] = channel_number_map[dg_objects[idx].channel_id]
+                    dgram_dict['channel'] = data_by_file[infile][dg_objects[idx].channel_id][0]['configuration']['channel_number']
                     dgram_dict['transducer_depth'] = dg_objects[idx].transducer_depth[dg_obj_idx[idx]]
                     dgram_dict['frequency'] = dg_objects[idx].frequency[dg_obj_idx[idx]]
                     dgram_dict['transmit_power'] = dg_objects[idx].transmit_power[dg_obj_idx[idx]]

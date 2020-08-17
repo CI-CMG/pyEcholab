@@ -29,7 +29,7 @@ out_file = 'C:/Temp_EK_Test/EK-Raw-Write-Test'
 ek60 = EK60.EK60()
 
 # Use the read_raw method to read in our list of data files.
-ek60.read_raw(one_file)
+ek60.read_raw(two_files)
 
 # Print some basic info about our object.
 print(ek60)
