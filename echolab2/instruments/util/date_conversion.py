@@ -60,7 +60,7 @@ log = logging.getLogger(__name__)
 
 def dt64_to_datetime(dt64):
     '''
-    :param dt64: Numpy datetime64 objectto convert to datetime
+    :param dt64: Numpy datetime64 object to convert to datetime
     :type dt64: datetime64
 
     Returns a datetime.datetime object representing the same time as the
@@ -73,7 +73,27 @@ def dt64_to_datetime(dt64):
 
     ts = (dt64 - np.datetime64('1970-01-01T00:00:00Z')) / np.timedelta64(1, 's')
 
-    return datetime.datetime.utcfromtimestamp(ts)
+    return datetime.datetime.fromtimestamp(ts, tz=pytz_utc)
+
+
+def dt64_to_nt(dt64):
+    '''
+    :param dt64: Numpy datetime64 object to convert to datetime
+    :type dt64: datetime64
+
+    Returns a tuple containing the NT time
+
+    '''
+
+    ts = (dt64 - np.datetime64('1970-01-01T00:00:00Z')) / np.timedelta64(1, 's')
+    unix_datetime = datetime.datetime.fromtimestamp(ts, tz=pytz_utc)
+    sec_past_nt_epoch = (unix_datetime - UTC_NT_EPOCH).total_seconds()
+
+    onehundred_ns_intervals = int(sec_past_nt_epoch * 1e7)
+    lowDateTime = onehundred_ns_intervals & 0xFFFFFFFF
+    highDateTime = onehundred_ns_intervals >> 32
+
+    return lowDateTime, highDateTime
 
 
 def nt_to_unix(nt_timestamp_tuple, return_datetime=True):
@@ -139,7 +159,9 @@ def unix_to_nt(unix_timestamp):
 
         else:
             unix_datetime = pytz_utc.normalize(unix_timestamp.astimezone(pytz_utc))
-
+    elif isinstance(unix_timestamp, np.datetime64):
+        ts = (unix_timestamp - np.datetime64('1970-01-01T00:00:00Z')) / np.timedelta64(1, 's')
+        unix_datetime = unix_to_datetime(ts)
     else:
         unix_datetime = unix_to_datetime(unix_timestamp)
 
@@ -152,7 +174,7 @@ def unix_to_nt(unix_timestamp):
     return lowDateTime, highDateTime
 
 
-def unix_to_datetime(unix_timestamp):
+def unix_to_datetime(unix_timestamp, tz=pytz_utc):
     '''
     :param unix_timestamp: Number of seconds since unix epoch (1/1/1970)
     :type unix_timestamp: float
@@ -172,14 +194,12 @@ def unix_to_datetime(unix_timestamp):
     >>> assert epoch == datetime(1970, 1, 1, tzinfo=utc)
     '''
 
-
     if isinstance(unix_timestamp, datetime.datetime):
         if unix_timestamp.tzinfo is None:
             unix_datetime = pytz_utc.localize(unix_timestamp)
 
         elif unix_timestamp.tzinfo == pytz_utc:
             unix_datetime = unix_timestamp
-
         else:
             unix_datetime = pytz_utc.normalize(unix_timestamp.astimezone(pytz_utc))
 

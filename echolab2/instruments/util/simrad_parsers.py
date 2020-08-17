@@ -450,14 +450,14 @@ class SimradNMEAParser(_SimradDatagramParser):
         if version == 0:
 
             for field in self.header_fields(version):
+                if (sys.version_info.major > 2) and isinstance(data[field], str):
+                    data[field] = data[field].encode('latin_1')
                 datagram_contents.append(data[field])
-
 
             if data['nmea_string'][-1] != '\x00':
                 tmp_string = data['nmea_string'] + '\x00'
             else:
                 tmp_string = data['nmea_string']
-
 
             #Pad with more nulls to 4-byte word boundry if necessary
             if len(tmp_string) % 4:
@@ -1227,7 +1227,6 @@ class SimradConfigParser(_SimradDatagramParser):
         header_data = {}
         common_params = {}
 
-
         round6 = lambda x: round(x, ndigits=6)
         header_values = struct.unpack(self.header_fmt(version), raw_string[:self.header_size(version)])
 
@@ -1338,27 +1337,34 @@ class SimradConfigParser(_SimradDatagramParser):
 
         if version == 0:
 
-            if data['transceiver_count'] != len(data['transceivers']):
-                log.warning("Mismatch between 'transceiver_count' and actual # of transceivers")
-                data['transceiver_count'] = len(data['transceivers'])
+            # Build out the config dict so it can be unpacked
+            # Pull the common configuration data out of the first channel available
+            first_chan = list(data['configuration'].keys())[0]
+            first_conf = data['configuration'][first_chan]
 
-            sounder_name = data['sounder_name']
+            data['transceiver_count'] = len(data['configuration'])
+
+            sounder_name = first_conf['sounder_name']
             if sounder_name == 'MBES':
-                _packed_me70_values = struct.pack('=hLff', data['multiplexing'],
-                    data['time_bias'], data['sound_velocity_avg'], data['sound_velocity_transducer'])
-                data['spare0'] = _packed_me70_values + data['spare0'][14:]
+                _packed_me70_values = struct.pack('=hLff', first_conf['multiplexing'],
+                    first_conf['time_bias'], first_conf['sound_velocity_avg'], first_conf['sound_velocity_transducer'])
+                first_conf['spare0'] = _packed_me70_values + first_conf['spare0'][14:]
+
+            data['survey_name'] = first_conf['survey_name'].encode('latin_1')
+            data['transect_name'] = first_conf['transect_name'].encode('latin_1')
+            data['sounder_name'] = first_conf['sounder_name'].encode('latin_1')
+            data['version'] = first_conf['version'].encode('latin_1')
+            data['spare0'] = first_conf['spare0'].encode('latin_1')
 
             for field in self.header_fields(version):
+                if (sys.version_info.major > 2) and isinstance(data[field], str):
+                    data[field] = data[field].encode('latin_1')
                 datagram_contents.append(data[field])
 
             try:
                 transducer_header = self._transducer_headers[sounder_name]
                 _sounder_name_used = sounder_name
             except KeyError:
-                log.warning('Unknown sounder_name:  %s, (no one of %s)', sounder_name,
-                    list(self._transducer_headers.keys()))
-                log.warning('Will use ER60 transducer config fields as default')
-
                 transducer_header = self._transducer_headers['ER60']
                 _sounder_name_used = 'ER60'
 
@@ -1366,23 +1372,26 @@ class SimradConfigParser(_SimradDatagramParser):
             txcvr_header_fmt    = '=' + ''.join([x[1] for x in transducer_header])
             txcvr_header_size   = struct.calcsize(txcvr_header_fmt)
 
-            for txcvr_indx, txcvr in list(data['transceivers'].items()):
+            for txcvr_indx, txcvr in list(data['configuration'].items()):
                 txcvr_contents = []
 
                 if _sounder_name_used in ['ER60', 'ES60']:
                     for field in txcvr_header_fields[:17]:
+                        #  Python 3 convert str to bytes
+                        if (sys.version_info.major > 2) and isinstance(txcvr[field], str):
+                            txcvr[field] = txcvr[field].encode('latin_1')
                         txcvr_contents.append(txcvr[field])
 
                     txcvr_contents.extend(txcvr['pulse_length_table'])
-                    txcvr_contents.append(txcvr['spare1'])
+                    txcvr_contents.append(txcvr['spare1'].encode('latin_1'))
 
                     txcvr_contents.extend(txcvr['gain_table'])
-                    txcvr_contents.append(txcvr['spare2'])
+                    txcvr_contents.append(txcvr['spare2'].encode('latin_1'))
 
                     txcvr_contents.extend(txcvr['sa_correction_table'])
-                    txcvr_contents.append(txcvr['spare3'])
+                    txcvr_contents.append(txcvr['spare3'].encode('latin_1'))
 
-                    txcvr_contents.extend([txcvr['gpt_software_version'], txcvr['spare4']])
+                    txcvr_contents.extend([txcvr['gpt_software_version'].encode('latin_1'), txcvr['spare4'].encode('latin_1')])
 
                     txcvr_contents_str = struct.pack(txcvr_header_fmt, *txcvr_contents)
 
@@ -1590,21 +1599,12 @@ class SimradRawParser(_SimradDatagramParser):
 
         if version == 0:
 
-            if data['count'] > 0:
-                if (int(data['mode']) & 0x1) and (len(data.get('power', [])) != data['count']):
-                    log.warning("Data 'count' = %d, but contains %d power samples.  Ignoring power.")
-                    data['mode'] &= ~(1<<0)
-
-                if (int(data['mode']) & 0x2) and (len(data.get('angle', [])) != data['count']):
-                    log.warning("Data 'count' = %d, but contains %d angle samples.  Ignoring angle.")
-                    data['mode'] &= ~(1<<1)
-
-
-                if data['mode'] == 0:
-                    log.warning("Data 'count' = %d, but mode == 0.  Setting count to 0", data['count'])
+            if data['count'] > 0 and data['mode'] == 0:
                     data['count'] = 0
 
             for field in self.header_fields(version):
+                if (sys.version_info.major > 2) and isinstance(data[field], str):
+                    data[field] = data[field].encode('latin_1')
                 datagram_contents.append(data[field])
 
             if data['count'] > 0:
@@ -1615,6 +1615,9 @@ class SimradRawParser(_SimradDatagramParser):
 
                 if int(data['mode']) & 0x2:
                     datagram_fmt += '%dH' % (data['count'])
-                    datagram_contents.extend(data['angle'])
+                    #  reshape the angle array for writing
+                    angles = data['angle'][:,0].astype('uint16') << 8
+                    angles = angles + data['angle'][:,1]
+                    datagram_contents.extend(angles)
 
         return struct.pack(datagram_fmt, *datagram_contents)

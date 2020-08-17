@@ -57,6 +57,13 @@ class simrad_motion_data(object):
                     the simrad datagram parser.
 
         """
+
+        # Check if this datagram has the same time as the previous - This
+        # simply filters replicate data when used with the EK60 class.
+        if self.time[self.n_raw - 1] ==  motion_datagram['timestamp']:
+            # We already have this motion datagram stored.
+            return
+
         # Check if we need to resize our arrays.
         if self.n_raw == self.time.shape[0]:
             self._resize_arrays(self.time.shape[0] + simrad_motion_data.CHUNK_SIZE)

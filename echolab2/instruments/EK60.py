@@ -798,13 +798,69 @@ class EK60(object):
         return channel_data
 
 
+    def get_channel_data(self, frequency=None, channel_number=None, channel_id=None):
+        """returns a dict containing the raw_data objects for the specified channel IDs,
+        or frequencies, or channel numbers.
+
+        I'm experimenting with methods to return raw_data to the user.
+        """
+
+        # create the return dict
+        channel_data = {}
+
+        if channel_id is not None:
+            # Channel id is specified.
+
+            # if we're passed a string, make it a list
+            if isinstance(channel_id, str):
+                channel_id = [channel_id]
+
+            #  work thru the channel ids and add if they exist
+            for id in channel_id:
+                channel_data[id] = [self.raw_data.get(id, None)]
+
+        elif frequency is not None:
+            # frequency is specified
+
+            # if we're passed a number, make it a list
+            if not isinstance(frequency, list):
+                frequency = [frequency]
+
+            # and work through the freqs, adding if they exist
+            for freq in frequency:
+                id = self.frequency_map.get(freq, None)
+                channel_data[freq] = [self.raw_data.get(id, None)]
+
+        elif channel_number is not None:
+            # channel_number is specified.
+
+            # if we're passed a number, make it a list
+            if not isinstance(channel_number, list):
+                channel_number = [channel_number]
+
+            # and work through the numbers, adding if they exist
+            for num in channel_number:
+                id = self.channel_map.get(num, None)
+                channel_data[num] = [self.raw_data.get(id, None)]
+
+        else:
+            # Channel id not specified - return all in a dict keyed by channel ID
+            channel_data = self.raw_data
+
+#            # Channel id not specified - return all in a list of lists
+#            channel_data = []
+#            for chan in self.channel_ids:
+#                channel_data.append(self.raw_data[chan])
+
+        return channel_data
+
 
     def write_raw(self, output_filenames, power=True, angles=True,
                  max_sample_count=None, start_time=None, end_time=None,
                  start_ping=None, end_ping=None, frequencies=None,
                  channel_ids=None, time_format_string='%Y-%m-%d %H:%M:%S',
                  start_sample=None, end_sample=None, progress_callback=None,
-                 overwrite=False):
+                 overwrite=False, async_window=5):
         """Writes one or more Simrad Ex60/ES70/ME70 .raw files.
 
 
@@ -863,26 +919,86 @@ class EK60(object):
                 writing to last sample.
         """
 
-        # Update the reader state variables.
+        def new_datagram(dg_time, dg_type, dg_version):
+            '''
+            new_datagram builds a dict containing the keys common to all datagram
+            dictionaries.
+            '''
+
+            # build the base datagram dict. These fields are common to all datagrams
+            dgram = {}
+            low_date, high_date = date_conversion.dt64_to_nt(dg_time)
+            dgram['low_date'] = low_date
+            dgram['high_date'] = high_date
+            dgram['type'] = dg_type + str(dg_version)
+            dgram['dg_version'] = dg_version
+
+            return dgram
+
+
+        #  initialize some vars to hold the current vessel attitude data
+        this_heave = 0.0
+        this_roll = 0.0
+        this_pitch = 0.0
+        this_heading = 0.0
+
+        files_written = []
+
+        # Process the args
         if start_time:
             start_time = self._convert_time_bound(
                     start_time, format_string=time_format_string)
         else:
             start_time = self.start_time
+
         if end_time:
             end_time = self._convert_time_bound(
                     end_time, format_string=time_format_string)
         else:
             end_time = self.end_time
+
         if channel_ids is None:
             channel_ids = self.channel_ids
 
+        if start_sample is None:
+            start_sample = 0
+
+        if start_sample < 0:
+            start_sample = 0
+
+        if end_sample:
+            if end_sample <= start_sample:
+                end_sample = start_sample
+
+        # Create the async data time delta - used when extracting async data
+        # like NMEA or TAG for writing
+        async_window_secs = np.timedelta64(async_window, 's')
+
+        # create the inverse of the channel_map so we can look up the number
+        # using the channel ID
+        channel_number_map = {}
+        for number in self.channel_map:
+            channel_number_map[self.channel_map[number]] = number
+
+
+        # these next few definitions could be moved to class globals, especially
+        # if EK60 and EK80 are refactored to share a common "simrad_ek" parent
+
+        #  map dg_type to its parser
         DGRAM_PARSE_KEY = {'RAW': simrad_parsers.SimradRawParser(),
                            'CON': simrad_parsers.SimradConfigParser(),
                            'TAG': simrad_parsers.SimradAnnotationParser(),
                            'NME': simrad_parsers.SimradNMEAParser(),
                            'BOT': simrad_parsers.SimradBottomParser(),
                            'DEP': simrad_parsers.SimradDepthParser()}
+
+        # map dg_type to version for this class/raw file spec
+        DGRAM_VERSION_KEY = {'RAW':0,
+                             'NME':0,
+                             'TAG':0,
+                             'CON':0,
+                             'IMU':0}
+
 
         # Because a user can load multiple .raw files into an ER60 object, and those
         # .raw files can contain data from various system configurations, we need to
@@ -894,6 +1010,15 @@ class EK60(object):
         # dict also contains the input raw file name. The unique raw file names can be
         # used to determine how many files to write and the channel data that will be
         # in them.
+        #
+        # This is important to remember if you are trying to combine data from two raw
+        # files into one. It is your responsibility to only combine data from files
+        # recorded using the exact same system parameters (there is some nuance here,
+        # but either you'll know when you can break this rule or not.) After combining
+        # data from two or more files, you need to replicate the first configuration
+        # dict in each raw_data object across all pings:
+        #
+        # raw_data_38khz.configuration[:] = raw_data_38khz.configuration[0]
 
         # The first thing we need to do is identify all of the data that meets our
         # time/ping number, channel/frequency constraints. Then we group that by input
@@ -975,7 +1100,6 @@ class EK60(object):
                         "output_filenames dictionary. No output filename available to " +
                         "map to.")
 
-
             # .raw files are always written in time order. We need to create a vector
             # of timestamps from all of our data sources (raw data, NMEA data, annotations,
             # and motion data)and use the sort indices to create a our datagram roadmap.
@@ -983,47 +1107,49 @@ class EK60(object):
             # create the map arrays
             dg_times = np.array([], dtype='datetime64[ms]')
             dg_objects = np.array([], dtype='object')
-            dg_obj_idx = np.array([])
-            dg_type = np.array([], dtype='S1')
+            dg_obj_idx = np.array([], dtype=np.uint32)
+            dg_type = np.array([], dtype='S3')
 
-            # Add the NMEA data first - this should ensure that NMEA datagrams precede
-            # raw datagrams when they share the same timestamp.
-            nmea_idx = self.nmea_data.get_indices(start_time=start_time,
-                        end_time=end_time)
-            times = self.nmea_data.nmea_times[nmea_idx]
-            dg_times = np.concatenate((dg_times, times))
-            dg_objects = np.concatenate((dg_objects, np.repeat(self.nmea_data, times.size)))
-            dg_obj_idx = np.concatenate((dg_obj_idx, nmea_idx))
-            dg_type = np.concatenate((dg_type, np.repeat('N', times.size)))
-
-            # Next add the motion data
-            motion_idx = self.motion_data.get_indices(start_time=start_time,
-                        end_time=end_time)
-            times = self.motion_data.time[motion_idx]
-            dg_times = np.concatenate((dg_times, times))
-            dg_objects = np.concatenate((dg_objects, np.repeat(self.motion_data, times.size)))
-            dg_obj_idx = np.concatenate((dg_obj_idx, motion_idx))
-            dg_type = np.concatenate((dg_type, np.repeat('M', times.size)))
-
-            # Then add the raw data
+            # Add the raw data
             for channel in data_by_file[infile]:
                 for data in data_by_file[infile][channel]:
                     times = data['data'].ping_time[data['index']]
                     dg_times = np.concatenate((dg_times, times))
                     dg_objects = np.concatenate((dg_objects, np.repeat(data['data'], times.size)))
                     dg_obj_idx = np.concatenate((dg_obj_idx, data['index']))
-                    dg_type = np.concatenate((dg_type, np.repeat('R', times.size)))
+                    dg_type = np.concatenate((dg_type, np.repeat('RAW', times.size)))
 
-            # And finally add the annotations
+            # Determine the data time window
+            raw_start_time = dg_times[0]
+            async_start_time = dg_times[0] - async_window_secs
+            async_end_time = dg_times[-1] - async_window_secs
+
+            # Next, add the annotation data
             # ANNOTATION CLASS NEEDS TO BE UPDATED USING A PATTERN SIMILAR TO
             # THE NMEA AND MOTION CLASSES.
 
+            # Then the motion data using our new time window
+            motion_idx = self.motion_data.get_indices(start_time=async_start_time,
+                        end_time=async_end_time)
+            times = self.motion_data.time[motion_idx]
+            dg_times = np.insert(dg_times, 0, times)
+            dg_objects = np.insert(dg_objects, 0, np.repeat(self.motion_data, times.size))
+            dg_obj_idx = np.insert(dg_obj_idx, 0, motion_idx)
+            dg_type = np.insert(dg_type, 0, np.repeat('IMU', times.size))
 
+            # Lastly, insert the NMEA data using our new time window
+            nmea_idx = self.nmea_data.get_indices(start_time=async_start_time,
+                        end_time=async_end_time)
+            times = self.nmea_data.nmea_times[nmea_idx]
+            dg_times = np.insert(dg_times, 0, times)
+            dg_objects = np.insert(dg_objects, 0, np.repeat(self.nmea_data, times.size))
+            dg_obj_idx = np.insert(dg_obj_idx, 0, nmea_idx)
+            dg_type = np.insert(dg_type, 0, np.repeat('NME', times.size))
 
             # Now sort the time vector - must use stable sort to ensure proper dg order
             sorted_time_idx = np.argsort(dg_times, kind='stable')
 
-            # Now update the map arrays
+            # Sort the map arrays using the sorted time index
             dg_times = dg_times[sorted_time_idx]
             dg_objects = dg_objects[sorted_time_idx]
             dg_obj_idx = dg_obj_idx[sorted_time_idx]
@@ -1032,50 +1158,134 @@ class EK60(object):
 
             # we are finally ready to write...
 
-
             # Generate output filename if needed - we assume we're passed
             # a valid path and filename prefix. e.g. 'c:/test/DY2020'
             if outfile_name == '':
-                timestamp = date_conversion.dt64_to_datetime(dg_times[0])
+                timestamp = date_conversion.dt64_to_datetime(raw_start_time)
                 timestamp = timestamp.strftime("D%Y%m%d-T%H%M%S")
                 outfile_name = output_filenames + '-' + timestamp + '.raw'
-
 
             # open the raw file
             outfile_name = os.path.normpath(outfile_name)
             if not overwrite and os.path.exists(outfile_name):
                 raise IOError('File %s already exists and overwrite == False.' %(outfile_name))
+            raw_fid = open(outfile_name, 'wb')
 
+            #  keep track of the files we're writing to return to caller
+            files_written.append(outfile_name)
 
             # build the configuration dict
-            configuration = ''
+            config_dict = new_datagram(dg_times[0], 'CON', DGRAM_VERSION_KEY['CON'])
+            config_dict['configuration'] = {}
+            for channel in data_by_file[infile]:
+                config_dict['configuration'][channel] = \
+                    data_by_file[infile][channel][0]['configuration']
 
+            #  pack config dict into raw byte stream and write
+            raw_fid.write(DGRAM_PARSE_KEY['CON'].to_string(config_dict))
 
-            parser = DGRAM_PARSE_KEY['CON']
+            #  now write out all the rest of the datagrams
+            for idx in range(n_datagrams):
 
-            nice_dgram = parser.to_string(data)
+                #  create the base datagram dict
+                dgram_dict = new_datagram(dg_times[idx], dg_type[idx],
+                        DGRAM_VERSION_KEY[dg_type[idx]])
 
-        print()
+                #  now assemble the datagram dict based on the type
+                if dg_type[idx] == 'RAW':
+                    #  set the raw datagram values
+                    dgram_dict['channel'] = channel_number_map[dg_objects[idx].channel_id]
+                    dgram_dict['transducer_depth'] = dg_objects[idx].transducer_depth[dg_obj_idx[idx]]
+                    dgram_dict['frequency'] = dg_objects[idx].frequency[dg_obj_idx[idx]]
+                    dgram_dict['transmit_power'] = dg_objects[idx].transmit_power[dg_obj_idx[idx]]
+                    dgram_dict['pulse_length'] = dg_objects[idx].pulse_length[dg_obj_idx[idx]]
+                    dgram_dict['bandwidth'] = dg_objects[idx].bandwidth[dg_obj_idx[idx]]
+                    dgram_dict['sample_interval'] = dg_objects[idx].sample_interval[dg_obj_idx[idx]]
+                    dgram_dict['sound_velocity'] = dg_objects[idx].sound_velocity[dg_obj_idx[idx]]
+                    dgram_dict['absorption_coefficient'] = dg_objects[idx].absorption_coefficient[dg_obj_idx[idx]]
+                    dgram_dict['heave'] = this_heave
+                    dgram_dict['roll'] = this_roll
+                    dgram_dict['pitch'] = this_pitch
+                    dgram_dict['temperature'] = dg_objects[idx].temperature[dg_obj_idx[idx]]
+                    dgram_dict['heading'] = this_heading
+                    dgram_dict['transmit_mode'] = dg_objects[idx].transmit_mode[dg_obj_idx[idx]]
+                    dgram_dict['spare0'] = ''
 
+                    # adjust the sample offset if we're creating an additional offset during writing
+                    # and update the sample count.
+                    sample_offset = start_sample + dg_objects[idx].sample_offset[dg_obj_idx[idx]]
+                    dgram_dict['offset'] = sample_offset
+                    if (end_sample):
+                        sample_count = end_sample - start_sample
+                    else:
+                        if hasattr(dg_objects[idx], 'power'):
+                            sample_count = dg_objects[idx].power[dg_obj_idx[idx],start_sample:end_sample].size - start_sample
+                        elif hasattr(dg_objects[idx], 'angles_athwartship_e'):
+                            sample_count = dg_objects[idx].power[dg_obj_idx[idx],start_sample:end_sample].size - start_sample
+                    dgram_dict['count'] = sample_count
 
+                    #  initialize the beam mode
+                    mode = 0
 
-        #
-        #sorted_time_index = np.argsort(combined_time, kind='stable')
-        #
-        #sorted_time = combined_time[sorted_time_index]
-        #sorted_index = combined_index[sorted_time_index]
-        #sorted_objs = combined_objs[sorted_time_index]
+                    # If we have angle data, we have to convert it back to indexed and combine.
+                    if hasattr(dg_objects[idx], 'angles_athwartship_e'):
+                        # Convert from electrical angles to indexed.
+                        athwartship_e = (dg_objects[idx].angles_athwartship_e[dg_obj_idx[idx],start_sample:end_sample] /
+                                raw_data.INDEX2ELEC).astype('uint8')
+                        alongship_e = (dg_objects[idx].angles_alongship_e[dg_obj_idx[idx],start_sample:end_sample] /
+                                raw_data.INDEX2ELEC).astype('uint8')
+                        dgram_dict['angle'] = np.column_stack((athwartship_e,alongship_e))
 
+                        #  set the angles bit in the beam mode
+                        mode = mode | (1<<1)
 
-        print()
+                    # If we have power data, we have to convert it back to indexed
+                    if hasattr(dg_objects[idx], 'power'):
+                        dgram_dict['power'] = (dg_objects[idx].power[dg_obj_idx[idx],start_sample:end_sample] /
+                                raw_data.INDEX2POWER).astype('int16')
 
+                        # Set the power bit in the beam mode
+                        mode = mode | (1<<0)
 
+                    #  set the mode
+                    dgram_dict['mode'] = mode
 
+                    #  write it
+                    raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram_dict))
 
+                elif dg_type[idx] == 'TAG':
+                    pass
 
+                    #  write it
+                    raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram_dict))
 
+                elif dg_type[idx] == 'NME':
+                    # Set the NME0 datagram values
+                    dgram_dict['nmea_string'] = dg_objects[idx].raw_datagrams[dg_obj_idx[idx]]
 
+                    #  write it
+                    raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram_dict))
 
+                elif dg_type[idx] == 'IMU':
+                    # We don't actually write IMU datagrams for EK60 type raw files but since
+                    # we store the data as if it were asyncronous, we process it like it is.
+                    this_heave = dg_objects[idx].heave[dg_obj_idx[idx]]
+                    this_roll = dg_objects[idx].roll[dg_obj_idx[idx]]
+                    this_pitch = dg_objects[idx].pitch[dg_obj_idx[idx]]
+                    this_heading = dg_objects[idx].heading[dg_obj_idx[idx]]
+
+                    #  we don't write an IMU datagram for EK60 type raw files
+
+                else:
+                    #  we should never encounter an unknown type, but raise exception if so
+                    raise ValueError('Unknown datagram type encountered: ' + dg_type[idx] +
+                            '. This should never happen...')
+
+            # Done writing this file - close it
+            raw_fid.close()
+
+        # Writing complete, return a list of files written
+        return files_written
 
 
     def __str__(self):
