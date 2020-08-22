@@ -27,56 +27,48 @@
 import numpy as np
 
 
-class motion_data(object):
+class bottom_data(object):
     '''
-    The motion_data class stores pitch, roll, heave, and heading data
-    and provides a method to interpolate the data to your ping times.
+    The bottom_data class stores data from TAG0 datagrams in Simrad raw files.
+    It may be useful if other sonar file types have a similar annotation
     '''
 
     CHUNK_SIZE = 500
 
-    def __init__(self):
+    def __init__(self, channel_id):
 
         # Create a counter to keep track of the number of datagrams.
-        self.n_raw = 0
+        self.n_datagrams = 0
+
+        #  set the channel ID
+        self.channel_id = channel_id
 
         # Create arrays to store MRU0 data
-        self.times = np.empty(motion_data.CHUNK_SIZE, dtype='datetime64[ms]')
-        self.heave = np.empty(motion_data.CHUNK_SIZE, dtype='f')
-        self.pitch = np.empty(motion_data.CHUNK_SIZE, dtype='f')
-        self.roll = np.empty(motion_data.CHUNK_SIZE, dtype='f')
-        self.heading = np.empty(motion_data.CHUNK_SIZE, dtype='f')
+        self.times = np.empty(bottom_data.CHUNK_SIZE, dtype='datetime64[ms]')
+        self.annotation_text = np.empty(bottom_data.CHUNK_SIZE, dtype=object)
 
 
-    def add_datagram(self, motion_datagram):
+    def add_datagram(self, time, annotation_datagram):
         """
-        Add MRU0 datagram data.
+        Add annotation text
 
         Args:
-            motion_datagram (dict) - The motion datagram dictionary returned by
+            annotation_datagram (dict) - The motion datagram dictionary returned by
                     the simrad datagram parser.
 
         """
 
-        # Check if this datagram has the same time as the previous - This
-        # simply filters replicate data when used with the EK60 class.
-        if self.times[self.n_raw - 1] ==  motion_datagram['timestamp']:
-            # We already have this motion datagram stored.
-            return
 
         # Check if we need to resize our arrays.
-        if self.n_raw == self.times.shape[0]:
-            self._resize_arrays(self.times.shape[0] + motion_data.CHUNK_SIZE)
+        if self.n_datagrams == self.annotation_times.shape[0]:
+            self._resize_arrays(self.annotation_times.shape[0] + annotation_data.CHUNK_SIZE)
 
         # Add this datagram to our data arrays
-        self.times[self.n_raw] = motion_datagram['timestamp']
-        self.heave[self.n_raw] = motion_datagram['heave']
-        self.pitch[self.n_raw] = motion_datagram['pitch']
-        self.roll[self.n_raw] = motion_datagram['roll']
-        self.heading[self.n_raw] = motion_datagram['heading']
+        self.annotation_times[self.n_datagrams] = annotation_datagram['timestamp']
+        self.annotation_text[self.n_datagrams] = annotation_datagram['text']
 
         # Increment datagram counter.
-        self.n_raw += 1
+        self.n_datagrams += 1
 
 
     def interpolate(self, p_data, data_type, start_time=None, end_time=None):
@@ -103,7 +95,7 @@ class motion_data(object):
         out_data = {}
 
         # Return an empty dict if we don't contain any data
-        if self.n_raw < 1:
+        if self.n_datagrams < 1:
             return out_data
 
         # Get the index for all datagrams within the time span.
@@ -123,7 +115,7 @@ class motion_data(object):
                 # Interpolate this attribute using the time vector in the
                 # provided ping_data object
                 i_data = np.interp(p_data.ping_time.astype('d'),
-                        self.times.astype('d'), getattr(self, attribute),
+                        self.time.astype('d'), getattr(self, attribute),
                         left=np.nan, right=np.nan)
                 out_data[attribute] = i_data[return_idxs]
             except:
@@ -155,20 +147,20 @@ class motion_data(object):
         """
         #  Ensure that we have times to work with.
         if start_time is None:
-            start_time = np.min(self.times)
+            start_time = np.min(self.time)
         if end_time is None:
-            end_time = np.max(self.times)
+            end_time = np.max(self.time)
 
         # Sort time index if returning time ordered indexes.
         if time_order:
-            primary_index = self.times.argsort()
+            primary_index = self.time.argsort()
         else:
-            primary_index = self.times
+            primary_index = self.time
 
         # Determine the indices of the data that fall within the time span
         # provided.
-        mask = self.times[primary_index] >= start_time
-        mask = np.logical_and(mask, self.times[primary_index] <= end_time)
+        mask = self.time[primary_index] >= start_time
+        mask = np.logical_and(mask, self.time[primary_index] <= end_time)
 
         #  and return the indices that are included in the specified range
         return primary_index[mask]
@@ -187,7 +179,7 @@ class motion_data(object):
 
         """
 
-        self.times = np.resize(self.times,(new_size))
+        self.time = np.resize(self.time,(new_size))
         self.pitch = np.resize(self.pitch,(new_size))
         self.roll = np.resize(self.roll,(new_size))
         self.heading = np.resize(self.heading,(new_size))
@@ -202,7 +194,7 @@ class motion_data(object):
         removes empty elements of the data arrays.
         """
 
-        self._resize_arrays(self.n_raw)
+        self._resize_arrays(self.n_datagrams)
 
 
     def __str__(self):
@@ -216,11 +208,11 @@ class motion_data(object):
         msg = str(self.__class__) + " at " + str(hex(id(self))) + "\n"
 
         #  print some more info about the motion_data instance
-        if (self.n_raw > 0):
-            msg = "{0}       MRU data start time: {1}\n".format(msg, self.times[0])
-            msg = "{0}         MRU data end time: {1}\n".format(msg,self.times[self.n_raw-1])
-            msg = "{0}       Number of datagrams: {1}\n".format(msg,self.n_raw+1)
+        if (self.n_datagrams > 0):
+            msg = "{0}       MRU data start time: {1}\n".format(msg, self.time[0])
+            msg = "{0}         MRU data end time: {1}\n".format(msg,self.time[self.n_datagrams-1])
+            msg = "{0}       Number of datagrams: {1}\n".format(msg,self.n_datagrams+1)
         else:
-            msg = msg + ("  motion_data object contains no data\n")
+            msg = msg + ("  simrad_motion_data object contains no data\n")
 
         return msg

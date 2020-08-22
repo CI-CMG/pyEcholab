@@ -1,6 +1,12 @@
 '''
     Simple example showing the use of the simrad_raw_file.RawSimradFile
-    class to read datafiles recorded using the EK80 application.
+    class to inspect the basic format of datafiles recorded using the
+    EK80 application.
+    
+    Users will normally use the EK80 class to access these data. This
+    example simply shows how to access the datagrams at a low level
+    for more esoteric applications.
+    
 '''
 from util.simrad_raw_file import RawSimradFile
 

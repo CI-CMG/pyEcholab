@@ -353,8 +353,9 @@ class SimradAnnotationParser(_SimradDatagramParser):
         if version == 0:
 
             for field in self.header_fields(version):
+                if (sys.version_info.major > 2) and isinstance(data[field], str):
+                    data[field] = data[field].encode('latin_1')
                 datagram_contents.append(data[field])
-
 
             if data['text'][-1] != '\x00':
                 tmp_string = data['text'] + '\x00'
@@ -364,6 +365,10 @@ class SimradAnnotationParser(_SimradDatagramParser):
             #Pad with more nulls to 4-byte word boundry if necessary
             if len(tmp_string) % 4:
                 tmp_string += '\x00' * (4 - (len(tmp_string) % 4))
+
+            #  handle Python 3 strings
+            if (sys.version_info.major > 2):
+                tmp_string = tmp_string.encode('latin_1')
 
             datagram_fmt += '%ds' % (len(tmp_string))
             datagram_contents.append(tmp_string)

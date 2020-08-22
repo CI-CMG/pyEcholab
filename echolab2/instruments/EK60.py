@@ -42,7 +42,8 @@ from pytz import timezone
 from .util.simrad_calibration import calibration
 from .util.simrad_raw_file import RawSimradFile, SimradEOF
 from .util.nmea_data import nmea_data
-from .util.simrad_motion_data import simrad_motion_data
+from .util.motion_data import motion_data
+from .util.annotation_data import annotation_data
 from .util import simrad_parsers
 from .util import date_conversion
 from ..ping_data import ping_data
@@ -208,12 +209,11 @@ class EK60(object):
         #  motion_data is the util.simrad_motion_data object that will
         #  contain data from motion fields in the ER60 datagrams.
         #  This object has methods to extract and interpolate the motion data.
-        self.motion_data = simrad_motion_data()
+        self.motion_data = motion_data()
 
-        # annotation_data stores the contents of the TAG0 aka "annotation"
-        # datagrams. Currently we're storing the raw dict returned by the
-        # parser.
-        self.annotation_data = []
+        # annotations stores the contents of the TAG0 aka "annotation"
+        # datagrams.
+        self.annotations = annotation_data()
 
         # data_array_dims contains the dimensions of the sample and angle or
         # complex data arrays specified as [n_pings, n_samples].  Values of
@@ -239,23 +239,41 @@ class EK60(object):
         self._file_channel_map = {}
 
 
-    def read_bot(self, bot_files):
-        """Passes a list of .bot filenames to read_raw.
+    def read_bot(self, *args, nmea=False, **kwargs):
+        """Reads .bot and .out formatted bottom detection files. ER60 Mk 1 systems
+        and ES60 and ES70 systems output .out files that contain bottom detections
+        and a copy of the NMEA data that is also wrtten to the .raw files. ER60 Mk II
+        systems record bottom detections in .bot files which do not contain the
+        copy of NMEA data.
 
-
+        This method will read these files and insert the bottom detection data in
+        the appropriate raw_data object based on channel ID and data type. You can
+        use the raw_data.get_bottom() method to get a pyEcholab2 line object
+        representing the bottom detections. If you work with the bottom detection
+        data directly, remember that the depths are computed using the sound speed
+        at the time of collection. If you are using a different sound speed for
+        processing, you will need to adjust the raw bottom depths accordingly.
 
         Args:
-            bot_files (list): A list of .bot files to be read.
+            bot_files (list): A list of .bot/.out files to be read.
+            read_nmea (bool): Set this keyword to read NMEA data from .out files.
+                .out files contain a copy of NMEA datagrams that are also written
+                to the .raw file. By default these data are not read since they
+                are duplicates. If you are not reading .raw data files and do
+                want access to the NMEA data, set this leyword to True.
         """
-        self.read_raw(bot_files, start_time=self.start_time,
-                end_time=self.end_time)
 
+        # Update the kwargs with the read_nmea argument.
+        kwargs['nmea'] = nmea
+
+        # .bot and .out files share the same format as .raw files and are read
+        # using the same methods.
+        self.append_raw(*args, **kwargs)
 
 
     def read_raw(self, *args, **kwargs):
         """Reads one or more Simrad ER60 .raw files into memory. Overwrites
-        existing data (if any). The data are stored in an E680.raw_data object.
-
+        existing data (if any).
 
         Args:
             raw_files (list): List containing full paths to data files to be
@@ -298,20 +316,20 @@ class EK60(object):
 
 
     def append_raw(self, raw_files, power=None, angles=None,
-                 max_sample_count=None, start_time=None, end_time=None,
-                 start_ping=None, end_ping=None, frequencies=None,
+                 nmea=True, max_sample_count=None, start_time=None,
+                 end_time=None, start_ping=None, end_ping=None, frequencies=None,
                  channel_ids=None, time_format_string='%Y-%m-%d %H:%M:%S',
                  incremental=None, start_sample=None, end_sample=None,
-                 progress_callback=None):
+                 progress_callback=None, ):
         """Reads one or more Simrad Ex60/ES70/ME70 .raw files and appends the data to any
         existing data. The data are ordered as read.
-
 
         Args:
             raw_files (list): List containing full paths to data files to be
                 read.
             power (bool): Controls whether power data is stored
             angles (bool): Controls whether angle data is stored
+            nmea (bool): Controls whether NMEA data is stored
             max_sample_count (int): Specify the max sample count to read
                 if your data of interest is less than the total number of
                 samples contained in the instrument files.
@@ -387,6 +405,7 @@ class EK60(object):
 
             # open the raw file
             fid = RawSimradFile(filename, 'r')
+            self.n_files += 1
 
             #  read the configuration datagram - this will always be the
             #  first datagram in an EK60 raw file.
@@ -432,8 +451,8 @@ class EK60(object):
                 #  set and we hit that point.
                 finished = dg_info['finished']
 
-        #  close the file
-        fid.close()
+            #  close the file
+            fid.close()
 
         # Trim excess data from arrays after reading.
         for channel_id in self.channel_ids:
@@ -441,6 +460,7 @@ class EK60(object):
                 raw.trim()
         self.nmea_data.trim()
         self.motion_data.trim()
+        self.annotations.trim()
 
 
     def _read_config(self, fid):
@@ -456,12 +476,12 @@ class EK60(object):
         config_datagram['timestamp'] = \
                 np.datetime64(config_datagram['timestamp'], '[ms]')
 
-        # check for any new channels and add them if required
+        # Check for any new channels and add them if required
         file_channels = list(config_datagram['configuration'].keys())
         for channel_id in file_channels:
-            #  check if we're reading this channel
+            # Check if we're reading this channel
             if (not self.read_channel_ids or channel_id in self.read_channel_ids):
-                #  check if we're reading this frequency
+                # Check if we're reading this frequency
                 frequency = config_datagram['configuration'][channel_id]['frequency']
                 if (self.read_frequencies and frequency not in self.read_frequencies):
                     # There are specific frequencies specified and this
@@ -470,28 +490,37 @@ class EK60(object):
                     config_datagram['configuration'].pop(channel_id)
                     continue
 
-                #  we're reading this channel - check if it's new to us
-                if channel_id not in self.raw_data:
-                    # This is a new channel, create a list to store this
-                    # channel's raw_data objects
-                    self.raw_data[channel_id] = []
-
-                    #  add the channel to our list of channel IDs
-                    self.channel_ids.append(channel_id)
-
-                    #  increment the global and per file channel counters
-                    self.n_channels += 1
+                # We're reading this channel - Check if we have seen this channel in
+                # *this* file. If not, add it.
+                if channel_id not in self._file_channel_map:
+                    # Increment the per file channel total
                     self._file_channels += 1
-
-                    # Set the file channel number in the configuration - we need this
-                    # in certain cases when writing data.
-                    config_datagram['configuration'][channel_id]['channel_number'] = self._file_channels
 
                     #  populate the _file_channel_map which maps channel
                     #  number to channel id *for this file only*.
                     self._file_channel_map[self._file_channels] = channel_id
 
-                    #  and populate the frequency and channel maps
+                    # Set the file channel number in the configuration - we need this
+                    # in certain cases when writing data.
+                    config_datagram['configuration'][channel_id]['channel_number'] = self._file_channels
+
+                # Check if we've seen this channel in any of the data
+                if channel_id not in self.raw_data:
+                    # This is a new channel, create a list to store this channel's raw_data objects.
+                    # The raw_data objects are stored in a list because with the introduction of the
+                    # EK80 different types of data can be stored in a raw file and the raw_data object
+                    # was designed to contain a single data type. While this is not required for EK60
+                    # data, the API was changed to match the EK80 and I suppose in rare cases will
+                    # improve memory utilization if mixing data types when reading EK60 data.
+                    self.raw_data[channel_id] = []
+
+                    #  add the channel to our list of channel IDs
+                    self.channel_ids.append(channel_id)
+
+                    #  increment the global channel total
+                    self.n_channels += 1
+
+                    # and populate the frequency and channel maps
                     this_freq = config_datagram['configuration'][channel_id]['frequency']
                     if this_freq in self.frequency_map:
                         self.frequency_map[this_freq].append(channel_id)
@@ -499,7 +528,7 @@ class EK60(object):
                         self.frequency_map[this_freq] = [channel_id]
                     self.channel_map[self.n_channels] = channel_id
 
-        #  return the configuration datagram dict
+        # Return the configuration datagram dict
         return config_datagram
 
 
@@ -555,7 +584,7 @@ class EK60(object):
 
         #  update the ping counter
         if new_datagram['type'].startswith('RAW'):
-
+            #  make sure this is a unique time
             if self._this_ping_time != new_datagram['timestamp']:
                 self.n_pings += 1
                 self._this_ping_time = new_datagram['timestamp']
@@ -591,7 +620,6 @@ class EK60(object):
             self.end_time = new_datagram['timestamp']
 
         # Process and store the datagrams by type.
-
 
         # RAW datagrams store raw acoustic data for a channel.
         if new_datagram['type'].startswith('RAW'):
@@ -638,13 +666,9 @@ class EK60(object):
                     end_sample=self.read_end_sample)
 
             # Store the motion data in the motion data object
-            motion_datagram = {}
-            motion_datagram['timestamp'] = new_datagram['timestamp']
-            motion_datagram['heave'] = new_datagram['heave']
-            motion_datagram['pitch'] = new_datagram['pitch']
-            motion_datagram['roll'] = new_datagram['roll']
-            motion_datagram['heading'] = new_datagram['heading']
-            self.motion_data.add_datagram(motion_datagram)
+            self.motion_data.add_datagram(new_datagram['timestamp'],
+                    new_datagram['heave'], new_datagram['pitch'],
+                    new_datagram['roll'], new_datagram['heading'])
 
         # NME datagrams store ancillary data as NMEA-0183 style ASCII data.
         elif new_datagram['type'].startswith('NME'):
@@ -653,11 +677,38 @@ class EK60(object):
                     new_datagram['nmea_string'])
 
         # TAG datagrams contain time-stamped annotations inserted via the
-        # recording software.
+        # recording software. They are not associated with a specific channel
         elif new_datagram['type'].startswith('TAG'):
-            # Currently we store the raw annotation datagrams. A bit rough
-            # but you can get at what you need.
-            self.annotation_data.append(new_datagram)
+            # Add this datagram to our annotation_data object
+            self.annotations.add_datagram(new_datagram['timestamp'],
+                    new_datagram['text'])
+
+        # BOT datagrams contain bottom detections - these data are synchronous
+        # with the RAW datagrams
+        elif new_datagram['type'].startswith('BOT'):
+            # iterate through the channels in this .bot file
+            for i in range(self._file_channels):
+                # Get this channel's ID
+                this_chan = self._file_channel_map[i + 1]
+
+                # Check if we have data for this channel
+                if this_chan in self.raw_data:
+                    # This is hokey, but there is no way to know which data object
+                    # this depth applies to so we just try for all data objects.
+                    for data in self.raw_data[this_chan]:
+                        # In order to avoid checking the index array below for every
+                        # chan/datatype, we'll check for and add if needed the
+                        # bottom detection attribute to alldata objects if any
+                        # bottom data is read.
+                        if not hasattr(data, 'detected_bottom'):
+                            # This data object doesn't have the detected_bottom attribute.
+                            # Create and add it.
+                            new_attr = np.full((data.ping_time.shape), np.nan, np.float32)
+                            data.add_data_attribute('detected_bottom', new_attr)
+
+                        # Get the index of this detection and insert into data object
+                        idx = data.ping_time == new_datagram['timestamp']
+                        data.detected_bottom[idx] = new_datagram['depth'][i]
 
         # XML datagrams contain contain data encoded as an XML string.
         elif new_datagram['type'].startswith('XML'):
@@ -675,6 +726,35 @@ class EK60(object):
         elif new_datagram['type'].startswith('MRU'):
             # append this motion datagram to the motion_data object
             self.motion_data.add_datagram(new_datagram)
+
+        # DEP datagrams contain bottom detection and "reflectivity" data
+        elif new_datagram['type'].startswith('DEP'):
+            # iterate through the channels in this .out file
+            for i in range(self._file_channels):
+                # Get this channel's ID
+                this_chan = self._file_channel_map[i + 1]
+
+                # Check if we have data for this channel
+                if this_chan in self.raw_data:
+                    # This is hokey, but there is no way to know which data object
+                    # this depth applies to so we just try for all data objects.
+                    for data in self.raw_data[this_chan]:
+                        # In order to avoid checking the index array below for every
+                        # chan/datatype, we'll check for and add if needed the
+                        # bottom detection and reflectivity attributes to all
+                        # data objects if any bottom data is read.
+                        if not hasattr(data, 'detected_bottom'):
+                            # This data object doesn't have the detected_bottom
+                            # and reflectivity attributes. Create and add them.
+                            new_attr = np.full((data.ping_time.shape), np.nan, np.float32)
+                            data.add_data_attribute('detected_bottom', new_attr)
+                            new_attr = np.full((data.ping_time.shape), np.nan, np.float32)
+                            data.add_data_attribute('reflectivity', new_attr)
+
+                        # Get the index of this detection and insert into data object
+                        idx = data.ping_time == new_datagram['timestamp']
+                        data.detected_bottom[idx] = new_datagram['depth'][i]
+                        data.reflectivity[idx] = new_datagram['reflectivity'][i]
 
         else:
             #  report an unknown datagram type
@@ -779,7 +859,7 @@ class EK60(object):
                 for channel_id in channel_ids:
                     channel_data.append(self.raw_data.get(channel_id, []))
             else:
-                channel_data = [[]]
+                channel_data = []
 
         elif channel_number is not None:
             # channel_number id is specified.
@@ -788,9 +868,9 @@ class EK60(object):
             # be at most one match
             try:
                 channel_id = self.channel_map[channel_number]
-                channel_data = [self.raw_data.get(channel_id, [])]
+                channel_data = self.raw_data.get(channel_id, [])
             except:
-                channel_data = [[]]
+                channel_data = []
 
         else:
             # Channel id not specified - return all in a list of lists
@@ -821,7 +901,7 @@ class EK60(object):
 
             #  work thru the channel ids and add if they exist
             for id in channel_id:
-                channel_data[id] = [self.raw_data.get(id, None)]
+                channel_data[id] = self.raw_data.get(id, None)
 
         elif frequency is not None:
             # frequency is specified
@@ -832,8 +912,8 @@ class EK60(object):
 
             # and work through the freqs, adding if they exist
             for freq in frequency:
-                id = self.frequency_map.get(freq, None)
-                channel_data[freq] = [self.raw_data.get(id, None)]
+                id = self.frequency_map.get(freq, [None])[0]
+                channel_data[freq] = self.raw_data.get(id, None)
 
         elif channel_number is not None:
             # channel_number is specified.
@@ -845,7 +925,7 @@ class EK60(object):
             # and work through the numbers, adding if they exist
             for num in channel_number:
                 id = self.channel_map.get(num, None)
-                channel_data[num] = [self.raw_data.get(id, None)]
+                channel_data[num] = self.raw_data.get(id, None)
 
         else:
             # Channel id not specified - return all in a dict keyed by channel ID
@@ -1003,7 +1083,6 @@ class EK60(object):
                              'CON':0,
                              'IMU':0}
 
-
         # Because a user can load multiple .raw files into an ER60 object, and those
         # .raw files can contain data from various system configurations, we need to
         # write potentially different configurations as separate files to ensure the
@@ -1129,13 +1208,18 @@ class EK60(object):
             async_end_time = dg_times[-1] - async_window_secs
 
             # Next, add the annotation data
-            # ANNOTATION CLASS NEEDS TO BE UPDATED USING A PATTERN SIMILAR TO
-            # THE NMEA AND MOTION CLASSES.
+            annotation_idx = self.annotations.get_indices(start_time=async_start_time,
+                end_time=async_end_time)
+            times = self.annotations.times[annotation_idx]
+            dg_times = np.insert(dg_times, 0, times)
+            dg_objects = np.insert(dg_objects, 0, np.repeat(self.annotations, times.size))
+            dg_obj_idx = np.insert(dg_obj_idx, 0, annotation_idx)
+            dg_type = np.insert(dg_type, 0, np.repeat('TAG', times.size))
 
             # Then the motion data using our new time window
             motion_idx = self.motion_data.get_indices(start_time=async_start_time,
                         end_time=async_end_time)
-            times = self.motion_data.time[motion_idx]
+            times = self.motion_data.times[motion_idx]
             dg_times = np.insert(dg_times, 0, times)
             dg_objects = np.insert(dg_objects, 0, np.repeat(self.motion_data, times.size))
             dg_obj_idx = np.insert(dg_obj_idx, 0, motion_idx)
@@ -1175,6 +1259,11 @@ class EK60(object):
                 raise IOError('File %s already exists and overwrite == False.' %(outfile_name))
             raw_fid = open(outfile_name, 'wb')
 
+            # Initialize some vars to track our progress
+            bytes_written = 0
+            cumulative_pct = -1
+            datagrams_processed = 0
+
             #  keep track of the files we're writing to return to caller
             files_written.append(outfile_name)
 
@@ -1186,7 +1275,7 @@ class EK60(object):
                     data_by_file[infile][channel][0]['configuration']
 
             #  pack config dict into raw byte stream and write
-            raw_fid.write(DGRAM_PARSE_KEY['CON'].to_string(config_dict))
+            bytes_written += raw_fid.write(DGRAM_PARSE_KEY['CON'].to_string(config_dict))
 
             #  now write out all the rest of the datagrams
             for idx in range(n_datagrams):
@@ -1255,20 +1344,21 @@ class EK60(object):
                     dgram_dict['mode'] = mode
 
                     #  write it
-                    raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram_dict))
+                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram_dict))
 
                 elif dg_type[idx] == 'TAG':
-                    pass
+                    # Set the annotation text datagram value
+                    dgram_dict['text'] = dg_objects[idx].text[dg_obj_idx[idx]]
 
                     #  write it
-                    raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram_dict))
+                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram_dict))
 
                 elif dg_type[idx] == 'NME':
                     # Set the NME0 datagram values
                     dgram_dict['nmea_string'] = dg_objects[idx].raw_datagrams[dg_obj_idx[idx]]
 
                     #  write it
-                    raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram_dict))
+                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram_dict))
 
                 elif dg_type[idx] == 'IMU':
                     # We don't actually write IMU datagrams for EK60 type raw files but since
@@ -1284,6 +1374,24 @@ class EK60(object):
                     #  we should never encounter an unknown type, but raise exception if so
                     raise ValueError('Unknown datagram type encountered: ' + dg_type[idx] +
                             '. This should never happen...')
+
+                #  call progress callback if supplied
+                if (progress_callback):
+                    #  determine the progress as percent.
+                    pct_progress = round(datagrams_processed / n_datagrams * 100.)
+
+                    #  call the callback when the percent changes
+                    if cumulative_pct != pct_progress:
+                        # Call the provided callback - the callback has 3 args,
+                        # the first is the full path to the current file and the
+                        # second is the percent written and the third is the bytes
+                        # written.
+                        progress_callback(outfile_name, pct_progress, bytes_written)
+                        cumulative_pct = pct_progress
+
+                # Increment our datagram counter - do this after the progress callback
+                # block to ensure we emit a 0 percent callback
+                datagrams_processed += 1
 
             # Done writing this file - close it
             raw_fid.close()
@@ -1402,6 +1510,8 @@ class raw_data(ping_data):
             max_sample_number (int): Integer specifying the maximum number of
                 samples that will be stored in this instance's data arrays.
         """
+
+        # Initialize the superclass
         super(raw_data, self).__init__()
 
         # Specify if data array size is fixed and the array data is rolled left
@@ -1529,8 +1639,8 @@ class raw_data(ping_data):
         max_data_samples = []
 
         # The contents of the first ping appended to a raw_data object defines
-        # thedata_type and determines how the data arrays will be created. Also,
-        # since a raw_data object can only store onedata_type, we disable saving
+        # the data_type and determines how the data arrays will be created. Also,
+        # since a raw_data object can only store one data_type, we disable saving
         # of the other types.
         if self.n_pings == -1:
 
@@ -2047,7 +2157,7 @@ class raw_data(ping_data):
         if np.all(np.isclose(sv_recorded, cal_parms['sound_velocity'])):
             converted_depths = self.detected_bottom[return_indices]
         else:
-            cf = sv_recorded / cal_parms['sound_velocity']
+            cf = cal_parms['sound_velocity'].astype('float') / sv_recorded
             converted_depths = cf * self.detected_bottom[return_indices]
 
         # Check if we're returning range by subtracting a transducer offset.
@@ -2056,8 +2166,8 @@ class raw_data(ping_data):
             converted_depths -= cal_parms['transducer_depth'][return_indices]
 
         # Create a line object to return with our adjusted data.
-        bottom_line = line.Line(ping_time=self.ping_time[return_indices],
-                data=converted_depths)
+        bottom_line = line.line(ping_time=self.ping_time[return_indices],
+                data=converted_depths, **kwargs)
 
         return bottom_line
 
@@ -2562,6 +2672,7 @@ class raw_data(ping_data):
         self.transmit_mode = np.empty((n_pings), np.uint8)
         self.sample_offset =  np.empty((n_pings), np.uint32)
         self.sample_count = np.empty((n_pings), np.uint32)
+
 
         #  and the 2d sample data arrays
         if create_power and self.store_power:

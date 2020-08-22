@@ -33,9 +33,8 @@
 import copy
 import numpy as np
 
-
 class ping_data(object):
-    """echolab2.ping_data is the base class for all classes that store "ping"
+    """echolab2.ping_data is the base class for all classes that store time
     based data from fisheries sonar systems.
 
     This class is not intended to be instantiated by the user. It is a base
@@ -48,7 +47,7 @@ class ping_data(object):
     sample power and sample angle data.
 
     One major assumption is that all data stored within an instance of our
-    derived classes must exist on the same "time grid". It is assumed that the
+    derived classes must exist on the same time grid. It is assumed that the
     index of a specific ping time should map to other attributes collected at
     that time. As a result, all attributes should share the same primary
     dimension.
@@ -869,7 +868,7 @@ class ping_data(object):
 
 
     def get_indices(self, start_ping=None, end_ping=None, start_time=None,
-                    end_time=None, time_order=True):
+                    end_time=None, time_order=True, **_):
         """Returns a index array containing where the indices in the
         range defined by the times and/or ping numbers provided are True.
 

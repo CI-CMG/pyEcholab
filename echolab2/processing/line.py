@@ -104,7 +104,7 @@ class line(ping_data):
     """
 
     def __init__(self, ping_time=None, data=None, color=[0.58, 0.0, 0.83],
-                 name='line', linestyle='solid', linewidth=1.0):
+                 name='line', linestyle='solid', linewidth=1.0, **_):
         """Initializes line class object.
 
         Creates and sets several internal properties.

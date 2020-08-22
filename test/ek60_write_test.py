@@ -1,26 +1,52 @@
 # -*- coding: utf-8 -*-
 """
+ek60_write_test.py
+
+This script can be used to test the writing of EK60 data to .raw files. It will
+read in one or more .raw files, write them to disk, then read the re-written
+file and compare the original to the re-written file.
+
+A successful round trip will result in data that differs no more than +-0.0118 dB
+These differences are due to the effects of converting from the 16 bit linear
+sample data to the "EK500 DB Format" as 32-bit float, then back to the packed
+16 bit value.
+
+While significant effort was made to ensure the write_raw method creates sane files,
+pyEcholab gives you a lot of flexibility when working with raw data and you can
+quickly run into issues when combining data from different sources or modifying
+data and writing the results.
 """
-import numpy as np
+
 from echolab2.instruments import EK60
-import echolab2.processing.processed_data as processed_data
 from echolab2.plotting.matplotlib import echogram
 import matplotlib.pyplot as plt
 
 
+# This test script can and should be run with different files to test as many instrument
+# configurations and file combinations as possible. There are a couple of different files
+# defined below. You can change the list passed to the ek60.read_raw() method to try
+# the different files below or add your own.
 
+# Define the files that we will work with. The simplest test we can do is with a single file
+# When using this input, the example will create a single output file that is functionally
+# identical to the original. The script will then generate figures for each of the five
+# channels in the file.
+one_file = ['../examples/data/EK60/DY1706_EK60-D20170609-T005736.raw']
 
+# Spice it up with two different files. These two files were recorded 5 years apart
+# with different system settings. Further, while the hardware is the same, the transceiver
+# installation is different between the two files so the EK60 class rightly treats
+# them as different channels and the channel numbers for the second file are re-mapped
+# (you will see this when the EK60 object is printed.) This tests the EK60 class's
+# ability to identify file boundaries, group data correctly, and remap channel
+# numbers back to the original values.
+#
+# By default, the ER60 class will write an output file for each input file you have read.
+# In this case we're reading two files and we will write two files.
+two_files = ['../examples/data/EK60/DY1706_EK60-D20170609-T005736.raw',
+             '../examples/data/EK60/DY1201_EK60-D20120214-T231011.raw']
 
-# Define the files that we will work with. While significant effort was made to ensure
-# the write_raw method creates sane files, pyEcholab gives you a lot of flexibility when
-# working with raw data and you can quickly run into issues when combining data from
-# different sources.
-two_files = ['C:/Users/rick.towler/Work/AFSCGit/pyEcholab/examples/data/EK60/DY1201_EK60-D20120214-T231011.raw',
-            'C:/Users/rick.towler/Work/AFSCGit/pyEcholab/examples/data/EK60/DY1706_EK60-D20170609-T005736.raw']
-
-
-one_file = ['C:/Users/rick.towler/Work/AFSCGit/pyEcholab/examples/data/EK60/DY1706_EK60-D20170609-T005736.raw']
-
+#  specify the output path AND file name header
 out_file = 'C:/Temp_EK_Test/EK-Raw-Write-Test'
 
 # Create an instance of the EK60 instrument. The EK60 class represents a

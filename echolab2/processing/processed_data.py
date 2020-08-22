@@ -461,7 +461,11 @@ class processed_data(ping_data):
         # size or type checks.
         for attr_name in self._object_attributes:
             attr = getattr(self, attr_name)
-            setattr(p_data, attr_name, attr.copy())
+            if isinstance(attr, str):
+                # Strings are imutable and thus are always copies
+                setattr(p_data, attr_name, attr)
+            else:
+                setattr(p_data, attr_name, attr.copy())
 
         # Work through the data attributes, slicing them and adding to the new
         # processed_data object.
@@ -862,8 +866,8 @@ class processed_data(ping_data):
         heading data in the provided "motion object" to this object's time
         axis and add them as attributes
 
-        When using the EK80 class, the motion_object is stored in
-        the motion_data attribute. The EK60
+        The motion_object is stored in the motion_data attribute of the
+        EK60/EK80 object.
 
         p_data.set_motion(ek80.motion_data)
         """

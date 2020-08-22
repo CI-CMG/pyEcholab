@@ -48,19 +48,21 @@ class motion_data(object):
         self.heading = np.empty(motion_data.CHUNK_SIZE, dtype='f')
 
 
-    def add_datagram(self, motion_datagram):
+    def add_datagram(self, time, heave, pitch, roll, heading):
         """
         Add MRU0 datagram data.
 
         Args:
-            motion_datagram (dict) - The motion datagram dictionary returned by
-                    the simrad datagram parser.
-
+            time (datetime64)
+            heave (float)
+            pitch (float)
+            roll (float)
+            heading (float)
         """
 
         # Check if this datagram has the same time as the previous - This
         # simply filters replicate data when used with the EK60 class.
-        if self.times[self.n_raw - 1] ==  motion_datagram['timestamp']:
+        if self.times[self.n_raw - 1] ==  time:
             # We already have this motion datagram stored.
             return
 
@@ -69,11 +71,11 @@ class motion_data(object):
             self._resize_arrays(self.times.shape[0] + motion_data.CHUNK_SIZE)
 
         # Add this datagram to our data arrays
-        self.times[self.n_raw] = motion_datagram['timestamp']
-        self.heave[self.n_raw] = motion_datagram['heave']
-        self.pitch[self.n_raw] = motion_datagram['pitch']
-        self.roll[self.n_raw] = motion_datagram['roll']
-        self.heading[self.n_raw] = motion_datagram['heading']
+        self.times[self.n_raw] = time
+        self.heave[self.n_raw] = heave
+        self.pitch[self.n_raw] = pitch
+        self.roll[self.n_raw] = roll
+        self.heading[self.n_raw] = heading
 
         # Increment datagram counter.
         self.n_raw += 1
