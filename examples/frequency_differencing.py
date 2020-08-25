@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """This example script demonstrates the use of numeric and boolean operators
-on ProcessedData and Mask objects. It also provides an example of using the
-ProcessedData.zeros_like() method to get an ProcessedData array we can use
+on processed_data and Mask objects. It also provides an example of using the
+processed_data.zeros_like() method to get an processed_data array we can use
 to fill with the results of our simple analysis.  Lastly, it shows how to use
-the ProcessedData.view() method to plot a subset of the data.
+the processed_data.view() method to plot a subset of the data.
 
 Note that this example is not intended to be an example of how to really do
-frequency differencing.
+frequency differencing, just the techniques needed to implement it.
 """
 
 from matplotlib.pyplot import figure, show, subplots_adjust
@@ -37,25 +37,28 @@ ek60.read_raw(rawfiles, frequencies=[18000, 38000, 120000])
 print('Reading the bot files...')
 ek60.read_bot(botfiles)
 
-# Get the RawData objects from the ek60 object.  We'll call get_raw_data
-# with no arguments to get a dict keyed by channel id of all the channels in
-# the data.
-raw_data = ek60.get_raw_data()
+# Get the raw_data objects from the ek60 object. We request data by
+# frequency which will return a dict keyed by frequency containing
+# the raw data.
+raw_data = ek60.get_channel_data(frequency=[18000, 38000, 120000])
 
-# Get the Sv for the frequencies we're looking for and put in a dictionary
-# keyed by frequency. Note that I am aware that this approach would not work
-# if there are multiple channels with the same frequency.
+# Get Sv and bottom data
 Sv_data = {18000: None, 38000: None, 120000: None}
 bottom_lines = {18000: None, 38000: None, 120000: None}
-for chan_id in raw_data:
-    # Check if this is a frequency we're looking for.
-    if (raw_data[chan_id].frequency[0] in Sv_data.keys()):
-        # It is, so get Sv and assign it to our dictionary.
-        Sv_data[raw_data[chan_id].frequency[0]] = \
-            raw_data[chan_id].get_Sv()
-        print(Sv_data[raw_data[chan_id].frequency[0]])
-        bottom_lines[raw_data[chan_id].frequency[0]] = \
-            raw_data[chan_id].get_bottom()
+for freq in raw_data:
+    if freq in Sv_data:
+
+        # get the first raw_data object for this frequency
+        data = raw_data[freq][0]
+
+        # get a calibration object for this channel - this returns a
+        # cal object populated with values from the raw data.
+        cal_obj = data.get_calibration()
+
+        # Get Sv and bottom data for this frequency
+        Sv_data[freq] = data.get_Sv(calibration=cal_obj)
+        print(Sv_data[freq])
+        bottom_lines[freq] = data.get_bottom(calibration=cal_obj)
 
 # Now create a mask for each frequency and apply surface and bottom lines
 # to these masks such that we mask out samples near the surface and below the
@@ -67,14 +70,14 @@ masks = {18000: None, 38000: None, 120000: None}
 for freq in Sv_data.keys():
 
     # Create a mask.
-    masks[freq] = mask.Mask(like=Sv_data[freq])
+    masks[freq] = mask.mask(like=Sv_data[freq])
 
     # Next create a new line that is 0.5m shallower. (in place operators will
     # change the existing line.)
     bot_line = bottom_lines[freq] - 0.5
 
     # Now create a surface exclusion line at 10m RANGE.
-    surf_line = line.Line(ping_time=Sv_data[freq].ping_time, data=10)
+    surf_line = line.line(ping_time=Sv_data[freq].ping_time, data=10)
 
     # Now apply that line to our mask.  We apply the value True BELOW our
     # line.  Note that we don't need to specify the value as True is the
@@ -89,12 +92,12 @@ for freq in Sv_data.keys():
     Sv_data[freq][masks[freq]] = np.nan
 
 # Now lets compute some differences - the process_data class implements the
-# basic Python arithmetic operators so we can simply subtract ProcessedData
+# basic Python arithmetic operators so we can simply subtract processed_data
 # objects like numeric objects.  Both,
 #
 # "regular": +, -, *, /  and  "in-place": +=, -=, *=, /=
 #
-# operators are implemented.  Regular operators return a new ProcessedData
+# operators are implemented.  Regular operators return a new processed_data
 # object with the same general properties containing the results of your
 # operation.  The in-place operators will alter the data in the left hand side
 # argument.
@@ -109,11 +112,11 @@ Sv_120m38 = Sv_data[120000] - Sv_data[38000]
 # Now we'll generate some masks identifying samples that fall within various
 # ranges.
 #
-# The ProcessedData object also implements the Python comparison operators.
+# The processed_data object also implements the Python comparison operators.
 # These operators do an element by element comparison and will return a Mask
 # object with samples set to the result of the comparison.
 
-# For example, this operation will return a Mask object where samples in the
+# For example, this operation will return a mask object where samples in the
 # Sv_18m38 "channel" with a value greater than 6 will be set to True.  All
 # other samples will be False.
 jellies = Sv_18m38 > 6

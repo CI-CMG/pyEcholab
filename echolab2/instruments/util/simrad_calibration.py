@@ -392,50 +392,83 @@ class calibration(object):
         if param_name not in raw_attribute[0]:
             return None
 
-        # Determine the data type and size of the param and create empty array
-        if isinstance(raw_attribute[0][param_name], np.ndarray):
-            dtype = raw_attribute[0][param_name].dtype
-            dsize = (return_indices.shape[0], raw_attribute[0][param_name].shape[0])
-        elif isinstance(raw_attribute[0][param_name], int):
-            dtype = np.int32
-            dsize = (return_indices.shape[0])
-        elif isinstance(raw_attribute[0][param_name], float):
-            dtype = np.float32
-            dsize = (return_indices.shape[0])
-        else:
-            dtype = 'object'
-            dsize = (return_indices.shape[0])
-        param_data = np.empty(dsize, dtype=dtype)
-
-        # Populate the empty array - track the parameter value to determine
-        # if the parameter is constant throughout all specified pings. If
-        # constant, we'll return a scalar. Numpy array_equal doesn't always
-        # return what we need so it has to be done element wise
-        ret_idx = 0
-        param_is_constant = True
-        last_val = None
+        # Determine the data type and size of the param and create empty array.
+        # Since we can have "empty" pings where the array of dicts we're unpacking
+        # may contain NaNs, we can't assume the first (or any) ping will contain
+        # data and have to search for the first dict in the array.
+        found_data = False
         for idx in return_indices:
-            if last_val is None:
-                # Nothing to compare yet so set the first item to compare
-                last_val = raw_attribute[idx][param_name]
-            else:
-                #  check if our value has changed
-                if param_data.ndim > 1:
-                    param_is_constant &= np.array_equal(raw_attribute[idx][param_name], last_val)
+            # Check if this attribute is a dict
+            if isinstance(raw_attribute[idx], dict):
+                # Yes - now get the size and type of this data
+                if isinstance(raw_attribute[idx][param_name], np.ndarray):
+                    dtype = raw_attribute[idx][param_name].dtype
+                    dsize = (return_indices.shape[0], raw_attribute[idx][param_name].shape[0])
+                elif isinstance(raw_attribute[idx][param_name], int):
+                    dtype = np.int32
+                    dsize = (return_indices.shape[0])
+                elif isinstance(raw_attribute[idx][param_name], float):
+                    dtype = np.float32
+                    dsize = (return_indices.shape[0])
                 else:
-                    param_is_constant &= raw_attribute[idx][param_name] == last_val
+                    dtype = 'object'
+                    dsize = (return_indices.shape[0])
 
-            #  insert this param value into the param_data array
-            if param_data.ndim == 1:
-                param_data[ret_idx] = raw_attribute[idx][param_name]
-            elif param_data.ndim == 2:
-                param_data[ret_idx,:] = raw_attribute[idx][param_name][:]
-            ret_idx += 1
+                # Create the return array
+                param_data = np.empty(dsize, dtype=dtype)
 
-        # Check if our param value was constant
-        if param_is_constant:
-            # It was, return a scalar
-            param_data = last_val
+                # And set the comparison value
+                first_val = raw_attribute[idx][param_name]
+
+                # We found a valid dict, we can stop searching
+                found_data = True
+                break;
+
+        #  check if we found any data
+        if found_data:
+            # Populate the empty array - track the parameter value to determine
+            # if the parameter is constant throughout all specified pings. If
+            # constant, we'll return a scalar. Numpy array_equal doesn't always
+            # return what we need so it has to be done element wise
+            data_idx = 0
+            param_is_constant = True
+            for idx in return_indices:
+                # Get this idx's value - raw_attribute[idx] will be a dict or NaN
+                if isinstance(raw_attribute[idx], dict):
+                    # It is a dict, extract the value
+                    if param_data.ndim == 1:
+                        this_val = raw_attribute[idx][param_name]
+                    elif param_data.ndim == 2:
+                        this_val = raw_attribute[idx][param_name][:]
+                else:
+                    this_val = first_val
+#                    if np.issubdtype(dtype, np.inexact):
+#                        this_val = np.nan
+#                    elif np.issubdtype(dtype, np.exact):
+#                        this_val = 0
+#                    else:
+#                        this_val = ''
+#
+#                    # Expand the empty value if required
+#                    if param_data.ndim == 2:
+#                        this_val = np.full(dsize[1], this_val)
+
+                # Assign the value to the return array and check if our it has changed
+                if param_data.ndim == 1:
+                    param_data[data_idx] = this_val
+                    param_is_constant &= this_val == first_val
+                else:
+                    param_data[data_idx,:] = this_val
+                    param_is_constant &= np.array_equal(this_val, first_val)
+
+            # Check if our param value was constant
+            if param_is_constant:
+                # It was, return a scalar
+                param_data = first_val
+
+        else:
+            # There was no data found - in these cases we return NaN
+            param_data = np.nan
 
         return param_data
 

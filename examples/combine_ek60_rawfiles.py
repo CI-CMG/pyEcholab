@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-combined_ek60_rawfiles is an example showing how to combine two different
+combine_ek60_rawfiles is an example showing how to combine two different
 raw files into a single raw file. It reads the two files, writes a combined
 file to disk, then reads this combined file and plots the original and
 re-written data. It also provides a simple example of using the progress
@@ -16,11 +16,8 @@ The means that if one wants to combine two or more files, the references
 to the configuration data must be updated in all raw_data objects to point
 to a single configuration dictionary. Obviously this should only be done
 when you know that the files you are combining were all recorded using
-the same system parameters*
-
-
-*There is *some* wiggle room here but you really need to know what you are
-doing if you stray outside the lines. For example,
+the same system parameters (There is *some* wiggle room here but you really
+need to know what you are doing if you stray outside the lines.)
 
 
 """

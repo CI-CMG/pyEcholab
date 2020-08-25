@@ -1590,9 +1590,10 @@ class raw_data(ping_data):
         # properties as this object.  Return the empty raw_data object.
         empty_obj = raw_data(self.channel_id, n_pings=n_pings,
                 n_samples=self.n_samples, rolling=self.rolling_array,
-                chunk_width=n_pings, store_power=self.store_power,
-                store_angles=self.store_angles,
+                store_power=self.store_power, store_angles=self.store_angles,
                 max_sample_number=self.max_sample_number)
+
+        empty_obj.data_type = self.data_type
 
         return self._like(empty_obj, n_pings, np.nan, empty_times=True)
 
@@ -2837,14 +2838,17 @@ class ek60_calibration(calibration):
         # Now handle attributes that need some special handling
 
         # sa_correction is't explicitly defined in the calibration object. It
-        # has to be pulled from the sa_correction_table
+        # has to be pulled from the sa_correction_table.
         if param_name == 'sa_correction':
             param_data = np.empty((return_indices.shape[0]), dtype=np.float32)
             for i in range(return_indices.shape[0]):
-                config_obj = raw_data.configuration[return_indices[i]]
-                table_mask = np.isclose(config_obj['pulse_length_table'],
-                        [raw_data.pulse_length[return_indices[i]]])
-                param_data[i] = config_obj['sa_correction_table'][table_mask][0]
+                if not np.isnan(raw_data.pulse_length[return_indices[i]]):
+                    config_obj = raw_data.configuration[return_indices[i]]
+                    table_mask = np.isclose(config_obj['pulse_length_table'],
+                            [raw_data.pulse_length[return_indices[i]]])
+                    param_data[i] = config_obj['sa_correction_table'][table_mask][0]
+            else:
+                param_data[i] = np.nan
 
         return param_data
 

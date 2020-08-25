@@ -246,7 +246,7 @@ class processed_data(ping_data):
 
 
     def insert(self, obj_to_insert, ping_number=None, ping_time=None,
-               insert_after=True, index_array=None):
+               insert_after=True, index_array=None, force=False):
         """Inserts the data from the provided echolab2.processed_data object
         into this object.
 
@@ -276,6 +276,8 @@ class processed_data(ping_data):
                     start_ping=ping_number, end_ping=ping_number)[0]
             n_inserting = self.n_pings - in_idx
         else:
+            if isinstance(index_array, list):
+                index_array = np.array(index_array).astype('uint32')
             n_inserting = index_array.shape[0]
 
         if obj_to_insert is None:
@@ -284,7 +286,8 @@ class processed_data(ping_data):
             obj_to_insert = self.empty_like(n_inserting, empty_times=True)
 
         # Check that the data types are the same.
-        if self.data_type != obj_to_insert.data_type:
+
+        if self.data_type != obj_to_insert.data_type and not force:
             raise TypeError('You cannot insert an object that contains ' +
                     obj_to_insert.data_type + ' data into an object that ' +
                     'contains ' + self.data_type + ' data.')
@@ -303,7 +306,8 @@ class processed_data(ping_data):
         # We are now coexisting in harmony - call parent's insert.
         super(processed_data, self).insert(obj_to_insert,
                 ping_number=ping_number, ping_time=ping_time,
-                insert_after=insert_after, index_array=index_array)
+                insert_after=insert_after, index_array=index_array,
+                force=force)
 
 
     def empty_like(self, n_pings=None, empty_times=False, channel_id=None,
@@ -345,7 +349,7 @@ class processed_data(ping_data):
         if channel_id:
             channel_id = channel_id
         else:
-            channel_id = None
+            channel_id = self.channel_id
 
         # Get an empty processed_data object "like" this object.
         empty_obj = processed_data(channel_id, self.frequency, data_type)

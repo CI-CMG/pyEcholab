@@ -105,11 +105,11 @@ class Echogram(object):
                              "subplot specifying where the echogram will be "
                              "rendered.")
 
-        # Store a reference to our PingData or ProcessedData object.
+        # Store a reference to our ping_data or ProcessedData object.
         self.data_object = data_object
 
-        # The data attribute is only required when plotting PingData objects.
-        # If not provided, we assume we're plotting a ProcessedData object
+        # The data attribute is only required when plotting ping_data objects.
+        # If not provided, we assume we're plotting a processed_data object
         # whose data attribute is "data".
         if data_attribute:
             if not hasattr(self.data_object, data_attribute):

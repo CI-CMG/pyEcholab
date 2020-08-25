@@ -228,7 +228,7 @@ class ping_data(object):
 
 
     def replace(self, obj_to_insert, ping_number=None, ping_time=None,
-                index_array=None, _ignore_vertical_axes=False):
+                index_array=None, _ignore_vertical_axes=False, force=False):
         """Replaces the data in this object with the data provided in the
         object to "insert".
 
@@ -277,13 +277,13 @@ class ping_data(object):
                             str(self.__class__))
 
         # Make sure the data types are the same
-        if self.data_type != obj_to_insert.data_type:
+        if self.data_type != obj_to_insert.data_type and not force:
             raise TypeError('The object you are inserting  does not have the same data ' +
                     'type as this object. This data type: ' + self.data_type +
                     ' object to insert data type: ' + obj_to_insert.data_type)
 
         #  if complex, make sure the number of sectors are the same
-        if self.data_type == 'complex':
+        if self.data_type == 'complex' and not force:
             if self.n_complex != obj_to_insert.n_complex:
                 raise TypeError('The object you are inserting  does not have the same ' +
                     'number of complex samples as this object. This n_complex: ' + self.n_complex +
@@ -291,15 +291,16 @@ class ping_data(object):
 
         # Make sure that the frequencies match.  Don't allow replacing pings
         # with different frequencies.
-        freq_match = False
-        if isinstance(self.frequency, np.float32):
-            freq_match = self.frequency == obj_to_insert.frequency
-        else:
-            freq_match = self.frequency[0] == obj_to_insert.frequency[0]
-        if not freq_match:
-            raise TypeError('The frequency of the data you are providing as a '
-                            + 'replacement does not match the frequency of ' +
-                            'this object. The frequencies must match.')
+        if not force:
+            freq_match = False
+            if isinstance(self.frequency, np.float32):
+                freq_match = self.frequency == obj_to_insert.frequency
+            else:
+                freq_match = self.frequency[0] == obj_to_insert.frequency[0]
+            if not freq_match:
+                raise TypeError('The frequency of the data you are providing as a '
+                                + 'replacement does not match the frequency of ' +
+                                'this object. The frequencies must match.')
 
         # Get information about the shape of the data we're working with.
         my_pings = self.n_pings
@@ -397,8 +398,9 @@ class ping_data(object):
                     data[replace_index, :, :] = data_to_insert[:,:,:]
 
         # Update our global properties.
-        if obj_to_insert.channel_id not in self.channel_id:
-            self.channel_id += obj_to_insert.channel_id
+        if hasattr(obj_to_insert, 'channel_id'):
+            if obj_to_insert.channel_id not in self.channel_id:
+                self.channel_id += obj_to_insert.channel_id
 
 
     def delete(self, start_ping=None, end_ping=None, start_time=None,
@@ -472,20 +474,20 @@ class ping_data(object):
                     attr[0:new_n_pings] = attr[keep_idx]
                 else:
                     # Set the data to NaN or appropriate value.
-                    if attr.dtype in [np.float16, np.float32, np.float64,
-                                       np.datetime64, np.complex64, np.complex128]:
-                        # This is a float like object so set to NaN or NaT
-                        attr[del_idx] = np.nan
-                    else:
+                    if np.issubdtype(attr.dtype, np.integer):
                         # Set all other integers to zero
                         attr[del_idx] = 0
+                    else:
+                        # This is a float like object so set to NaN or NaT
+                        attr[del_idx] = np.nan
 
         # If we're removing the pings, shrink the arrays.
         if remove:
             self.resize(new_n_pings, self.n_samples)
+            self.n_pings = new_n_pings
 
 
-    def append(self, obj_to_append):
+    def append(self, obj_to_append, force=False):
         """Appends another echolab2 data object to this one.
 
         The objects must be instances of the same class and share the same
@@ -493,11 +495,11 @@ class ping_data(object):
         """
 
         # Simply inserts a data object at the end of our internal array.
-        self.insert(obj_to_append, ping_number=self.n_pings)
+        self.insert(obj_to_append, ping_number=self.n_pings, force=force)
 
 
     def insert(self, obj_to_insert, ping_number=None, ping_time=None,
-               insert_after=True, index_array=None):
+               insert_after=True, index_array=None, force=False):
         """Inserts data from the provided echolab2 data object into
         this object.
 
@@ -518,6 +520,8 @@ class ping_data(object):
                 ping time, the pings do not have to be consecutive. When this
                 keyword is present, the ping_number, ping_time and
                 insert_after keywords are ignored.
+            force (bool): Set to true to disable all checks and force the
+                insert even if the frequency, channel ID, etc are different.
 
         Raises:
             ValueError: Insertion point not specified.
@@ -544,24 +548,27 @@ class ping_data(object):
         # Make sure that the frequencies match.  Don't allow
         # inserting/appending of different frequencies.  We allow NaNs because
         # we allow empty data to be inserted.
-        freq_match = False
-        if isinstance(self.frequency, np.float32):
-            if obj_to_insert.frequency == np.nan:
-                freq_match = True
+        if not force:
+            freq_match = False
+            if isinstance(self.frequency, np.ndarray):
+                # We get lazy with vectors of frequency since there isn't a
+                # simple solution.
+                if np.isnan(obj_to_insert.frequency[0]):
+                    freq_match = True
+                else:
+                    freq_match = self.frequency[0] == obj_to_insert.frequency[0]
             else:
-                freq_match = self.frequency == obj_to_insert.frequency
-        else:
-            # We get lazy with vectors of frequency since there isn't a
-            # simple solution.
-            if np.isnan(obj_to_insert.frequency[0]):
-                freq_match = True
-            else:
-                freq_match = self.frequency[0] == obj_to_insert.frequency[0]
-        if not freq_match:
-            raise TypeError('The frequency of the object you are inserting' +
-                            '/appending does not match the frequency of this ' +
-                            'object. Frequencies must match to append or ' +
-                            'insert.')
+                # we must have been passed a single value
+                if obj_to_insert.frequency == np.nan or obj_to_insert.frequency == 0:
+                    freq_match = True
+                else:
+                    freq_match = self.frequency == obj_to_insert.frequency
+
+            if not freq_match:
+                raise TypeError('The frequency of the object you are inserting' +
+                                '/appending does not match the frequency of this ' +
+                                'object. Frequencies must match to append or ' +
+                                'insert.')
 
         # Get some info about the shape of the data we're working with.
         my_pings = self.n_pings
@@ -610,7 +617,6 @@ class ping_data(object):
 
             # Generate the index used to move the existing pings.
             move_index = np.arange(my_pings)
-            print(my_pings, move_index)
             for i in insert_index:
                 idx = move_index >= i
                 move_index[idx] = move_index[idx] + 1
@@ -681,13 +687,63 @@ class ping_data(object):
                     data[insert_index, :, :] = data_to_insert[:, :, :]
 
         # Now update our global properties.
-        if obj_to_insert.channel_id not in self.channel_id:
-            self.channel_id += " :: " + obj_to_insert.channel_id
+        if hasattr(obj_to_insert, 'channel_id'):
+            if obj_to_insert.channel_id not in self.channel_id:
+                self.channel_id += " :: " + obj_to_insert.channel_id
 
         # Update the size/shape attributes.
         self.n_pings = self.ping_time.shape[0]
         self.n_samples = my_samples
         self.shape = self._shape()
+
+
+    def match_pings(self, other_data):
+        """Matches the ping times in this object to the ping times in the object
+        provided. It does this by *matching* times, inserting and/or deleting
+        pings as needed. It does not interpolate. Ping times in the other object
+        that aren't in this object are inserted. Ping times in this object that
+        aren't in the other object are deleted. If the time axes do not intersect
+        at all, all of the data in this object will be deleted and replaced with
+        empty pings for the ping times in the other object.
+
+        While similar to Echoview's match_ping_times operator, this method does
+        not support "allowed slop" where you could specify how close the match
+        needed to be to be included. This method is intended to be used with
+        data that have been collected on the same PC and whos times
+
+        Args:
+            other_data (ping_data): A ping_data type object that this object
+            will be matched to.
+        """
+        # Create a dict to store info on which pings were inserted/removed
+        results = {'inserted':[], 'removed':[]}
+
+        # don't allow a recursive match
+        if other_data is not self:
+
+            #  remove any "extra" pings this object may have
+            idx_out = np.isin(self.ping_time, other_data.ping_time,
+                    invert=True)
+            idx_out = np.nonzero(idx_out)[0]
+            if idx_out.size > 0:
+                # We have some extra pings, delete them
+                results['removed'] = idx_out
+                self.delete(index_array=idx_out)
+
+            # Insert any pings that this object is missing
+            idx_in = np.isin(other_data.ping_time, self.ping_time,
+                    invert=True)
+            idx_in = np.nonzero(idx_in)[0]
+            if idx_in.size > 0:
+                # There were missing pings, we'll insert "empty" pings in their place
+                results['inserted'] = idx_in
+                self.insert(self.empty_like(len(idx_in)),
+                        index_array=idx_in, force=True)
+
+                # Lastly, update the times
+                self.ping_time[idx_in] = other_data.ping_time[idx_in]
+
+        return results
 
 
     def trim(self, n_pings=None):
@@ -1288,6 +1344,8 @@ class ping_data(object):
                             data[:] = attr.copy()
                     elif data.dtype == 'datetime64[ms]':
                         data[:] = np.datetime64('NaT')
+                    elif np.issubdtype(data.dtype, np.integer):
+                        data[:] = 0
                     else:
                         data[:] = value
                 elif attr.ndim == 2:
