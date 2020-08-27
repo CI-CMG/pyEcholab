@@ -47,7 +47,7 @@ from pytz import timezone
 from .util.simrad_calibration import calibration
 from .util.simrad_raw_file import RawSimradFile, SimradEOF
 from .util.nmea_data import nmea_data
-from .util.simrad_motion_data import simrad_motion_data
+from .util.motion_data import motion_data
 from .util import simrad_signal_proc
 from ..ping_data import ping_data
 from ..processing.processed_data import processed_data
@@ -204,15 +204,18 @@ class EK80(object):
         # with that channel.
         self.raw_data = {}
 
+        # frequency_map maps frequency in Hz to channel ID.
+        self.frequency_map = {}
+
         #  nmea_data stores the util.nmea_data object which will contain
         #  the NMEA data read from the raw file. This object has methods
         #  to extract, parse, and interpolate the NMEA data.
         self.nmea_data = nmea_data()
 
-        #  motion_data is the util.simrad_motion_data object which will
+        #  motion_data is the util.motion_data object which will
         #  contain data from the MRU datagrams contained in the raw file.
         #  This object has methods to extract and interpolate the motion data.
-        self.motion_data = simrad_motion_data()
+        self.motion_data = motion_data()
 
         # annotation_data stores the contents of the TAG0 aka "annotation"
         # datagrams. Currently we're storing the raw dict returned by the
@@ -478,6 +481,13 @@ class EK80(object):
                     #  and increment the channel counter
                     self.n_channels += 1
 
+                    # and populate the frequency map
+                    this_freq = config_datagram['configuration'][channel_id]['transducer_frequency']
+                    if this_freq in self.frequency_map:
+                        self.frequency_map[this_freq].append(channel_id)
+                    else:
+                        self.frequency_map[this_freq] = [channel_id]
+
                 #  check if we need to create an entry for this channel's filters
                 if channel_id not in self._filters:
                     #  and an empty dict to store this channel's filters
@@ -668,7 +678,9 @@ class EK80(object):
         # MRU datagrams contain vessel motion data
         elif new_datagram['type'].startswith('MRU'):
             # append this motion datagram to the motion_data object
-            self.motion_data.add_datagram(new_datagram)
+            self.motion_data.add_datagram(new_datagram['timestamp'],
+                    new_datagram['heave'], new_datagram['pitch'],
+                    new_datagram['roll'], new_datagram['heading'])
 
         else:
             #  report an unknown datagram type
@@ -712,29 +724,100 @@ class EK80(object):
         return time
 
 
-    def get_raw_data(self, channel_id=None):
-        """Gets the raw data for a specific channel.
+    def get_channel_data(self, frequencies=None, channel_ids=None):
+        """returns a dict containing lists of raw_data objects for the specified channel IDs,
+        or frequencies. Channel number isn't part of the EK80 raw file specification.
 
-        This method returns a reference to the specified raw_data object for
-        the specified channel id. If no channel id are specified, it returns a dictionary keyed by channel id
-        containing all of the channels.
+        This method returns a dictionary of lists that contain references to one or
+        more raw_data objects containing the data that has been read. The dictionary keys
+        and the raw_data object(s) returned depend on the argument(s) passed. You can
+        specify one or more frequencies and/or channel IDs and the dictionary will be
+        keyed by frequency and/or channel ID and the key values will be a list containing
+        the raw_data objects that correspond to that frequency or channel ID.
+
+        If you specify one or more frequencies, this method will return a dict, keyed
+        by frequency where the values are a lists containing one or more raw_data objects
+        associated with the specified frequency. The length of the list is equal to the
+        number of unique channel + datatype combinations sharing that transmit frequency.
+
+        If you specify one or more channel IDs, this method will return a dict, keyed
+        by channel ID where the values are a lists containing one or more raw_data objects
+        associated with the specified channel ID. The length of the list is equal to the
+        number of unique channel + datatype combinations sharing that channel ID.
+
+        If called without arguments, it returns a dictionary, keyed by channel ID, that
+        contains all channels read. The values are a lists containing one or more raw_data
+        objects associated with the specified channel ID just as if you called the method
+        specifying all channel IDs.
+
+        You can specify multiple keyword arguments to return references to the data mapped
+        in multiple ways if your analysis requires that flexibility. This method only returns
+        references, it does not copy the data, so there is no real penalty for doing this.
+        Do remember that if there is a valid reference to an object in memory it will continue
+        to exist and consume RAM. If memory management is important for your application
+        you will want to manage these and not just grab a bunch of references willy-nilly.
 
         Args:
-            channel_id (str): The channel ID from which to return the raw data.
-
+            frequencies (float, list): Specify one or more frequencies in a list to return
+                    data objects associated with that frequency.
+            channel_number (int, list): Specify one or more channel numbers in a list to
+                    return data objects associated with that channel number.
         Returns:
-            Raw data object from the specified channel.
+            Dictionary keyed by frequency/channel_id/channel_number. Values are lists
+            of raw_data objects associated with the specified frequency/channel_id/
+            channel_number.
         """
 
-        if channel_id is not None:
+        # create the return dict
+        channel_data = {}
+
+        if channel_ids is not None:
             # Channel id is specified.
-            channel_data = self.raw_data.get(channel_id, None)
+
+            # if we're passed a string, make it a list
+            if isinstance(channel_ids, str):
+                channel_ids = [channel_ids]
+
+            #  work thru the channel ids and add if they exist
+            for id in channel_ids:
+                channel_data[id] = self.raw_data.get(id, None)
+
+        elif frequencies is not None:
+            # frequency is specified
+
+            # if we're passed a number, make it a list
+            if not isinstance(frequencies, list):
+                frequencies = [frequencies]
+
+            # and work through the freqs, adding if they exist
+            for freq in frequencies:
+                # There is not a 1:1 mapping of freqs to data so we have to
+                # create a list and then extend it for each matching frequency.
+                channel_data[freq] = []
+
+                data_objs = self.frequency_map.get(freq, [None])
+                for id in data_objs:
+                    channel_data[freq].extend(self.raw_data[id])
+
+        elif channel_numbers is not None:
+            # channel_number is specified.
+
+            # if we're passed a number, make it a list
+            if not isinstance(channel_numbers, list):
+                channel_numbers = [channel_numbers]
+
+            # and work through the numbers, adding if they exist
+            for num in channel_numbers:
+                id = self.channel_map.get(num, None)
+                channel_data[num] = self.raw_data.get(id, None)
+
         else:
-            # Channel id not specified - return all in a dictionary,
-            # keyed by channel ID.
+            # No keywords specified - return all in a dict keyed by channel ID
             channel_data = self.raw_data
 
         return channel_data
+
+
 
 
     def __str__(self):

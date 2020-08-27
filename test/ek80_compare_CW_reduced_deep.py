@@ -1,14 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-
 @author: rick.towler
 
 This is a simple script to plot up the differences between pyEcholab outputs
-and data exported from echoview.
+and data exported from echoview. If everything is working correctly, the
+difference plots should be green
 
 """
-import sys
-sys.path.append('C:/Users/rick.towler/Work/AFSCGit/pyEcholab')
+
 
 from echolab2.instruments import EK80
 import echolab2.processing.processed_data as processed_data

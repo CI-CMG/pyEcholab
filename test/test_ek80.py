@@ -13,7 +13,7 @@ from echolab2.plotting.matplotlib import echogram
 #filename = 'C:/EK80 Test Data/EK80/CW/complex/DY2000_EK80_Cal-D20200126-T060729.raw'
 
 #  CW reduced (power/angle) - full resolution
-filename = 'C:/EK80 Test Data/EK80/CW/reduced/DY2000_EK80_Cal-D20200126-T061004.raw'
+#filename = 'C:/EK80 Test Data/EK80/CW/reduced/DY2000_EK80_Cal-D20200126-T061004.raw'
 
 #  CW extra reduced (power/angle) - downsampled
 #filename = 'C:/EK80 Test Data/EK80/CW/further reduced/DY2000_EK80_Cal-D20200126-T062251.raw'
@@ -26,6 +26,9 @@ filename = 'C:/EK80 Test Data/EK80/CW/reduced/DY2000_EK80_Cal-D20200126-T061004.
 
 #filename = ['C:/EK80 Test Data/EK80/CW/reduced/DY2000_EK80_Cal-D20200126-T061004.raw',
 #            'C:/EK80 Test Data/EK80/CW/complex/DY2000_EK80_Cal-D20200126-T060729.raw']
+
+# Daildrone
+filename = 'C:/EK80 Test Data/Saildrone/SD_alaska_2019-Phase0-D20190516-T030157-0.raw'
 
 ek80 = EK80.EK80()
 

@@ -499,8 +499,6 @@ class EK60(object):
                 # We're reading this channel - Check if we have seen this channel in
                 # *this* file. If not, add it.
                 if channel_id not in self._file_channel_map:
-#                    # Increment the per file channel total
-#                    self._file_channels += 1
 
                     #  populate the _file_channel_map which maps channel
                     #  number to channel id *for this file only*.
@@ -812,7 +810,7 @@ class EK60(object):
         This method returns a dictionary of lists that contain references to one or
         more raw_data objects containing the data that has been read. The dictionary keys
         and the raw_data object(s) returned depend on the argument(s) passed. You can
-        specify one or more frequencies, channel numbers, snd/or channel IDs and the
+        specify one or more frequencies, channel numbers, and/or channel IDs and the
         dictionary will be keyed by frequency, channel number, and/or channel ID and
         the key values will be a list containing the raw_data objects that correspond
         to that frequency, channel number, or channel ID.

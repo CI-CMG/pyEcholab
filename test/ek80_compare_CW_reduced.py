@@ -1,18 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-
-
 @author: rick.towler
 
 This is a simple script to plot up the differences between pyEcholab outputs
-and outputs created by the MATLAB based echolab toolbox using a common raw file
-as input.
-
-
+and outputs created by Echoview. This one includes TS.
 
 """
-import sys
-sys.path.append('C:/Users/rick.towler/Work/AFSCGit/pyEcholab')
 
 from echolab2.instruments import EK80
 import echolab2.processing.processed_data as processed_data
