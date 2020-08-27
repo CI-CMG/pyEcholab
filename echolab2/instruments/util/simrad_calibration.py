@@ -174,6 +174,9 @@ class calibration(object):
             # Yes. Get a reference to it
             param = getattr(self, param_name)
 
+            if param_name == 'gain':
+                print()
+
             # Check if it contains data
             if param is None:
                 # It doesn't, extract from the raw_data object - do not
@@ -441,17 +444,17 @@ class calibration(object):
                     elif param_data.ndim == 2:
                         this_val = raw_attribute[idx][param_name][:]
                 else:
-                    this_val = first_val
-#                    if np.issubdtype(dtype, np.inexact):
-#                        this_val = np.nan
-#                    elif np.issubdtype(dtype, np.exact):
-#                        this_val = 0
-#                    else:
-#                        this_val = ''
-#
-#                    # Expand the empty value if required
-#                    if param_data.ndim == 2:
-#                        this_val = np.full(dsize[1], this_val)
+                    #this_val = first_val
+                    if np.issubdtype(dtype, np.inexact):
+                        this_val = np.nan
+                    elif np.issubdtype(dtype, np.exact):
+                        this_val = 0
+                    else:
+                        this_val = ''
+
+                    # Expand the empty value if required
+                    if param_data.ndim == 2:
+                        this_val = np.full(dsize[1], this_val)
 
                 # Assign the value to the return array and check if our it has changed
                 if param_data.ndim == 1:
@@ -460,6 +463,9 @@ class calibration(object):
                 else:
                     param_data[data_idx,:] = this_val
                     param_is_constant &= np.array_equal(this_val, first_val)
+
+                # Increment the index counter
+                data_idx += 1
 
             # Check if our param value was constant
             if param_is_constant:

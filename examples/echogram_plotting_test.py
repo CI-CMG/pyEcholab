@@ -13,7 +13,7 @@ from echolab2.plotting.matplotlib import echogram
 
 # Define some basic properties of the fake data
 test_data_pings = 100
-test_data_samples = 200
+test_data_samples = 100
 sample_thickness_m = 0.5
 ping_interval_ms = 1000.0
 

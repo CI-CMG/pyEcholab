@@ -1,6 +1,6 @@
 
-from PyQt4.QtCore import *
-from PyQt4.QtGui import *
+#from PyQt5 import QtGui
+from PyQt5.QtCore import *
 import numpy
 import datetime
 from QViewerBase import QViewerBase

@@ -55,7 +55,7 @@ ek60.read_bot(botfiles)
 # frequencies (as list) will return a dict keyed by frequency
 # where the values are a list data objects associated with that
 # frequency.
-raw_data = ek60.get_channel_data(frequency=[38000,120000])
+raw_data = ek60.get_channel_data(frequencies=[38000,120000])
 
 # Get references to the 38 and 120 kHz data objects.
 # Remember that calls to ek60.get_channel_data return a dictionary
@@ -71,14 +71,16 @@ raw_data_120 = raw_data[120000][0]
 # populated from the raw_data object. You are free to change
 # any or all of the calibration parameters as required.
 cal_38 = raw_data_38.get_calibration()
+print(cal_38)
 cal_120 = raw_data_120.get_calibration()
+print(cal_120)
 
 # For fun, we'll provide our own sound speed. You can either provide
 # calibration parameters as a scalar, in which case the value will
 # be used for all data pings or you can provide a ping-by-ping value.
 # Here we'll just set a static value.
-cal_38.sound_velocity = 1495.5
-cal_120.sound_velocity = 1495.5
+cal_38.sound_velocity = 1475
+cal_120.sound_velocity = 1475
 
 # Get Sv data.
 Sv_38 = raw_data_38.get_Sv(calibration=cal_38)
@@ -152,14 +154,9 @@ for chan in raw_data:
     # Get a cal obj for this data
     cal_obj = data.get_calibration()
 
-    # Again, we'll set the sound speed - This time to something
-    # way off to demonstrate how the vertical axis changes when
-    # you change the sound speed.
-    #
-    # The eagle eyed will notice that at 1200 m/s the bottom line
-    # is about 6 samples shallow. I'm actually not realy sure why
-    # this is and it needs to be investigated.
-    cal_obj.sound_velocity = 1200
+    # Again, we'll set the sound speed
+    cal_obj.sound_velocity = 1475.3
+    print(cal_obj)
 
     # Get Sv - If we don't specify the return_depth keyword the
     # vertical axis of the returned object will be range.

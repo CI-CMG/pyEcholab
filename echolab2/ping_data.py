@@ -313,9 +313,8 @@ class ping_data(object):
         if index_array is None:
             # Determine the index of the replacement point.
             replace_index = self.get_indices(start_time=ping_time,
-                                             end_time=ping_time,
-                                             start_ping=ping_number,
-                                             end_ping=ping_number)[0]
+                    end_time=ping_time, start_ping=ping_number,
+                    end_ping=ping_number)[0]
 
             # Create an index array.
             replace_index = np.arange(new_pings) + replace_index
@@ -336,9 +335,8 @@ class ping_data(object):
             # dimensions of the index and the object to insert match.
             if replace_index.shape[0] != new_pings:
                 raise IndexError('The length of the index_array does not '
-                                 'match the number of pings in the object ' +
-                                 'providing the replacement data.  These ' +
-                                 'dimensions must match.')
+                        'match the number of pings in the object with ' +
+                        'the replacement data.  These dimensions must match.')
 
         # Check if we need to vertically resize one of the arrays.  If so, we
         # resize the smaller array to the size of the larger array.  It will
@@ -538,7 +536,6 @@ class ping_data(object):
             raise ValueError('Either ping_number or ping_time needs to be ' +
                              'defined or an index array needs to be provided ' +
                              'to specify an insertion point.')
-
 
         # Make sure that obj_to_insert class matches "this" class.
         if not isinstance(self, obj_to_insert.__class__):

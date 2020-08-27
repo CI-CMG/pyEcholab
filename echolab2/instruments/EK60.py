@@ -316,11 +316,12 @@ class EK60(object):
 
 
     def append_raw(self, raw_files, power=None, angles=None,
-                 nmea=True, max_sample_count=None, start_time=None,
-                 end_time=None, start_ping=None, end_ping=None, frequencies=None,
-                 channel_ids=None, time_format_string='%Y-%m-%d %H:%M:%S',
-                 incremental=None, start_sample=None, end_sample=None,
-                 progress_callback=None, ):
+                nmea=True, max_sample_count=None, start_time=None,
+                end_time=None, start_ping=None, end_ping=None, frequencies=None,
+                channel_ids=None, time_format_string='%Y-%m-%d %H:%M:%S',
+                incremental=None, start_sample=None, end_sample=None,
+                progress_callback=None):
+
         """Reads one or more Simrad Ex60/ES70/ME70 .raw files and appends the data to any
         existing data. The data are ordered as read.
 
@@ -379,6 +380,8 @@ class EK60(object):
         if max_sample_count:
             self.read_max_sample_count = max_sample_count
         if frequencies:
+            if not isinstance(frequencies, list):
+                frequencies = [frequencies]
             self.read_frequencies = frequencies
         if channel_ids:
             self.read_channel_ids = channel_ids
@@ -479,6 +482,9 @@ class EK60(object):
         # Check for any new channels and add them if required
         file_channels = list(config_datagram['configuration'].keys())
         for channel_id in file_channels:
+            # Increment the per file channel total
+            self._file_channels += 1
+
             # Check if we're reading this channel
             if (not self.read_channel_ids or channel_id in self.read_channel_ids):
                 # Check if we're reading this frequency
@@ -493,8 +499,8 @@ class EK60(object):
                 # We're reading this channel - Check if we have seen this channel in
                 # *this* file. If not, add it.
                 if channel_id not in self._file_channel_map:
-                    # Increment the per file channel total
-                    self._file_channels += 1
+#                    # Increment the per file channel total
+#                    self._file_channels += 1
 
                     #  populate the _file_channel_map which maps channel
                     #  number to channel id *for this file only*.
@@ -641,9 +647,10 @@ class EK60(object):
                     #  This raw_data object has no type so is empty and can store anything
                     this_raw_data = raw_obj
                     break
-                if new_datagram['mode'] <= 3 and raw_obj.data_type == 'power/angle':
-                    # This raw_data object contains power/angle data and this datagram
-                    # also contains power/angle data
+                elif (new_datagram['mode'] == 1 and raw_obj.data_type == 'power' or
+                      new_datagram['mode'] == 2 and raw_obj.data_type == 'angle' or
+                      new_datagram['mode'] == 3 and raw_obj.data_type == 'power/angle'):
+                    # This raw_data object contains a matching data type
                     this_raw_data = raw_obj
                     break
 
@@ -689,7 +696,7 @@ class EK60(object):
             # iterate through the channels in this .bot file
             for i in range(self._file_channels):
                 # Get this channel's ID
-                this_chan = self._file_channel_map[i + 1]
+                this_chan = self._file_channel_map.get(i+1, None)
 
                 # Check if we have data for this channel
                 if this_chan in self.raw_data:
@@ -798,143 +805,105 @@ class EK60(object):
         return time
 
 
-    def get_raw_data(self, frequency=None, channel_number=None, channel_id=None):
-        """Gets the raw data for a specific channel.
-
-        This method returns a list of one or more lists that contain references to
-        one or more raw_data objects. The specific object(s) returned depends on
-        the argument passed. You can specify a frequency, channel number, OR
-        channel ID string.
-
-        If you specify a frequency, this method will return a list containing one or
-        more lists that contain the raw_data objects associated with the specified
-        frequency. The length of the outer list is equal to the number of channels
-        sharing that transmit frequency. The length of each inner list depends on the
-        number of distinct data types encountered when reading data associated with
-        each channel ID.
-
-        If you specify a channel ID, this method will return a list containing a single
-        list which contains the raw_data objects associated with that channel ID.
-        Again, the length of the inner list depends on the number of distinct data
-        types encountered when reading data associated with each channel ID.
-
-        If you specify a channel number, this method will return a list containing
-        a single list which contains the raw_data objects associated with that
-        channel number. Channel numbers are assigned to channel IDs incrementally
-        as new channels are read.
-
-        If called with no keywords, it returns all of the raw_data objects in a
-        list of lists.
-
-        Args:
-            frequency (float): Specify a frequency in Hz to return a list of raw_data objects
-                               sharing that frequency.
-            channel_id (str): Specify a channel ID to return a list of raw_data objects
-                              sharing that channel ID.
-            channel_number (int): Specify a channel number to return a list of raw_data objects
-                                  sharing that channel number.
-        Returns:
-            List of lists of raw_data objects from the specified channel/frequency
-        """
-
-        def isclose(a, b, rel_tol=1e-09, abs_tol=0.0):
-            return abs(a-b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
-
-
-        if channel_id is not None:
-            # Channel id is specified.
-            channel_data = [self.raw_data.get(channel_id, None)]
-
-        elif frequency is not None:
-            # frequency is specified
-
-            # this comparison may need to be re-worked if the floats
-            # don't reliably match. Will need to use the isclose function
-            # defined above.
-            if frequency in self.frequency_map:
-                channel_ids = self.frequency_map[frequency]
-
-                # and extract the associated raw_data
-                channel_data = []
-                for channel_id in channel_ids:
-                    channel_data.append(self.raw_data.get(channel_id, []))
-            else:
-                channel_data = []
-
-        elif channel_number is not None:
-            # channel_number id is specified.
-
-            # channel numbers are always unique so we know there will
-            # be at most one match
-            try:
-                channel_id = self.channel_map[channel_number]
-                channel_data = self.raw_data.get(channel_id, [])
-            except:
-                channel_data = []
-
-        else:
-            # Channel id not specified - return all in a list of lists
-            # This is not that useful, but
-            channel_data = []
-            for chan in self.channel_ids:
-                channel_data.append(self.raw_data[chan])
-
-        return channel_data
-
-
-    def get_channel_data(self, frequency=None, channel_number=None, channel_id=None):
-        """returns a dict containing the raw_data objects for the specified channel IDs,
+    def get_channel_data(self, frequencies=None, channel_numbers=None, channel_ids=None):
+        """returns a dict containing lists of raw_data objects for the specified channel IDs,
         or frequencies, or channel numbers.
 
-        I'm experimenting with methods to return raw_data to the user.
+        This method returns a dictionary of lists that contain references to one or
+        more raw_data objects containing the data that has been read. The dictionary keys
+        and the raw_data object(s) returned depend on the argument(s) passed. You can
+        specify one or more frequencies, channel numbers, snd/or channel IDs and the
+        dictionary will be keyed by frequency, channel number, and/or channel ID and
+        the key values will be a list containing the raw_data objects that correspond
+        to that frequency, channel number, or channel ID.
+
+        If you specify one or more frequencies, this method will return a dict, keyed
+        by frequency where the values are a lists containing one or more raw_data objects
+        associated with the specified frequency. The length of the list is equal to the
+        number of unique channel + datatype combinations sharing that transmit frequency.
+
+        If you specify one or more channel IDs, this method will return a dict, keyed
+        by channel ID where the values are a lists containing one or more raw_data objects
+        associated with the specified channel ID. The length of the list is equal to the
+        number of unique channel + datatype combinations sharing that channel ID.
+
+        And, as you've already guessed, if you specify one or more channel numbers, this
+        method will return a dict, keyed by channel number where the values are a lists
+        containing one or more raw_data objects associated with the specified channel
+        number. The length of the list is equal to the number of unique channel + datatype
+        combinations sharing that channel number.
+
+        If called without arguments, it returns a dictionary, keyed by channel ID, that
+        contains all channels read. The values are a lists containing one or more raw_data
+        objects associated with the specified channel ID just as if you called the method
+        specifying all channel IDs.
+
+        You can specify multiple keyword arguments to return references to the data mapped
+        in multiple ways if your analysis requires that flexibility. This method only returns
+        references, it does not copy the data, so there is no real penalty for doing this.
+        Do remember that if there is a valid reference to an object in memory it will continue
+        to exist and consume RAM. If memory management is important for your application
+        you will want to manage these and not just grab a bunch of references willy-nilly.
+
+        Args:
+            frequencies (float, list): Specify one or more frequencies in a list to return
+                    data objects associated with that frequency.
+            channel_id (str, list): Specify one or more channel IDs in a list to return
+                    data objects associated with that channel ID.
+            channel_number (int, list): Specify one or more channel numbers in a list to
+                    return data objects associated with that channel number.
+        Returns:
+            Dictionary keyed by frequency/channel_id/channel_number. Values are lists
+            of raw_data objects associated with the specified frequency/channel_id/
+            channel_number.
         """
 
         # create the return dict
         channel_data = {}
 
-        if channel_id is not None:
+        if channel_ids is not None:
             # Channel id is specified.
 
             # if we're passed a string, make it a list
-            if isinstance(channel_id, str):
-                channel_id = [channel_id]
+            if isinstance(channel_ids, str):
+                channel_ids = [channel_ids]
 
             #  work thru the channel ids and add if they exist
-            for id in channel_id:
+            for id in channel_ids:
                 channel_data[id] = self.raw_data.get(id, None)
 
-        elif frequency is not None:
+        elif frequencies is not None:
             # frequency is specified
 
             # if we're passed a number, make it a list
-            if not isinstance(frequency, list):
-                frequency = [frequency]
+            if not isinstance(frequencies, list):
+                frequencies = [frequencies]
 
             # and work through the freqs, adding if they exist
-            for freq in frequency:
-                id = self.frequency_map.get(freq, [None])[0]
-                channel_data[freq] = self.raw_data.get(id, None)
+            for freq in frequencies:
+                # There is not a 1:1 mapping of freqs to data so we have to
+                # create a list and then extend it for each matching frequency.
+                channel_data[freq] = []
 
-        elif channel_number is not None:
+                data_objs = self.frequency_map.get(freq, [None])
+                for id in data_objs:
+                    channel_data[freq].extend(self.raw_data[id])
+
+        elif channel_numbers is not None:
             # channel_number is specified.
 
             # if we're passed a number, make it a list
-            if not isinstance(channel_number, list):
-                channel_number = [channel_number]
+            if not isinstance(channel_numbers, list):
+                channel_numbers = [channel_numbers]
 
             # and work through the numbers, adding if they exist
-            for num in channel_number:
+            for num in channel_numbers:
                 id = self.channel_map.get(num, None)
                 channel_data[num] = self.raw_data.get(id, None)
 
         else:
-            # Channel id not specified - return all in a dict keyed by channel ID
+            # No keywords specified - return all in a dict keyed by channel ID
             channel_data = self.raw_data
-
-#            # Channel id not specified - return all in a list of lists
-#            channel_data = []
-#            for chan in self.channel_ids:
-#                channel_data.append(self.raw_data[chan])
 
         return channel_data
 
@@ -1735,7 +1704,10 @@ class raw_data(ping_data):
 
             # Determine if we resize.
             if ping_resize or sample_resize:
-                self.resize(ping_dims, sample_dims)
+                # We call the parent method's resize here to avoid updating
+                # our n_pings attribute while reading data.
+                super(raw_data, self).resize(ping_dims, sample_dims)
+                #elf.resize(ping_dims, sample_dims)
 
             # Get an index into the data arrays for this ping and increment
             # our ping counter.
@@ -2264,6 +2236,25 @@ class raw_data(ping_data):
         return alongship, athwartship
 
 
+    def resize(self, new_ping_dim, new_sample_dim):
+        """Resizes raw_data object.
+
+        This method re-implements ping_data.resize, updating n_pings
+        attribute after resizing.
+
+        Args:
+            new_ping_dim (int): Used to resize the sample data array
+                (horizontal axis).
+            new_sample_dim (int): Used to resize the sample data array
+                (vertical axis).
+        """
+        # Call the parent method to resize the arrays (n_samples is updated here).
+        super(raw_data, self).resize(new_ping_dim, new_sample_dim)
+
+        # Update n_pings.
+        self.n_pings = self.ping_time.shape[0]
+
+
     def _get_electrical_angles(self, return_depth=False, calibration=None,
             **kwargs):
         """Retrieves unconverted angles_alongship_e and angles_athwartship_e
@@ -2317,7 +2308,6 @@ class raw_data(ping_data):
             # we can't do anything.
             raise AttributeError('Raw data object does not contain the ' +
                         'data required to return angle data.')
-
 
         # Set the data type.
         alongship.data_type = 'angles_alongship_e'
@@ -2852,3 +2842,37 @@ class ek60_calibration(calibration):
 
         return param_data
 
+    def __str__(self):
+        """Re-implements string method that provides some basic info about
+        the ek60_calibration object
+
+        Returns:
+            A string with information about the ek60_calibration instance.
+        """
+
+        #  print the class and address
+        msg = str(self.__class__) + " at " + str(hex(id(self))) + "\n"
+
+        # Create a list of attributes to print out
+        attr_to_display = ['channel_id','frequency','transmit_power',
+                'pulse_length','sound_velocity', 'gain', 'sa_correction',
+                'equivalent_beam_angle','absorption_coefficient',
+                'angle_sensitivity_alongship', 'angle_sensitivity_athwartship',
+                'angle_offset_alongship', 'angle_offset_athwartship']
+
+        # And assemble the string
+        for param_name in attr_to_display:
+            n_spaces = 30 - len(param_name)
+            msg += n_spaces * ' ' + param_name
+            # Extract data from raw_data attribues
+            if hasattr(self, param_name):
+                attr = getattr(self, param_name)
+                if isinstance(attr, np.ndarray):
+                    msg += ' :: array ' + str(attr.size) + ' :: First value: ' + str(attr[0]) + '\n'
+                else:
+                    if attr:
+                            msg += ' :: scalar :: Value: ' + str(attr) + '\n'
+                    else:
+                        msg += ' :: No value set\n'
+
+        return msg

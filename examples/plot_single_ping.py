@@ -5,10 +5,6 @@
 This example script plots a single ping as power for every channel in the
 specified raw file.
 
-NOTE! This example is reaching into the EK60RawData objects directly to pull
-out power.  Normally you would call EK60.raw_data.get_power() to get the
-power data in a ProcessedData object but this example was written before the
-get_power method existed and still (I think) has some worth as an example.
 """
 
 import numpy as np
@@ -44,8 +40,12 @@ fig = plt.figure(figsize=(7, 7))
 # Plot power from the specified ping from all channels.
 for channel_id in ek60.channel_ids:
 
-    # Get a reference to the RawData object for this channel.
-    raw_data = ek60.get_raw_data(channel_id=channel_id)
+    # If we're working with channel IDs we can bypass the get_channel_data
+    # method and access the raw_data attribute directly.
+    raw_data = ek60.raw_data[channel_id]
+
+    # Get the first data object for this channel
+    raw_data = raw_data[0]
 
     # Get a color for this channel.
     c = next(color)
@@ -55,8 +55,15 @@ for channel_id in ek60.channel_ids:
     n_samples = len(raw_data.power[ping_number, :])
     yaxis = np.arange(n_samples)
 
+    # Get a processed_data object that contains "calibrated" power
+    # data. Since we call it without specifying the "calibration"
+    # keyword it will use the parameters from the .raw file when
+    # applying the calibration.
+    power = raw_data.get_power()
+    yaxis = np.arange(power.n_samples)
+
     # Plot power.
-    plt.plot(raw_data.power[ping_number, :], yaxis, color=c, label=channel_id)
+    plt.plot(power[ping_number, :], yaxis, color=c, label=channel_id)
 
 # Label the figure and set other display properties.
 plt.gca().invert_yaxis()

@@ -48,7 +48,7 @@ print(ek60)
 # If you look at the output of the print statement you'll see some basic information
 # about the channels that have been read. Each channel is listed in the form
 #
-#    channel number :: channel ID :: data type :: data size
+#    channel number :: channel ID :: data type (data size)
 #
 # The channel number is simply the order the unique channel IDs were encountered
 # in the the reading process. Channels are identified in the file header. I
@@ -64,7 +64,7 @@ print(ek60)
 #
 # Data type describes the kind of data stored in the raw_data object associated
 # with this channel. Raw files can contain power only, angle only, power AND angle,
-# or with EK80 hardware complex data. Following this, raw_data objects can contain
+# and EK80 files can contain complex data. Following this, raw_data objects can contain
 # power, angle, power AND angle, or complex data. If a new data type is encountered
 # while reading data from a specific channel ID, a new raw_data object is created for
 # that data. In our case, all of the channels contain power and angle data. But if
@@ -79,36 +79,33 @@ print(ek60)
 # of attributes. The bulk of the data are stored in raw_data objects and getting
 # a reference to these raw_data objects is one of the first things you'll usually
 # do when processing .raw data. You can access the ER60.raw_data attribute directly
-# (it is a dictionary keyed by channel ID) or you can use the EK60.get_raw_data()
-# method which allows you to get references by channel number, frequency, or
+# (it is a dictionary keyed by channel ID) or you can use the EK60.get_channel_data()
+# method which allows you to get references by channel number, frequency, and/or
 # channel ID.
 
 # Here I will get references to the 38 kHz data. Since we read data at 38 kHz from
 # two channels, this will return a list 2 items long. Each item in this list will
-# be a list containing the raw_data objects containing the 38 kHz data associate
-# with a channel. These inner lists will contain a raw_data object for each of the
-# distinct data types (described above) encountered in the raw files. In this example
-# the data files only have power/angle data so there will only be a single raw_data
-# object.
-raw_data_38 = ek60.get_raw_data(frequency=38000.0)
+# be a raw_data object containing 38 kHz data associate with a channel+datatype. In
+# this example the data files only have power/angle data so there will only be a
+# single raw_data object per channel.
+raw_data_38 = ek60.get_channel_data(frequencies=38000)
 
 # When working with this library, you are either going to know something about the
-# data you are reading and you will be able to make assumptions about the list that
-# is returned or you'll know nothing and need to iterate through both the outer and
-# inner lists. Here we know that the outer list is 2 elements long because we have
-# two 18 kHz channels and each inner list is 1 element long because we know there
-# is a single data type (power/angle) in each. Because we know this we can unpack
-# "manually"
+# data you are reading and you will be able to make assumptions about the dict that
+# is returned or you'll know nothing and need to iterate through the dict keys and
+# lists they reference and process each raw_data object as needed. Here we know that
+# the dict will have a single key (38000) and that list will be 2 elements long.
+# Because we know this we can unpack "manually"
 
-# get a reference to the first channel ID and first data type associated with it
-raw_data_38_1 = raw_data_38[0][0]
-#                           ^  ^
-#           channel index --|  |-- data type index
+# get a reference to the first raw_data object at 38 kHz
+raw_data_38_1 = raw_data_38[38000][0]
+#                             ^    ^
+#                 frequency --|    |-- channel+datatype index
 
-# and to the second channel ID and first data type associated with it
-raw_data_38_2 = raw_data_38[1][0]
-#                           ^  ^
-#           channel index --|  |-- data type index
+# and to the second....
+raw_data_38_2 = raw_data_38[38000][1]
+#                             ^    ^
+#                 frequency --|    |-- channel+datatype index
 
 
 # The sample data from the first 38 kHz channel is contained in a 136x994 array.
@@ -205,8 +202,10 @@ ax_2 = fig.add_subplot(3, 1, 2)
 echogram_2 = echogram.Echogram(ax_2, processed_power_1)
 ax_2.set_title("Power data in time order")
 
+cal_obj = raw_data_38_1.get_calibration()
+
 # Now request Sv data in time order.
-Sv = raw_data_38_1.get_Sv()
+Sv = raw_data_38_1.get_Sv(calibation=cal_obj)
 # This will also be 1662 pings by 1988 samples, but is Sv ordered by time.
 print(Sv)
 

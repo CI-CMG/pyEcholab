@@ -28,6 +28,8 @@ rawfiles = ['./data/EK60/DY1706_EK60-D20170625-T061707.raw']
 # Also create a list of .bot files.
 botfiles = ['./data/EK60/DY1706_EK60-D20170625-T061707.bot']
 
+frequencies_to_read = [38000, 120000]
+
 # Create an instance of ER60.
 ek60 = EK60.EK60()
 
@@ -48,21 +50,38 @@ backstep = 35
 bot_detector = afsc_bot_detector.afsc_bot_detector(search_min=search_min,
         backstep=backstep)
 
-# Read the .raw files.
+# Read the .raw files. Only store data from the 38 and 120 kHz GPTs
 print('reading raw files...')
-ek60.read_raw(rawfiles, frequencies=[38000, 120000])
+ek60.read_raw(rawfiles, frequencies=frequencies_to_read)
 
 # Read the .bot files.
 print('reading bot files...')
 ek60.read_bot(botfiles)
 
+
+
 # Get a reference to the RawData object for specified channels.
-raw_data_38 = ek60.get_channel_data(channel_number=1)
-raw_data_120 = ek60.get_raw_data(channel_number=2)
+raw_data = ek60.get_channel_data(frequencies=frequencies_to_read)
+# Grab the first raw_data object for each frequency
+raw_data_38 = raw_data[38000][0]
+raw_data_120 = raw_data[120000][0]
+
+# Get calibration objects
+cal_obj_38 = raw_data_38.get_calibration()
+print(cal_obj_38)
+cal_obj_120 = raw_data_120.get_calibration()
+print(cal_obj_120)
+
 
 # Get Sv data.
-Sv_38_as_depth = raw_data_38.get_Sv(heave_correct=True)
-Sv_120_as_depth = raw_data_120.get_Sv(heave_correct=True)
+Sv_38_as_depth = raw_data_38.get_Sv(calibration=cal_obj_38,
+        return_depth=True)
+Sv_120_as_depth = raw_data_120.get_Sv(calibration=cal_obj_120,
+        return_depth=True)
+
+# Apply heave correction to the Sv data
+Sv_38_as_depth.heave_correct(cal_obj_38)
+Sv_120_as_depth.heave_correct(cal_obj_120)
 
 # Get the sounder detected bottom data.  The astute observer would wonder why
 # we're applying heave correction to the sounder detected bottom since you
@@ -72,8 +91,10 @@ Sv_120_as_depth = raw_data_120.get_Sv(heave_correct=True)
 # set, no heave correction is applied, but it ensures that get_bottom returns
 # *depth*.  You could achieve the same thing by setting the return_depth
 # keyword to True.
-bottom_38 = raw_data_38.get_bottom(heave_correct=True)
-bottom_120 = raw_data_120.get_bottom(heave_correct=True)
+bottom_38 = raw_data_38.get_bottom(calibration=cal_obj_38,
+        return_depth=True)
+bottom_120 = raw_data_120.get_bottom(calibration=cal_obj_120,
+        return_depth=True)
 
 #  now use our simple bottom detector to pick a bottom line for the 38. The bottom
 #  detector class returns a pyEcholab2 Line object representing the bottom.

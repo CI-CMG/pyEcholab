@@ -1,11 +1,11 @@
 
 import os
-import numpy
-from PyQt5 import QtCore,QtWidgets
+import functools
+from PyQt5 import QtCore, QtWidgets
 from PyQt5.QtCore import  pyqtSlot
 from .ui import ui_echogram_viewer
 
-class echogram_viewer(QMainWindow, ui_echogram_viewer.Ui_echogram_viewer):
+class echogram_viewer(QtWidgets.QMainWindow, ui_echogram_viewer.Ui_echogram_viewer):
 
     def __init__(self, p_data, plot_attribute='Sv', parent=None):
         super(echogram_viewer, self).__init__(parent)
@@ -14,39 +14,60 @@ class echogram_viewer(QMainWindow, ui_echogram_viewer.Ui_echogram_viewer):
         self.echogramLabel = None
 
         #  connect the echogram signals
-        self.connect(self.QEchogramViewer, SIGNAL("mousePressEvent"), self.echogramClick)
-        self.connect(self.QEchogramViewer, SIGNAL("mouseReleaseEvent"), self.echogramUnClick)
-        self.connect(self.QEchogramViewer, SIGNAL("mouseMoveEvent"), self.echogramMouseInWidget)
+        self.QEchogramViewer.mousePress.connect(self.echogramClick)
+        self.QEchogramViewer.mouseMove.connect(self.echogramMouseInWidget)
+        self.QEchogramViewer.mouseRelease.connect(self.echogramUnClick)
 
         #  restore the application state
-        self.appSettings = QSettings('afsc.noaa.gov', 'echogram_viewer')
-        size = self.appSettings.value('winsize', QSize(1000,600)).toSize()
-        self.resize(size)
-        position = self.appSettings.value('winposition', QPoint(5,5)).toPoint()
+        self.appSettings = QtCore.QSettings('afsc.noaa.gov', 'echogram_viewer')
+        size = self.appSettings.value('winsize', QtCore.QSize(1000,600))
+        position = self.appSettings.value('winposition', QtCore.QPoint(5,5))
+
+        #  et the virtual screen size
+        screen = QtWidgets.QApplication.primaryScreen()
+        v_screen_size = screen.availableVirtualSize()
+
+        #  check if our last window size is too big for our current screen
+        if (size.width() > v_screen_size.width()):
+            size.setWidth(v_screen_size.width() - 50)
+        if (size.height() > v_screen_size.height()):
+            size.setHeight(v_screen_size.height() - 50)
+
+        #  now check if our last position is at least on our current desktop
+        #  if it is off the screen we just throw it up at 0
+        if (position.x() > size.width() - 50):
+            position.setX(0)
+        if (position.y() > size.height() - 50):
+            position.setY(0)
+
+        #  now move and resize the window
         self.move(position)
+        self.resize(size)
 
         #  set the base directory path - this is the full path to this application
-        self.baseDir = reduce(lambda l,r: l + os.path.sep + r,
-                              os.path.dirname(os.path.realpath(__file__)).split(os.path.sep))
+        self.baseDir = functools.reduce(lambda l,r: l + os.path.sep + r,
+                os.path.dirname(os.path.realpath(__file__)).split(os.path.sep))
         try:
-            self.setWindowIcon(QIcon(self.baseDir + os.sep + 'resources/echoIcon.png'))
+            self.setWindowIcon(QtWidgets.QIcon(self.baseDir + os.sep + 'resources/echoIcon.png'))
         except:
             pass
 
-
         self.update_echogram(p_data, plot_attribute)
 
-    @pyqtSlot(object, 'QPointF', int, object, list)
+
+    @pyqtSlot(object, object, int, object, list)
     def echogramClick(self, imageObj, clickLoc, button, modifier, items):
         pass
 #        if (items):
 #            print("Picked:",items)
 
-    @pyqtSlot(object, 'QPointF', int, object, list)
+
+    @pyqtSlot(object, object, int, object, list)
     def echogramUnClick(self, imageObj, clickLoc, button, modifier, items):
         pass
 
-    @pyqtSlot(object, 'QPointF', object, list, list)
+
+    @pyqtSlot(object, object, object, list, list)
     def echogramMouseInWidget(self, imageObj, location, modifier, draggedItems, items):
 
 #        if (items):
@@ -81,13 +102,18 @@ class echogram_viewer(QMainWindow, ui_echogram_viewer.Ui_echogram_viewer):
                 xaxis=p_data.ping_time)
 
         #  add the echogram HUD text
-        self.echogramLabel = self.QEchogramViewer.addHudText(QPointF(0.99,0.995),
+        self.echogramLabel = self.QEchogramViewer.addHudText(QtCore.QPointF(0.99,0.995),
                 '', color=[0,250,0], alpha=200, halign='right', valign='bottom')
         self.echogramLabel.setBackground([0,0,0], 250)
 
         #  fill the echogram window - vertical extent only
         self.QEchogramViewer.fillExtent(verticalOnly=True)
 
+
+
+    def add_line(self, line, **kwargs):
+
+        self.QEchogramViewer.addLine([line.ping_time, line.data], **kwargs)
 
     def closeEvent(self, event):
 

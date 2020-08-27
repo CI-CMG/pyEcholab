@@ -29,12 +29,12 @@
 """
 
 import numpy as np
-from ..ping_data import PingData
+from ..ping_data import ping_data
 from ..processing import line
 from ..processing import processed_data
 
 
-class afsc_bot_detector(PingData):
+class afsc_bot_detector(ping_data):
     """
     The afsc_bot_detector class implements a simple amplitude based bottom detection
     algorithm. It was written mainly as an example and will need to be developed further
@@ -87,8 +87,8 @@ class afsc_bot_detector(PingData):
         '''
 
         #  do a quick type check to make sure we have a processed_data object
-        if not isinstance(p_data, processed_data.ProcessedData):
-            raise TypeError('You must pass a ProcessedData object to this method.')
+        if not isinstance(p_data, processed_data.processed_data):
+            raise TypeError('You must pass a processed_data object to this method.')
 
         #  get the vertical axis data and the type (range or depth) from the procressed_data object.
         v_axis, v_axis_type = p_data.get_v_axis()
@@ -147,27 +147,30 @@ class afsc_bot_detector(PingData):
         #  calculate the lower search bound - usually you will at least want to avoid the ringdown.
         lower_bound = np.nanargmax(range_vector > range_min)
 
-        if lower_bound == echo_peak:
-            min_range = 0
-        else:
-            #  then find the lower bound of the envelope
-            near_envelope_samples = (echo_peak - np.squeeze(np.where(data[echo_peak:lower_bound:-1] > threshold)))
+        try:
+            if lower_bound == echo_peak:
+                min_range = 0
+            else:
+                #  then find the lower bound of the envelope
+                near_envelope_samples = (echo_peak - np.squeeze(np.where(data[echo_peak:lower_bound:-1] > threshold)))
 
-            if contiguous:
-                sample_diff = np.where(np.diff(near_envelope_samples) < -1)
-                if (sample_diff[0].size > 0):
-                    min_idx = np.min(sample_diff)
-                    min_sample = near_envelope_samples[min_idx]
+                if contiguous:
+                    sample_diff = np.where(np.diff(near_envelope_samples) < -1)
+                    if (sample_diff[0].size > 0):
+                        min_idx = np.min(sample_diff)
+                        min_sample = near_envelope_samples[min_idx]
+                    else:
+                        min_sample = near_envelope_samples[-1]
                 else:
                     min_sample = near_envelope_samples[-1]
-            else:
-                min_sample = near_envelope_samples[-1]
 
-            #  and the next one
-            previous_sample = min_sample - 1
+                #  and the next one
+                previous_sample = min_sample - 1
 
-            #  calculate the interpolated range for our near envelope edge
-            min_range = np.interp(threshold, [data[previous_sample], data[min_sample]],
-                                     [range_vector[previous_sample], range_vector[min_sample]])
+                #  calculate the interpolated range for our near envelope edge
+                min_range = np.interp(threshold, [data[previous_sample], data[min_sample]],
+                                         [range_vector[previous_sample], range_vector[min_sample]])
+        except:
+            min_range = np.nan
 
         return min_range

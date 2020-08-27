@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """An example of using insert and delete methods on data objects.
 
-This example script demonstrates manipulating the raw_data and ProcessedData
+This example script demonstrates manipulating the raw_data and processed_data
 objects using the insert and delete methods. The primary purpose of this
 example is to verify basic operation of the insert and delete methods,
 but it also provides some simple and somewhat contrived examples of using
@@ -23,7 +23,9 @@ ek60 = EK60.EK60()
 ek60.read_raw(rawfiles)
 
 # Get a reference to the raw_data object.
-raw_data_38 = ek60.get_raw_data(channel_number=2)
+raw_data = ek60.get_channel_data(frequencies=38000)
+# And the first raw_data object at 38 kHz
+raw_data_38 = raw_data[38000][0]
 print(raw_data_38)
 
 # Insert synthetic data.  Create data where each ping is a constant value and
@@ -62,9 +64,11 @@ ax2.set_title("Synthetic power resized to 160 pings (notice data is "
 # where we will insert the data.
 insert_idx = np.array([20, 21, 22, 23, 40, 41, 42, 43, 60, 61, 62, 63, 80, 81,
                        82, 83, 100, 101, 102, 103, 120, 121, 122, 123])
-# Insert the data.  Notice that if we call insert with the "object to insert"
-# argument set to None, it will automagically insert "empty" data.
-raw_data_38.insert(None, index_array=insert_idx)
+# Insert the data.  We call raw_data_38.empty_like, passing the length
+# of insert_idx to create an raw_data object that contains NaNs to
+# insert. We set the
+raw_data_38.insert(raw_data_38.empty_like(len(insert_idx)),
+    index_array=insert_idx, force=True)
 
 # Plot the power with empty data.
 ax3 = fig.add_subplot(3, 1, 3)
@@ -76,9 +80,10 @@ show()
 
 
 # Now convert this data to Sv in both ping order and time order and plot to
-# show how "empty" pings will be moved to the beginning when data is
-# displayed in time order.  If you need to avoid this, you must explicitly set
-# appropriate pings times for your empty pings.
+# show how "empty" pings will be moved to the end (Numpy version >= 1.18) or
+# beginning Numpy version < 1.18)when data is displayed in time order.  If
+# you need to avoid this, you must explicitly set appropriate pings times
+# for your empty pings.
 
 # Create a figure.
 fig = figure()
@@ -102,14 +107,13 @@ show()
 
 
 # Now delete the empty pings we inserted.
-delete_idx = np.arange(raw_data_38.n_pings)[raw_data_38.ping_time ==
-                                            np.datetime64('NaT')]
+delete_idx = np.arange(raw_data_38.n_pings)[np.isnan(raw_data_38.ping_time)]
 raw_data_38.delete(index_array=delete_idx)
 
 # Create a matplotlib figure to plot our echograms on.
 fig = figure()
 subplots_adjust(left=0.1, bottom=0.1, right=0.95, top=.90, wspace=None,
-                hspace=0.5)
+        hspace=0.5)
 
 # Plot the synthetic power data.
 ax = fig.add_subplot(2, 1, 1)

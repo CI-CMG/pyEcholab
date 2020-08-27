@@ -269,24 +269,15 @@ class processed_data(ping_data):
                 the pings do not have to be consecutive. When this keyword is
                 present, the ping_number, ping_time and insert_after keywords
                 are ignored.
+            force (bool): Set to True to disable checks on frequency and
+                datatype. This should only be set when inserting "empty"
+                pings (pings where data and attributes are NaN.)
         """
-        # Determine how many pings we're inserting.
-        if index_array is None:
-            in_idx = self.get_indices(start_time=ping_time, end_time=ping_time,
-                    start_ping=ping_number, end_ping=ping_number)[0]
-            n_inserting = self.n_pings - in_idx
-        else:
-            if isinstance(index_array, list):
-                index_array = np.array(index_array).astype('uint32')
-            n_inserting = index_array.shape[0]
-
-        if obj_to_insert is None:
-            # When obj_to_insert is None, we create automatically create a
-            # matching object that contains no data (all NaNs).
-            obj_to_insert = self.empty_like(n_inserting, empty_times=True)
+        # If passed an index array, make sure it's a numpy array
+        if isinstance(index_array, list):
+            index_array = np.array(index_array).astype('uint32')
 
         # Check that the data types are the same.
-
         if self.data_type != obj_to_insert.data_type and not force:
             raise TypeError('You cannot insert an object that contains ' +
                     obj_to_insert.data_type + ' data into an object that ' +
@@ -299,8 +290,7 @@ class processed_data(ping_data):
             this_vaxis = getattr(self, 'depth')
 
         # Interpolate the object we're inserting to our vertical axis (if the
-        # vertical axes are the same interpolate will return w/o doing
-        # anything).
+        # vertical axes are the same interpolate will return w/o doing anything).
         obj_to_insert.interpolate(this_vaxis)
 
         # We are now coexisting in harmony - call parent's insert.
@@ -838,7 +828,7 @@ class processed_data(ping_data):
     def resize(self, new_ping_dim, new_sample_dim):
         """Resizes sample data.
 
-        This method re-implements sample_data.resize, adding updating of the
+        This method re-implements ping_data.resize, adding updating of the
         vertical axis and n_pings attribute.
 
         Args:

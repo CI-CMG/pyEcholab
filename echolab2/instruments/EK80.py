@@ -2436,3 +2436,34 @@ class ek80_calibration(calibration):
 
         return param_data
 
+    def __str__(self):
+        """Re-implements string method that provides some basic info about
+        the ek80_calibration object
+
+        Returns:
+            A string with information about the ek80_calibration instance.
+        """
+
+        #  print the class and address
+        msg = str(self.__class__) + " at " + str(hex(id(self))) + "\n"
+
+        # Create a list of attributes to print out
+        attr_to_display = ['frequency','transmit_power','pulse_duration',
+                'sample_interval', 'gain', 'sa_correction']
+
+        # And assemble the string
+        for param_name in attr_to_display:
+            n_spaces = 30 - len(param_name)
+            msg += n_spaces * ' ' + param_name
+            # Extract data from raw_data attribues
+            if hasattr(self, param_name):
+                attr = getattr(self, param_name)
+                if isinstance(attr, np.ndarray):
+                    msg += ' :: array ' + str(attr.size) + ' :: First value: ' + str(attr[0]) + '\n'
+                else:
+                    if attr:
+                            msg += ' :: scalar :: Value: ' + str(attr) + '\n'
+                    else:
+                        msg += ' :: No value set\n'
+
+        return msg

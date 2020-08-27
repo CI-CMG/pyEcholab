@@ -40,7 +40,7 @@ ek60.read_bot(botfiles)
 # Get the raw_data objects from the ek60 object. We request data by
 # frequency which will return a dict keyed by frequency containing
 # the raw data.
-raw_data = ek60.get_channel_data(frequency=[18000, 38000, 120000])
+raw_data = ek60.get_channel_data(frequencies=[18000, 38000, 120000])
 
 # Get Sv and bottom data
 Sv_data = {18000: None, 38000: None, 120000: None}

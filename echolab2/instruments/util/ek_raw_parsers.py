@@ -1,35 +1,10 @@
-# coding=utf-8
-
-#     National Oceanic and Atmospheric Administration (NOAA)
-#     Alaskan Fisheries Science Center (AFSC)
-#     Resource Assessment and Conservation Engineering (RACE)
-#     Midwater Assessment and Conservation Engineering (MACE)
-
-#  THIS SOFTWARE AND ITS DOCUMENTATION ARE CONSIDERED TO BE IN THE PUBLIC DOMAIN
-#  AND THUS ARE AVAILABLE FOR UNRESTRICTED PUBLIC USE. THEY ARE FURNISHED "AS IS."
-#  THE AUTHORS, THE UNITED STATES GOVERNMENT, ITS INSTRUMENTALITIES, OFFICERS,
-#  EMPLOYEES, AND AGENTS MAKE NO WARRANTY, EXPRESS OR IMPLIED, AS TO THE USEFULNESS
-#  OF THE SOFTWARE AND DOCUMENTATION FOR ANY PURPOSE. THEY ASSUME NO RESPONSIBILITY
-#  (1) FOR THE USE OF THE SOFTWARE AND DOCUMENTATION; OR (2) TO PROVIDE TECHNICAL
-#  SUPPORT TO USERS.
-
 """
-.. module:: echolab2.instruments.util.simrad_parsers
+Code originally developed for pyEcholab
+(https://github.com/CI-CMG/pyEcholab)
+by Rick Towler <rick.towler@noaa.gov> at NOAA AFSC.
 
-    :synopsis: Parsers for Simrad raw file datagrams
-
-| Developed by:  Zac Berkowitz <zac.berkowitz@gmail.com> under contract for
-| National Oceanic and Atmospheric Administration (NOAA)
-| Alaska Fisheries Science Center (AFSC)
-| Midwater Assesment and Conservation Engineering Group (MACE)
-|
-|
-| Authors:
-|       Zac Berkowitz <zac.berkowitz@gmail.com>
-|       Rick Towler   <rick.towler@noaa.gov>
-| Maintained by:
-|       Rick Towler   <rick.towler@noaa.gov>
-
+The code has been modified to handle split-beam data and
+channel-transducer structure from different EK80 setups.
 """
 
 import numpy as np
@@ -37,19 +12,16 @@ import logging
 import struct
 import re
 import sys
-from collections import Counter
 import xml.etree.ElementTree as ET
-from .date_conversion import nt_to_unix
+from collections import Counter
+from .ek_date_conversion import nt_to_unix
 
 TCVR_CH_NUM_MATCHER = re.compile('\d{6}-\w{1,2}')
 
 __all__ = ['SimradNMEAParser', 'SimradDepthParser', 'SimradBottomParser',
-            'SimradAnnotationParser', 'SimradConfigParser', 'SimradRawParser',
-            'SimradFILParser', 'SimradXMLParser', 'SimradMRUParser']
+            'SimradAnnotationParser', 'SimradConfigParser', 'SimradRawParser']
 
 log = logging.getLogger(__name__)
-
-
 
 class _SimradDatagramParser(object):
     '''
@@ -120,7 +92,6 @@ class _SimradDatagramParser(object):
         final_fmt = '=l%dsl' % (datagram_size)
         return struct.pack(final_fmt, datagram_size, datagram_content_str, datagram_size)
 
-
 class SimradDepthParser(_SimradDatagramParser):
     '''
     ER60 Depth Detection datagram (from .bot files) contain the following keys:
@@ -146,11 +117,11 @@ class SimradDepthParser(_SimradDatagramParser):
     '''
     def __init__(self):
         headers = {0: [('type', '4s'),
-                       ('low_date', 'L'),
-                       ('high_date', 'L'),
-                       ('transceiver_count', 'L')
-                      ]
-                  }
+                     ('low_date', 'L'),
+                     ('high_date', 'L'),
+                     ('transceiver_count', 'L')
+                     ]
+                }
         _SimradDatagramParser.__init__(self, "DEP", headers)
 
     def _unpack_contents(self, raw_string, bytes_read, version):
@@ -341,6 +312,11 @@ class SimradAnnotationParser(_SimradDatagramParser):
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
         data['bytes_read'] = bytes_read
 
+#        if version == 0:
+#            data['text'] = raw_string[self.header_size(version):].strip('\x00')
+#            if isinstance(data['text'], bytes):
+#                data['text'] = data['text'].decode()
+
         if version == 0:
             if (sys.version_info.major > 2):
                 data['text'] = str(raw_string[self.header_size(version):].strip(b'\x00'), 'ascii', errors='replace')
@@ -357,9 +333,8 @@ class SimradAnnotationParser(_SimradDatagramParser):
         if version == 0:
 
             for field in self.header_fields(version):
-                if (sys.version_info.major > 2) and isinstance(data[field], str):
-                    data[field] = data[field].encode('latin_1')
                 datagram_contents.append(data[field])
+
 
             if data['text'][-1] != '\x00':
                 tmp_string = data['text'] + '\x00'
@@ -369,10 +344,6 @@ class SimradAnnotationParser(_SimradDatagramParser):
             #Pad with more nulls to 4-byte word boundry if necessary
             if len(tmp_string) % 4:
                 tmp_string += '\x00' * (4 - (len(tmp_string) % 4))
-
-            #  handle Python 3 strings
-            if (sys.version_info.major > 2):
-                tmp_string = tmp_string.encode('latin_1')
 
             datagram_fmt += '%ds' % (len(tmp_string))
             datagram_contents.append(tmp_string)
@@ -459,14 +430,14 @@ class SimradNMEAParser(_SimradDatagramParser):
         if version == 0:
 
             for field in self.header_fields(version):
-                if (sys.version_info.major > 2) and isinstance(data[field], str):
-                    data[field] = data[field].encode('latin_1')
                 datagram_contents.append(data[field])
+
 
             if data['nmea_string'][-1] != '\x00':
                 tmp_string = data['nmea_string'] + '\x00'
             else:
                 tmp_string = data['nmea_string']
+
 
             #Pad with more nulls to 4-byte word boundry if necessary
             if len(tmp_string) % 4:
@@ -625,10 +596,7 @@ class SimradXMLParser(_SimradDatagramParser):
     transceiver_parsing_options = {'TransceiverNumber':[int,'',''],
                                    'Version':[str,'transceiver_version',''],
                                    'IPAddress':[str,'ip_address',''],
-                                   'Impedance':[int,'',''],
-                                   'Multiplexing':[int,'',''],
-                                   'RxSampleFrequency':[float,'',''],
-                                   'HwChannelConfiguration':[int,'','']
+                                   'Impedance':[int,'','']
                                   }
 
     transducer_parsing_options = {'SerialNumber':[str,'transducer_serial_number',''],
@@ -691,7 +659,6 @@ class SimradXMLParser(_SimradDatagramParser):
                         ('high_date', 'L')
                             ]
                         }
-
         _SimradDatagramParser.__init__(self, "XML", headers)
 
 
@@ -744,25 +711,13 @@ class SimradXMLParser(_SimradDatagramParser):
                         #  no parse char provided - nothing to parse
                         data = xml_dict[k]
 
-                    # Try to convert to specified type
+                    #  try to convert to specified type
                     if isinstance(data, list):
-                        # Lists are returned as numpy arrays
                         for i in range(len(data)):
                             try:
                                 data[i] = parse_opts[k][0](data[i])
                             except:
                                 pass
-
-                        # Determine the array type
-                        if parse_opts[k][0] == int:
-                            dtype = np.int32
-                        elif parse_opts[k][0] == float:
-                            dtype = np.float32
-                        else:
-                            dtype = np.string_
-
-                        # and create the array
-                        data = np.array(data, dtype=dtype)
                     else:
                         data = parse_opts[k][0](data)
 
@@ -877,16 +832,11 @@ class SimradXMLParser(_SimradDatagramParser):
 
                                 # add transducer mounting details
                                 if match_found:
-
-
-
-
                                     dict_to_dict(xducer_ch_xml, data['configuration'][channel_id],
                                                  self.transducer_parsing_options)
 
                         #  add the header data to the config dict
                         h = root.find('Header')
-
                         dict_to_dict(h.attrib, data['configuration'][channel_id],
                                      self.header_parsing_options)
 
@@ -914,7 +864,7 @@ class SimradXMLParser(_SimradDatagramParser):
                     dict_to_dict(transducer_xml, data['environment'],
                             self.envxdcr_parsing_options)
 
-
+        data['xml'] = xml_string
         return data
 
 
@@ -1054,31 +1004,12 @@ class SimradFILParser(_SimradDatagramParser):
 
 class SimradConfigParser(_SimradDatagramParser):
     '''
-    Simrad Configuration Datagram parser. The CONx datagrams are present in data files
-    collected using the ES/EK60, ES70, and ME70.
+    Simrad Configuration Datagram parser operates on dictonaries with the following keys:
 
-    5-15-20 - RHT: The output from this parser has been changed to follow the output
-                   format of the XML parser configuration datagram.
-
-  The parser operates on dictonaries with the following keys:
-
-        type:           string == 'CON0'
-        subtype:        string == 'configuration'
-        low_date:       long uint representing LSBytes of 64bit NT date
-        high_date:      long uint representing MSBytes of 64bit NT date
-        timestamp:      datetime.datetime object of NT date, assumed to be UTC
-        dg_version:     int representing the datagram version
-        bytes_read:     int representing the number of bytes read from disk
-        configuration:  dict, keyed by channel ID, containing the configuration header
-                        data by channel. Common field values are replicated across
-                        channels.
-
-        The configuration dict contains the configuration parameters keyed by Channel ID.
-        The common configuration field values like survery_name and sounder_name are
-        replicated across channels. Note that when these data are packed, the values for
-        the common fields are taken from the first channel.
-
-    The common configuration fields are:
+        type:         string == 'CON0'
+        low_date:     long uint representing LSBytes of 64bit NT date
+        high_date:    long uint representing MSBytes of 64bit NT date
+        timestamp:    datetime.datetime object of NT date, assumed to be UTC
 
         survey_name                     [str]
         transect_name                   [str]
@@ -1097,7 +1028,8 @@ class SimradConfigParser(_SimradDatagramParser):
         sound_velocity_transducer       [float] [m/s]
         beam_config                     [str] Raw XML string containing beam config. info
 
-    transceiver specific keys (ER60/ES60 sounders):
+
+    Transducer Config Keys (ER60/ES60 sounders):
         channel_id                      [str]   channel ident string
         beam_type                       [long]  Type of channel (0 = Single, 1 = Split)
         frequency                       [float] channel frequency
@@ -1123,7 +1055,7 @@ class SimradConfigParser(_SimradDatagramParser):
         gpt_software_version            [str]
         spare4                          [str]
 
-    transceiver specific keys (ME70 sounders):
+    Transducer Config Keys (ME70 sounders):
         channel_id                      [str]   channel ident string
         beam_type                       [long]  Type of channel (0 = Single, 1 = Split)
         reserved1                       [float] channel frequency
@@ -1159,6 +1091,8 @@ class SimradConfigParser(_SimradDatagramParser):
                         ready for writing to disk
     '''
 
+
+
     def __init__(self):
         headers = {0:[('type', '4s'),
                       ('low_date', 'L'),
@@ -1176,10 +1110,6 @@ class SimradConfigParser(_SimradDatagramParser):
                       ]}
 
         _SimradDatagramParser.__init__(self, 'CON', headers)
-
-        #  for CON0 datagrams, the data are not in XML format so the naming and
-        #  typing system used for parsing XML data doesn't come into play. Here
-        #  we define the dict keys and binary data types for CON0 headers.
 
         self._transducer_headers = {'ER60':[('channel_id', '128s'),
                                        ('beam_type', 'l'),
@@ -1267,45 +1197,37 @@ class SimradConfigParser(_SimradDatagramParser):
     def _unpack_contents(self, raw_string, bytes_read, version):
 
         data = {}
-        header_data = {}
-        common_params = {}
-
         round6 = lambda x: round(x, ndigits=6)
         header_values = struct.unpack(self.header_fmt(version), raw_string[:self.header_size(version)])
 
         for indx, field in enumerate(self.header_fields(version)):
-            header_data[field] = header_values[indx]
+            data[field] = header_values[indx]
 
             #  handle Python 3 strings
-            if (sys.version_info.major > 2) and isinstance(header_data[field], bytes):
-                header_data[field] = header_data[field].decode('latin_1')
+            if (sys.version_info.major > 2) and isinstance(data[field], bytes):
+                data[field] = data[field].decode('latin_1')
 
-        #  add the common fields to the return dict
-        data['low_date'] = header_data['low_date']
-        data['high_date'] = header_data['high_date']
-        data['timestamp'] = nt_to_unix((header_data['low_date'], header_data['high_date']))
-        data['type'] = header_data['type']
-        data['subtype'] = 'configuration'
-        data['configuration'] = {}
-        data['dg_version'] = version
+        data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
         data['bytes_read'] = bytes_read
 
         if version == 0:
 
-            for field in ['transect_name', 'version', 'survey_name', 'sounder_name']:
-                common_params[field] = header_data[field].strip('\x00')
+            data['transceivers'] = {}
 
-            sounder_name = common_params['sounder_name']
+            for field in ['transect_name', 'version', 'survey_name', 'sounder_name']:
+                data[field] = data[field].strip('\x00')
+
+            sounder_name = data['sounder_name']
             if sounder_name == 'MBES':
-                _me70_extra_values = struct.unpack('=hLff', header_data['spare0'][:14])
-                common_params['multiplexing'] = _me70_extra_values[0]
-                common_params['time_bias'] = _me70_extra_values[1]
-                common_params['sound_velocity_avg'] = _me70_extra_values[2]
-                common_params['sound_velocity_transducer'] = _me70_extra_values[3]
-                common_params['spare0'] = data['spare0'][:14] + data['spare0'][14:].strip('\x00')
+                _me70_extra_values = struct.unpack('=hLff', data['spare0'][:14])
+                data['multiplexing'] = _me70_extra_values[0]
+                data['time_bias'] = _me70_extra_values[1]
+                data['sound_velocity_avg'] = _me70_extra_values[2]
+                data['sound_velocity_transducer'] = _me70_extra_values[3]
+                data['spare0'] = data['spare0'][:14] + data['spare0'][14:].strip('\x00')
 
             else:
-                common_params['spare0'] = header_data['spare0'].strip('\x00')
+                data['spare0'] = data['spare0'].strip('\x00')
 
             buf_indx = self.header_size(version)
 
@@ -1324,17 +1246,15 @@ class SimradConfigParser(_SimradDatagramParser):
             txcvr_header_fmt    = '=' + ''.join([x[1] for x in transducer_header])
             txcvr_header_size   = struct.calcsize(txcvr_header_fmt)
 
-            for txcvr_indx in range(1, header_data['transceiver_count'] + 1):
-                txcvr_header_values_encoded = struct.unpack(txcvr_header_fmt,
-                        raw_string[buf_indx:buf_indx + txcvr_header_size])
+            for txcvr_indx in range(1, data['transceiver_count'] + 1):
+                txcvr_header_values_encoded = struct.unpack(txcvr_header_fmt, raw_string[buf_indx:buf_indx + txcvr_header_size])
                 txcvr_header_values = list(txcvr_header_values_encoded)
                 for tx_idx, tx_val in enumerate(txcvr_header_values_encoded):
                     if isinstance(tx_val, bytes):
                         txcvr_header_values[tx_idx] = tx_val.decode()
 
-                channel_id = txcvr_header_values[0].strip('\x00')
-                txcvr = data['configuration'].setdefault(channel_id, {})
-                txcvr.update(common_params)
+
+                txcvr = data['transceivers'].setdefault(txcvr_indx, {})
 
                 if _sounder_name_used in ['ER60', 'ES60']:
                     for txcvr_field_indx, field in enumerate(txcvr_header_fields[:17]):
@@ -1356,7 +1276,7 @@ class SimradConfigParser(_SimradDatagramParser):
                 else:
                     raise RuntimeError('Unknown _sounder_name_used (Should not happen, this is a bug!)')
 
-                txcvr['channel_id']           = channel_id
+                txcvr['channel_id']           = txcvr['channel_id'].strip('\x00')
                 txcvr['spare1']               = txcvr['spare1'].strip('\x00')
                 txcvr['spare2']               = txcvr['spare2'].strip('\x00')
                 txcvr['spare3']               = txcvr['spare3'].strip('\x00')
@@ -1369,7 +1289,6 @@ class SimradConfigParser(_SimradDatagramParser):
             #CON1 only has a single data field:  beam_config, holding an xml string
             data['beam_config'] = raw_string[self.header_size(version):].strip('\x00')
 
-
         return data
 
 
@@ -1380,34 +1299,27 @@ class SimradConfigParser(_SimradDatagramParser):
 
         if version == 0:
 
-            # Build out the config dict so it can be unpacked
-            # Pull the common configuration data out of the first channel available
-            first_chan = list(data['configuration'].keys())[0]
-            first_conf = data['configuration'][first_chan]
+            if data['transceiver_count'] != len(data['transceivers']):
+                log.warning("Mismatch between 'transceiver_count' and actual # of transceivers")
+                data['transceiver_count'] = len(data['transceivers'])
 
-            data['transceiver_count'] = len(data['configuration'])
-
-            sounder_name = first_conf['sounder_name']
+            sounder_name = data['sounder_name']
             if sounder_name == 'MBES':
-                _packed_me70_values = struct.pack('=hLff', first_conf['multiplexing'],
-                    first_conf['time_bias'], first_conf['sound_velocity_avg'], first_conf['sound_velocity_transducer'])
-                first_conf['spare0'] = _packed_me70_values + first_conf['spare0'][14:]
-
-            data['survey_name'] = first_conf['survey_name'].encode('latin_1')
-            data['transect_name'] = first_conf['transect_name'].encode('latin_1')
-            data['sounder_name'] = first_conf['sounder_name'].encode('latin_1')
-            data['version'] = first_conf['version'].encode('latin_1')
-            data['spare0'] = first_conf['spare0'].encode('latin_1')
+                _packed_me70_values = struct.pack('=hLff', data['multiplexing'],
+                    data['time_bias'], data['sound_velocity_avg'], data['sound_velocity_transducer'])
+                data['spare0'] = _packed_me70_values + data['spare0'][14:]
 
             for field in self.header_fields(version):
-                if (sys.version_info.major > 2) and isinstance(data[field], str):
-                    data[field] = data[field].encode('latin_1')
                 datagram_contents.append(data[field])
 
             try:
                 transducer_header = self._transducer_headers[sounder_name]
                 _sounder_name_used = sounder_name
             except KeyError:
+                log.warning('Unknown sounder_name:  %s, (no one of %s)', sounder_name,
+                    list(self._transducer_headers.keys()))
+                log.warning('Will use ER60 transducer config fields as default')
+
                 transducer_header = self._transducer_headers['ER60']
                 _sounder_name_used = 'ER60'
 
@@ -1415,26 +1327,23 @@ class SimradConfigParser(_SimradDatagramParser):
             txcvr_header_fmt    = '=' + ''.join([x[1] for x in transducer_header])
             txcvr_header_size   = struct.calcsize(txcvr_header_fmt)
 
-            for txcvr_indx, txcvr in list(data['configuration'].items()):
+            for txcvr_indx, txcvr in list(data['transceivers'].items()):
                 txcvr_contents = []
 
                 if _sounder_name_used in ['ER60', 'ES60']:
                     for field in txcvr_header_fields[:17]:
-                        #  Python 3 convert str to bytes
-                        if (sys.version_info.major > 2) and isinstance(txcvr[field], str):
-                            txcvr[field] = txcvr[field].encode('latin_1')
                         txcvr_contents.append(txcvr[field])
 
                     txcvr_contents.extend(txcvr['pulse_length_table'])
-                    txcvr_contents.append(txcvr['spare1'].encode('latin_1'))
+                    txcvr_contents.append(txcvr['spare1'])
 
                     txcvr_contents.extend(txcvr['gain_table'])
-                    txcvr_contents.append(txcvr['spare2'].encode('latin_1'))
+                    txcvr_contents.append(txcvr['spare2'])
 
                     txcvr_contents.extend(txcvr['sa_correction_table'])
-                    txcvr_contents.append(txcvr['spare3'].encode('latin_1'))
+                    txcvr_contents.append(txcvr['spare3'])
 
-                    txcvr_contents.extend([txcvr['gpt_software_version'].encode('latin_1'), txcvr['spare4'].encode('latin_1')])
+                    txcvr_contents.extend([txcvr['gpt_software_version'], txcvr['spare4']])
 
                     txcvr_contents_str = struct.pack(txcvr_header_fmt, *txcvr_contents)
 
@@ -1563,16 +1472,18 @@ class SimradRawParser(_SimradDatagramParser):
                     data['power'] = None
 
                 if int(data['mode']) & 0x2:
-                    data['angle'] = np.fromstring(raw_string[indx:indx + block_size], dtype='uint8')
-                    data['angle'].shape = (data['count'], 2)
+                    data['angle'] = np.frombuffer(raw_string[indx:indx + block_size], dtype='int8')
+                    data['angle'] = data['angle'].reshape((-1, 2))
                 else:
                     data['angle'] = None
 
             else:
                 data['power'] = np.empty((0,), dtype='int16')
-                data['angle'] = np.empty((0,), dtype='uint8')
+                data['angle'] = np.empty((0,), dtype='int8')
 
         elif version == 3:
+
+            #result = 1j*Data[...,1]; result += Data[...,0]
 
             #  clean up the channel ID
             data['channel_id'] = data['channel_id'].strip('\x00')
@@ -1590,44 +1501,36 @@ class SimradRawParser(_SimradDatagramParser):
                     data['power'] = None
 
                 if data['data_type'] & 0b10:
-                    data['angle'] = np.fromstring(raw_string[indx:indx + block_size], dtype='uint8')
-                    data['angle'].shape = (data['count'], 2)
+                    data['angle'] = np.fromstring(raw_string[indx:indx + block_size], dtype='int8')
+                    data['angle'] = data['angle'].reshape((-1, 2))
                     indx += block_size
                 else:
                     data['angle'] = None
 
                 #  determine the complex sample data type - this is contained in bits 2 and 3
                 #  of the datatype <short> value. I'm assuming the types are exclusive...
-                #  Note that Numpy doesn't support the complex32 type so both the full precision
-                #  (complex comprised of 2 32-bit floats) and reduced precision (complex
-                #  comprised of 2 16-bit floats) are returned as np.complex64 which is complex
-                #  comprised of 2 32-bit floats.
                 data['complex_dtype'] = np.float16
                 type_bytes = 2
                 if ((data['data_type'] & 0b1000)):
                      data['complex_dtype'] = np.float32
-                     type_bytes = 4
+                     type_bytes = 8
 
                 #  determine the number of complex samples
                 data['n_complex'] = data['data_type'] >> 8
 
                 #  unpack the complex samples
                 if (data['n_complex'] > 0):
-                    #  determine the block size (complex data are comprised
-                    #  of two values so we have to double this)
-                    block_size = 2 * data['count'] * data['n_complex'] * type_bytes
+                    #  determine the block size
+                    block_size = data['count'] * data['n_complex'] * type_bytes
 
-                    #  convert and reshape the raw string data
-                    data['complex'] = np.fromstring(raw_string[indx:indx + block_size],
-                        dtype=data['complex_dtype'])
-                    data['complex'].shape = (data['count'], 2 * data['n_complex'])
+                    data['complex'] = np.fromstring(raw_string[indx:indx + block_size], dtype=data['complex_dtype'])
                     data['complex'].dtype = np.complex64
                 else:
                     data['complex'] = None
 
             else:
                 data['power'] = np.empty((0,), dtype='int16')
-                data['angle'] = np.empty((0,), dtype='uint8')
+                data['angle'] = np.empty((0,), dtype='int8')
                 data['complex'] = np.empty((0,), dtype='complex64')
                 data['n_complex'] = 0
 
@@ -1642,12 +1545,21 @@ class SimradRawParser(_SimradDatagramParser):
 
         if version == 0:
 
-            if data['count'] > 0 and data['mode'] == 0:
+            if data['count'] > 0:
+                if (int(data['mode']) & 0x1) and (len(data.get('power', [])) != data['count']):
+                    log.warning("Data 'count' = %d, but contains %d power samples.  Ignoring power.")
+                    data['mode'] &= ~(1<<0)
+
+                if (int(data['mode']) & 0x2) and (len(data.get('angle', [])) != data['count']):
+                    log.warning("Data 'count' = %d, but contains %d angle samples.  Ignoring angle.")
+                    data['mode'] &= ~(1<<1)
+
+
+                if data['mode'] == 0:
+                    log.warning("Data 'count' = %d, but mode == 0.  Setting count to 0", data['count'])
                     data['count'] = 0
 
             for field in self.header_fields(version):
-                if (sys.version_info.major > 2) and isinstance(data[field], str):
-                    data[field] = data[field].encode('latin_1')
                 datagram_contents.append(data[field])
 
             if data['count'] > 0:
@@ -1658,9 +1570,6 @@ class SimradRawParser(_SimradDatagramParser):
 
                 if int(data['mode']) & 0x2:
                     datagram_fmt += '%dH' % (data['count'])
-                    #  reshape the angle array for writing
-                    angles = data['angle'][:,0].astype('uint16') << 8
-                    angles = angles + data['angle'][:,1]
-                    datagram_contents.extend(angles)
+                    datagram_contents.extend(data['angle'])
 
         return struct.pack(datagram_fmt, *datagram_contents)

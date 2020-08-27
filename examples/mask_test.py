@@ -16,15 +16,31 @@ from echolab2.processing import mask
 rawfiles = ['./data/EK60/PC1106-D20110830-T052815.raw',
             './data/EK60/PC1106-D20110830-T053815.raw']
 
+# Specify the channel nummber to work with. This example shows
+channel_number = 1
+
 ek60 = EK60.EK60()
 ek60.read_raw(rawfiles)
 
-# Get a reference to the RawData object.
-raw_data_38 = ek60.get_raw_data(channel_number=2)
-print(raw_data_38[0])
+# Get a reference to the raw_data objects associated with
+# the channel specified above. Calling get_channel_data
+# and specifying one or more channel numbers will return a
+# dictionary keyed by channel number. The values will be a
+# list of data objects associated with that channel number.
+raw_data = ek60.get_channel_data(channel_numbers=channel_number)
+
+# Now get a reference to the first raw_data object for this
+# channel.
+raw_data = raw_data[channel_number][0]
+print(raw_data)
+
+# Since we used channel number to select our raw data we don't
+# know what frequency we're working with. We will assume that
+# the frequency is constant throughout the file.
+this_freq_khz = int(raw_data.frequency[0] / 1000.)
 
 # Get a processed_data object containing Sv.
-Sv = raw_data_38[0].get_Sv()
+Sv = raw_data.get_Sv()
 print(Sv)
 
 # Create a copy of Sv to compare against the copy we will manipulate.
@@ -78,12 +94,12 @@ subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.90, wspace=None,
 # Plot the original data.
 ax1 = fig.add_subplot(2, 1, 1)
 eg = echogram.Echogram(ax1, orig_Sv, threshold=[-70, -34])
-ax1.set_title("Original Sv Data")
+ax1.set_title('Original ' + str(this_freq_khz) + ' kHz Sv Data')
 
 # Plot the data we modified.
 ax2 = fig.add_subplot(2, 1, 2)
 eg = echogram.Echogram(ax2, Sv, threshold=[-70, -34])
-ax2.set_title('Modified Sv data')
+ax2.set_title('Modified ' + str(this_freq_khz) + ' kHz Sv Data')
 
 # Display the results.
 show()
@@ -124,7 +140,7 @@ subplots_adjust(left=0.075, bottom=.05, right=0.98, top=.90, wspace=None,
 # Plot the original data.
 ax1 = fig.add_subplot(2, 1, 1)
 eg = echogram.Echogram(ax1, orig_Sv, threshold=[-70, -34])
-ax1.set_title("Original Sv Data")
+ax1.set_title('Original ' + str(this_freq_khz) + ' kHz Sv Data')
 
 # Plot the data we modified.
 ax2 = fig.add_subplot(2, 1, 2)
