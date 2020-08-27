@@ -799,18 +799,6 @@ class EK80(object):
                 for id in data_objs:
                     channel_data[freq].extend(self.raw_data[id])
 
-        elif channel_numbers is not None:
-            # channel_number is specified.
-
-            # if we're passed a number, make it a list
-            if not isinstance(channel_numbers, list):
-                channel_numbers = [channel_numbers]
-
-            # and work through the numbers, adding if they exist
-            for num in channel_numbers:
-                id = self.channel_map.get(num, None)
-                channel_data[num] = self.raw_data.get(id, None)
-
         else:
             # No keywords specified - return all in a dict keyed by channel ID
             channel_data = self.raw_data
