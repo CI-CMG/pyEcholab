@@ -280,7 +280,6 @@ class EK60(object):
                 read.
             power (bool): Controls whether power data is stored
             angles (bool): Controls whether angle data is stored
-            complex (bool): Controls whether complex data is stored
             max_sample_count (int): Specify the max sample count to read
                 if your data of interest is less than the total number of
                 samples contained in the instrument files.
@@ -1551,7 +1550,7 @@ class raw_data(ping_data):
                                 'transceiver_type']
 
 
-    def empty_like(self, n_pings):
+    def empty_like(self, n_pings, empty_times=True):
         """Returns raw_data object with data arrays filled with NaNs.
 
         The raw_data object has the same general characteristics of "this"
@@ -1561,6 +1560,8 @@ class raw_data(ping_data):
             n_pings (int): Set n_pings to an integer specifying the number of
                 pings in the new object. The vertical axis (both number of
                 samples and depth/range values) will be the same as this object.
+            empty_times (bool) Set to True to return an object with ping times
+                set to NaT. Set to False to copy the ping times from this object.
         """
 
         # Create an instance of echolab2.EK60.raw_data and set the same basic
@@ -1572,7 +1573,7 @@ class raw_data(ping_data):
 
         empty_obj.data_type = self.data_type
 
-        return self._like(empty_obj, n_pings, np.nan, empty_times=True)
+        return self._like(empty_obj, n_pings, np.nan, empty_times=empty_times)
 
 
     def copy(self):
@@ -1843,9 +1844,20 @@ class raw_data(ping_data):
         """Returns a calibration object populated from the data contained in this
         raw_data object.
 
+        Args:
+
+            absorption_method (str): Set to 'F&G' to use the method published by
+                Francois and Garrison to compute absorption. This is the default
+                in Echoview. You can also specify ‘A&M’ to use the method
+                published by Ainslie and McColm.
+                Default: 'F&G'
+
         """
 
+        # Create an empty ek60 calibration object
         cal_obj = ek60_calibration(**kwargs)
+
+        # Populate it using the data from "this" object
         cal_obj.from_raw_data(self)
 
         return cal_obj
@@ -1868,7 +1880,7 @@ class raw_data(ping_data):
         return much faster if the raw data share the same sample thickness,
         offset and sound speed.
 
-        If calibration is set to an instance of EK60.calibration the
+        If calibration is set to an instance of EK60.ek60_ calibration the
         values in that object (if set) will be used when performing the
         transformations required to return the results. If the required
         parameters are not set in the calibration object or if no object is
@@ -1876,10 +1888,76 @@ class raw_data(ping_data):
         data.
 
         Args:
-            **kwargs (dict): A keyworded argument list.
+
+            resample_interval (float): Set this to a float specifying the
+                sampling interval (in seconds) used when generating the
+                vertical axis for the return data. If the raw data sampling
+                interval is different than the specified interval, the raw
+                data will be resampled at the specified rate. 0 and 1 have
+                special meaning. If set to 0 or 1, the data will only be resampled
+                if the sampling interval changes. If it does change, when
+                set to 0, the data will be resampled to the shortest sampling
+                interval present in the data. If set to 1, it will be resampled
+                to the longest interval present in the data.
+
+                The following constants are defined in the class:
+
+                    RESAMPLE_SHORTEST = 0
+                    RESAMPLE_16   = 0.000016
+                    RESAMPLE_32  = 0.000032
+                    RESAMPLE_64  = 0.000064
+                    RESAMPLE_128  = 0.000128
+                    RESAMPLE_256 = 0.000256
+                    RESAMPLE_512 = 0.000512
+                    RESAMPLE_1024 = 0.001024
+                    RESAMPLE_2048 = 0.002048
+                    RESAMPLE_LONGEST = 1
+
+                Default: RESAMPLE_SHORTEST
+
+            return_indices (np.array uint32): Set this to a numpy array that contains
+                the index values to return in the processed data object. This can be
+                used for more advanced anipulations where start/end ping/time are
+                inadequate.
+
+            calibration (EK60.ek60_calibration): Set to an instance of
+                EK60.ek60_calibration containing the calibration parameters
+                you want to use when transforming to Sv/sv. If no calibration
+                object is provided, the values will be extracted from the raw
+                data.
+
+            start_time (datetime64): Set to a numpy datetime64 oject specifying
+                the start time of the data to convert. All data between the start
+                and end time will be returned. If set to None, the start time is
+                the first ping.
+                Default: None
+
+            end_time (datetime64): Set to a numpy datetime64 oject specifying
+                the end time of the data to convert. All data between the start
+                and end time will be returned. If set to None, the end time is
+                the last ping.
+                Default: None
+
+            start_ping (int): Set to an integer specifying the first ping number
+                to return. All pings between the start and end ping will be
+                returned. If set to None, the first ping is set as the start ping.
+                Default: None
+
+            end_ping (int): Set to an integer specifying the end ping number
+                to return. All pings between the start and end ping will be
+                returned. If set to None, the last ping is set as the end ping.
+                Default: None
+
+            Note that you can set a start/end time OR a start/end ping. If you
+            set both, one will be ignored.
+
+            time_order (bool): Set to True to return data in time order. If
+                False, data will be returned in the order it was read.
+                Default: True
 
         Returns:
-            The processed_data object, p_data.
+            A processed_data object containing power data.
+
         """
 
         # Call the _get_sample_data method requesting the appropriate sample attribute.
@@ -1905,13 +1983,6 @@ class raw_data(ping_data):
         This method is identical to get_power except that it also returns an
         index array that maps the pings in the processed_data object to the
         same pings in the "this" object. This is used internally.
-
-        Args:
-            **kwargs (dict): A keyworded argument list.
-
-        Returns:
-            The processed data object, p_data, and an index array of pings,
-            return_indices.
         """
 
         # Call the _get_sample_data method requesting the appropriate sample attribute.
@@ -1937,10 +2008,11 @@ class raw_data(ping_data):
         the linear keyword to True.
 
         Args:
-            **kwargs (dict): A keyworded argument list.
+            See getSv for arguments.
 
         Returns:
-            A processed data object containing sv.
+            A processed_data object containing sv.
+
         """
 
         # Remove the linear keyword.
@@ -1954,25 +2026,99 @@ class raw_data(ping_data):
                return_depth=False, **kwargs):
         """Gets Sv data
 
-        The value passed to cal_parameters is a calibration parameters object.
-        If cal_parameters == None, the calibration parameters will be extracted
-        from the corresponding fields in the raw_data object.
+        This method returns a processed_data object containing Sv or sv data.
 
-        Sv is calculated as follows:
+        This method performs all of the required transformations to place the
+        raw power data into a rectangular array where all samples share the same
+        thickness and are correctly arranged relative to each other. It then
+        computes Sv/sv as follows:
 
-            Sv = recvPower + 20 log10(Range) + (2 *  alpha * Range) - (10 * ...
-                log10((xmitPower * (10^(gain/10))^2 * lambda^2 * ...
+            Sv = power + 20 log10(Range) + (2 *  alpha * Range) - (10 * ...
+                log10((TransmitPower * (10^(Gain/10))^2 * lambda^2 * ...
                 c * tau * 10^(psi/10)) / (32 * pi^2)) - (2 * SaCorrection)
+
         Args:
-            calibration (float):
+            resample_interval (float): Set this to a float specifying the
+                sampling interval (in seconds) used when generating the
+                vertical axis for the return data. If the raw data sampling
+                interval is different than the specified interval, the raw
+                data will be resampled at the specified rate. 0 and 1 have
+                special meaning. If set to 0 or 1, the data will only be resampled
+                if the sampling interval changes. If it does change, when
+                set to 0, the data will be resampled to the shortest sampling
+                interval present in the data. If set to 1, it will be resampled
+                to the longest interval present in the data.
+
+                The following constants are defined in the class:
+
+                    RESAMPLE_SHORTEST = 0
+                    RESAMPLE_16   = 0.000016
+                    RESAMPLE_32  = 0.000032
+                    RESAMPLE_64  = 0.000064
+                    RESAMPLE_128  = 0.000128
+                    RESAMPLE_256 = 0.000256
+                    RESAMPLE_512 = 0.000512
+                    RESAMPLE_1024 = 0.001024
+                    RESAMPLE_2048 = 0.002048
+                    RESAMPLE_LONGEST = 1
+
+                Default: RESAMPLE_SHORTEST
+
+            return_indices (np.array uint32): Set this to a numpy array that contains
+                the index values to return in the processed data object. This can be
+                used for more advanced anipulations where start/end ping/time are
+                inadequate.
+
+            calibration (EK60.ek60_calibration): Set to an instance of
+                EK60.ek60_calibration containing the calibration parameters
+                you want to use when transforming to Sv/sv. If no calibration
+                object is provided, the values will be extracted from the raw
+                data.
+
             linear (bool): Set to True if getting "sv" data
-            tvg_correction:
-            return_depth (float):
-            **kwargs (dict): A keyworded argument list.
+                Default: False
+
+            tvg_correction (bool): Set to True to apply TVG range correction.
+                Typically you want to leave this at True.
+                Default: True
+
+            return_depth (bool): Set to True to return a processed_data object
+                with a depth axis. When False, the processed_data object has
+                a range axis.
+                Default: False
+
+            start_time (datetime64): Set to a numpy datetime64 oject specifying
+                the start time of the data to convert. All data between the start
+                and end time will be returned. If set to None, the start time is
+                the first ping.
+                Default: None
+
+            end_time (datetime64): Set to a numpy datetime64 oject specifying
+                the end time of the data to convert. All data between the start
+                and end time will be returned. If set to None, the end time is
+                the last ping.
+                Default: None
+
+            start_ping (int): Set to an integer specifying the first ping number
+                to return. All pings between the start and end ping will be
+                returned. If set to None, the first ping is set as the start ping.
+                Default: None
+
+            end_ping (int): Set to an integer specifying the end ping number
+                to return. All pings between the start and end ping will be
+                returned. If set to None, the last ping is set as the end ping.
+                Default: None
+
+            Note that you can set a start/end time OR a start/end ping. If you
+            set both, one will be ignored.
+
+            time_order (bool): Set to True to return data in time order. If
+                False, data will be returned in the order it was read.
+                Default: True
 
         Returns:
-            A processed_data object, p_data, containing Sv (or sv if linear is
-            True).
+            A processed_data object containing Sv (or sv if linear is True).
+
         """
         # If we're not given a cal object, create an empty one
         if calibration is None:
@@ -2008,11 +2154,14 @@ class raw_data(ping_data):
     def get_sp(self, **kwargs):
         """Gets sp data.
 
-        This is a convenience method which simply calls get_Sp and forces
-        the linear keyword to True.
+        This method returns a processed_data object containing sp data. This is
+        a convenience method which simply calls get_Sp and forces the linear
+        keyword to True.
+
+        See get_Sp for more detail.
 
         Args:
-            **kwargs (dict): A keyworded argument list.
+            See get_Sp for argument descriptions.
 
         Returns:
             returns a processed_data object containing sp
@@ -2029,35 +2178,107 @@ class raw_data(ping_data):
             return_depth=False, **kwargs):
         """Gets Sp data.
 
-        Sp is calculated as follows:
+        This method returns a processed_data object containing Sp or sp data.
 
-             Sp = recvPower + 40 * log10(Range) + (2 *  alpha * Range) - (10
-             * ... log10((xmitPower * (10^(gain/10))^2 * lambda^2) / (16 *
+        This method performs all of the required transformations to place the
+        raw power data into a rectangular array where all samples share the same
+        thickness and are correctly arranged relative to each other. It then
+        computes Sp as follows:
+
+             Sp = power + 40 * log10(Range) + (2 *  alpha * Range) - (10
+             * ... log10((TransmitPower * (10^(gain/10))^2 * lambda^2) / (16 *
              pi^2)))
 
-        By default, TVG range correction is not applied to the data. This
-        results in output that is consistent with the Simrad "P" telegram and TS
-        data exported from Echoview version 4.3 and later (prior versions
-        applied the correction by default).
-
-        If you intend to perform single target detections you must apply the
-        TVG range correction at some point in your process. This can be done by
-        either setting the tvgCorrection keyword of this function or it can be
-        done as part of your single target detection routine.
-
         Args:
-            calibration (calibration object): The data calibration object where
-                calibration data will be retrieved.
-            linear (bool): Set to True if getting Sp data.
-            tvg_correction (bool): Set to True to apply a correction to the
-                range of 2 * sample thickness.
-            return_depth (bool): If true, return the vertical axis of the
-                data as depth.  Otherwise, return as range.
-            **kwargs
+            resample_interval (float): Set this to a float specifying the
+                sampling interval (in seconds) used when generating the
+                vertical axis for the return data. If the raw data sampling
+                interval is different than the specified interval, the raw
+                data will be resampled at the specified rate. 0 and 1 have
+                special meaning. If set to 0 or 1, the data will only be resampled
+                if the sampling interval changes. If it does change, when
+                set to 0, the data will be resampled to the shortest sampling
+                interval present in the data. If set to 1, it will be resampled
+                to the longest interval present in the data.
+
+                The following constants are defined in the class:
+
+                    RESAMPLE_SHORTEST = 0
+                    RESAMPLE_16   = 0.000016
+                    RESAMPLE_32  = 0.000032
+                    RESAMPLE_64  = 0.000064
+                    RESAMPLE_128  = 0.000128
+                    RESAMPLE_256 = 0.000256
+                    RESAMPLE_512 = 0.000512
+                    RESAMPLE_1024 = 0.001024
+                    RESAMPLE_2048 = 0.002048
+                    RESAMPLE_LONGEST = 1
+
+                Default: RESAMPLE_SHORTEST
+
+            return_indices (np.array uint32): Set this to a numpy array that contains
+                the index values to return in the processed data object. This can be
+                used for more advanced anipulations where start/end ping/time are
+                inadequate.
+
+            calibration (EK60.ek60_calibration): Set to an instance of
+                EK60.ek60_calibration containing the calibration parameters
+                you want to use when transforming to Sv/sv. If no calibration
+                object is provided, the values will be extracted from the raw
+                data.
+
+            linear (bool): Set to True if getting "sv" data
+                Default: False
+
+            tvg_correction (bool): Set to True to apply TVG range correction.
+                By default, TVG range correction is not applied to the data. This
+                results in output that is consistent with the Simrad "P" telegram
+                and TS data exported from Echoview version 4.3 and later (prior
+                versions applied the correction by default).
+
+                If you intend to perform single target detections you must apply
+                the TVG range correction at some point in your process. This can
+                be done by either setting the tvgCorrection keyword of this function
+                or it can be done as part of your single target detection routine.
+                Default: False
+
+            return_depth (bool): Set to True to return a processed_data object
+                with a depth axis. When False, the processed_data object has
+                a range axis.
+                Default: False
+
+            start_time (datetime64): Set to a numpy datetime64 oject specifying
+                the start time of the data to convert. All data between the start
+                and end time will be returned. If set to None, the start time is
+                the first ping.
+                Default: None
+
+            end_time (datetime64): Set to a numpy datetime64 oject specifying
+                the end time of the data to convert. All data between the start
+                and end time will be returned. If set to None, the end time is
+                the last ping.
+                Default: None
+
+            start_ping (int): Set to an integer specifying the first ping number
+                to return. All pings between the start and end ping will be
+                returned. If set to None, the first ping is set as the start ping.
+                Default: None
+
+            end_ping (int): Set to an integer specifying the end ping number
+                to return. All pings between the start and end ping will be
+                returned. If set to None, the last ping is set as the end ping.
+                Default: None
+
+            Note that you can set a start/end time OR a start/end ping. If you
+            set both, one will be ignored.
+
+            time_order (bool): Set to True to return data in time order. If
+                False, data will be returned in the order it was read.
+                Default: True
 
         Returns:
-            A processed_data object, p_data, containing Sp (or sp if linear is
-            True).
+            A processed_data object containing Sp (or sp if linear is True).
+
         """
         # If we're not given a cal object, create an empty one
         if calibration is None:
@@ -2101,21 +2322,61 @@ class raw_data(ping_data):
         to ensure that the sounder detected bottom depths align with your sample
         data.
 
+        Also, if you request sample data on a depth grid, you should set the
+        return_depth keyword here too.
+
         Args:
-            calibration (calibration object): The data calibration object where
-                calibration data will be retrieved.
-            return_indices (array): A numpy array
-            return_depth (bool): If true, return the vertical axis of the
-                data as depth.  Otherwise, return as range.
-            **kwargs
+            return_indices (np.array uint32): Set this to a numpy array that contains
+                the index values to return in the processed data object. This can be
+                used for more advanced anipulations where start/end ping/time are
+                inadequate.
+
+            calibration (EK60.ek60_calibration): Set to an instance of
+                EK60.ek60_calibration containing the calibration parameters
+                you want to use when transforming to Sv/sv. If no calibration
+                object is provided, the values will be extracted from the raw
+                data.
+
+            return_depth (bool): Set to True to return a line object with a
+                with a depth axis. When False, the line object has a range axis.
+                Default: False
+
+            start_time (datetime64): Set to a numpy datetime64 oject specifying
+                the start time of the data to convert. All data between the start
+                and end time will be returned. If set to None, the start time is
+                the first ping.
+                Default: None
+
+            end_time (datetime64): Set to a numpy datetime64 oject specifying
+                the end time of the data to convert. All data between the start
+                and end time will be returned. If set to None, the end time is
+                the last ping.
+                Default: None
+
+            start_ping (int): Set to an integer specifying the first ping number
+                to return. All pings between the start and end ping will be
+                returned. If set to None, the first ping is set as the start ping.
+                Default: None
+
+            end_ping (int): Set to an integer specifying the end ping number
+                to return. All pings between the start and end ping will be
+                returned. If set to None, the last ping is set as the end ping.
+                Default: None
+
+            Note that you can set a start/end time OR a start/end ping. If you
+            set both, one will be ignored.
+
+            time_order (bool): Set to True to return data in time order. If
+                False, data will be returned in the order it was read.
+                Default: True
 
         Raises:
             ValueError: The return indices exceed the number of pings in
                 the raw data object
 
         Returns:
-            A line object, bottom_line, containing the sounder detected bottom
-            depths.
+            A line object containing the sounder detected bottom depths.
+
         """
 
         # Check if the user supplied an explicit list of indices to return.
@@ -2167,13 +2428,61 @@ class raw_data(ping_data):
     def get_physical_angles(self, calibration=None, **kwargs):
         """Gets the alongship and athwartship angle data.
 
+        This method returns an tuple of processed data objects (alongship,
+        athwartship) containing the physical angle data.
+
+        This method performs all of the required transformations to place the
+        raw electrical angle data into rectangular arrays where all samples
+        share the same thickness and are correctly arranged relative to each other.
+        It then transform the electrical angles into physical angles.
+
         Args:
-            calibration (calibration object): The data calibration object where
-                calibration data will be retrieved.
-            **kwargs
+            return_indices (np.array uint32): Set this to a numpy array that contains
+                the index values to return in the processed data object. This can be
+                used for more advanced anipulations where start/end ping/time are
+                inadequate.
+
+            calibration (EK60.ek60_calibration): Set to an instance of
+                EK60.ek60_calibration containing the calibration parameters
+                you want to use when transforming to Sv/sv. If no calibration
+                object is provided, the values will be extracted from the raw
+                data.
+
+            return_depth (bool): Set to True to return a line object with a
+                with a depth axis. When False, the line object has a range axis.
+                Default: False
+
+            start_time (datetime64): Set to a numpy datetime64 oject specifying
+                the start time of the data to convert. All data between the start
+                and end time will be returned. If set to None, the start time is
+                the first ping.
+                Default: None
+
+            end_time (datetime64): Set to a numpy datetime64 oject specifying
+                the end time of the data to convert. All data between the start
+                and end time will be returned. If set to None, the end time is
+                the last ping.
+                Default: None
+
+            start_ping (int): Set to an integer specifying the first ping number
+                to return. All pings between the start and end ping will be
+                returned. If set to None, the first ping is set as the start ping.
+                Default: None
+
+            end_ping (int): Set to an integer specifying the end ping number
+                to return. All pings between the start and end ping will be
+                returned. If set to None, the last ping is set as the end ping.
+                Default: None
+
+            Note that you can set a start/end time OR a start/end ping. If you
+            set both, one will be ignored.
+
+            time_order (bool): Set to True to return data in time order. If
+                False, data will be returned in the order it was read.
+                Default: True
 
         Returns:
-            Processed data objects with alongship and athwartship angle data.
+            Two rocessed_data objects with alongship and athwartship angle data.
         """
         # If we're not given a cal object, create an empty one
         if calibration is None:
@@ -2215,14 +2524,15 @@ class raw_data(ping_data):
 
 
     def get_electrical_angles(self, return_depth=False, calibration=None, **kwargs):
-        """Gets unconverted angles_alongship_e and angles_athwartship_e data.
+        """Gets unconverted angle data.
+
+        This method returns a tuple of processed_data objects containing angle data
+        as electrical angles.
+
+        See get_physical_angles for more detail.
 
         Args:
-            return_depth (bool): If true, return the vertical axis of the
-                data as depth.  Otherwise, return as range.
-            calibration (calibration object): The data calibration object where
-                calibration data will be retrieved.
-            **kwargs
+            See get_physical_angles for argument descriptions.
 
         Returns:
             Two processed data objects containing the unconverted
@@ -2764,7 +3074,7 @@ class raw_data(ping_data):
 class ek60_calibration(calibration):
     """
     The calibration class contains parameters required for transforming power
-    and electrical angle data to Sv/sv TS/SigmaBS and physical angles.
+    and electrical angle data to Sv/sv, Sp/sp and physical angles.
 
     When converting raw data to power, Sv/sv, Sp/sp, or to physical angles
     you have the option of passing a calibration object containing the data
@@ -2779,9 +3089,8 @@ class ek60_calibration(calibration):
 
     If you set any attribute to None, that attribute's values will be obtained
     from the raw_data object which contains the value at the time of recording.
-    If you do not pass a calibration object to the conversion methods
-    *all* of the cal parameter values will be extracted from the raw_data
-    object.
+    If you do not pass a calibration object to the conversion methods *all*
+    of the cal parameter values will be extracted from the raw_data object.
     """
 
     def __init__(self, absorption_method='F&G'):
