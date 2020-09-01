@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration>
+  <Header Copyright="Copyright(c) Kongsberg Maritime AS, Norway" ApplicationName="EKauto" Version="3.5.0" FileFormatVersion="1.20" TimeBias="0" />
+  <Transceivers MergeOperation="AddNodeTree">
+    <Transceiver TransceiverName="EKA 266973" EthernetAddress="00:90:72:04:12:DD" IPAddress="157.237.43.125" Version="[0] Ethernet: 00:90:72:04:12:DD&#xD;&#xD;&#xA;[1] Parts-list: WBT Mini 401709 C 266973&#xD;&#xD;&#xA;[2] Product: WBT Mini&#xD;&#xD;&#xA;IP Address: 157.237.43.125&#xD;&#xD;&#xA;Subnet mask:: 255.255.0.0&#xD;&#xD;&#xA;Default gateway: 157.237.43.1&#xD;&#xD;&#xA;Serial number: 266973&#xD;&#xD;&#xA;Embedded software: Rev. 1.01&#xD;&#xD;&#xA;FPGA TX firmware: Rev. 0&#xD;&#xD;&#xA;FPGA RX firmware: Rev. 2" TransceiverSoftwareVersion="0.01" TransceiverNumber="1" MarketSegment="Scientific" TransceiverType="WBT" SerialNumber="266973" Impedance="10800">
+      <Channels>
+        <Channel ChannelID="EKA 266973-07 ES38-18|200-18C" ChannelIdShort="ES38-18|200-18C - 38000 S/N: N/A " MaxTxPowerTransceiver="500" PulseDuration="0.000256;0.000512;0.001024;0.002048;0.004096" PulseDurationFM="0.000512;0.001024;0.002048" HWChannelConfiguration="7">
+          <Transducer TransducerName="ES38-18|200-18C" SerialNumber="" Frequency="38000" FrequencyMinimum="34000" FrequencyMaximum="45000" BeamType="17" EquivalentBeamAngle="-12.5" Gain="18;18;18;18;18" SaCorrection="0;0;0;0;0" MaxTxPowerTransducer="500" BeamWidthAlongship="17.1" BeamWidthAthwartship="17.1" AngleSensitivityAlongship="10.5" AngleSensitivityAthwartship="10.5" AngleOffsetAlongship="0" AngleOffsetAthwartship="0" />
+        </Channel>
+        <Channel ChannelID="EKA 266973-08 ES38-18|200-18C" ChannelIdShort="ES38-18|200-18C - 200000 S/N: N/A " MaxTxPowerTransceiver="250" PulseDuration="6.4E-05;0.000128;0.000256;0.000512;0.001024" PulseDurationFM="0.000512;0.001024;0.002048" HWChannelConfiguration="8">
+          <Transducer TransducerName="ES38-18|200-18C" SerialNumber="" Frequency="200000" FrequencyMinimum="190000" FrequencyMaximum="230000" BeamType="0" EquivalentBeamAngle="-12.6" Gain="18.7;18.7;18.7;18.7;18.7" SaCorrection="0;0;0;0;0" MaxTxPowerTransducer="250" BeamWidthAlongship="17.3" BeamWidthAthwartship="16.9" AngleSensitivityAlongship="0" AngleSensitivityAthwartship="0" AngleOffsetAlongship="0" AngleOffsetAthwartship="0" />
+        </Channel>
+      </Channels>
+    </Transceiver>
+  </Transceivers>
+  <Transducers MergeOperation="AddNodeTree">
+    <Transducer TransducerName="ES38-18|200-18C" TransducerCustomName="WBAT 266973-07 ES38-18|200-18C" TransducerSerialNumber="" />
+    <Transducer TransducerName="ES38-18|200-18C" TransducerCustomName="WBAT 266973-08 ES38-18|200-18C" TransducerSerialNumber="" />
+  </Transducers>
+</Configuration>

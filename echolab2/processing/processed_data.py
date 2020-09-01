@@ -127,7 +127,7 @@ class processed_data(ping_data):
         # is_heave_corrected will be true when heave correction has been applied.
         self.is_heave_corrected = False
 
-
+        # The sound velocity used when applying calibrations
         self.sound_velocity = None
 
         # Sample thickness is the vertical extent of the samples in meters.  It
@@ -153,6 +153,8 @@ class processed_data(ping_data):
         self._obj_attributes = ['sample_thickness',
                                 'sample_offset',
                                 'sound_velocity',
+                                'frequency',
+                                'data_type',
                                 'is_log',
                                 'is_heave_corrected']
 

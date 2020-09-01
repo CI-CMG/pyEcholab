@@ -22,13 +22,13 @@ from echolab2.plotting.matplotlib import echogram
 #filename = 'C:/EK80 Test Data/EK80/CW/further reduced/DY2000_EK80_Cal-D20200126-T062251.raw'
 
 # FM EK80
-#filename = 'C:/EK80 Test Data/EK80/FM/DY1802_EK80-D20180301-T185940.raw'
+filename = 'C:/EK80 Test Data/EK80/FM/DY1802_EK80-D20180301-T185940.raw'
 
 #filename = ['C:/EK80 Test Data/EK80/CW/reduced/DY2000_EK80_Cal-D20200126-T061004.raw',
 #            'C:/EK80 Test Data/EK80/CW/complex/DY2000_EK80_Cal-D20200126-T060729.raw']
 
 # Daildrone
-filename = 'C:/EK80 Test Data/Saildrone/SD_alaska_2019-Phase0-D20190516-T030157-0.raw'
+#filename = 'C:/EK80 Test Data/Saildrone/SD_alaska_2019-Phase0-D20190516-T030157-0.raw'
 
 ek80 = EK80.EK80()
 
@@ -46,7 +46,7 @@ print(ek80.channel_ids)
 # raw_data attribute. This attribute is a dictionary keyed by channel ID.
 # I know that with my test files the 2nd channel is the 38 kHz and I'll
 # get the raw data for that channel.
-raw_38 = ek80.raw_data[ek80.channel_ids[1]]
+raw_38 = ek80.raw_data[ek80.channel_ids[1]][0]
 
 
 # For the same channel ID, EK80 data files can store various types of data

@@ -1541,6 +1541,16 @@ class raw_data(ping_data):
                                   'sample_count']
 
 
+        #  create a list that stores the scalar object attributes
+        self._obj_attributes = ['rolling_array',
+                                'chunk_width',
+                                'store_power',
+                                'store_angles',
+                                'max_sample_number',
+                                'data_type',
+                                'transceiver_type']
+
+
     def empty_like(self, n_pings):
         """Returns raw_data object with data arrays filled with NaNs.
 
@@ -1563,6 +1573,17 @@ class raw_data(ping_data):
         empty_obj.data_type = self.data_type
 
         return self._like(empty_obj, n_pings, np.nan, empty_times=True)
+
+
+    def copy(self):
+        """creates a deep copy of this object."""
+
+        # Create an empty raw_data object with the same basic props as this object.
+        rd_copy = raw_data(self.channel_id)
+
+        # Call the parent _copy helper method and return the result.
+        return self._copy(rd_copy)
+
 
 
     def append_ping(self, sample_datagram, config_params, start_sample=None,

@@ -37,18 +37,16 @@ import logging
 import struct
 import re
 import sys
-from collections import Counter
-import xml.etree.ElementTree as ET
+from collections import Counter, OrderedDict
+from lxml import etree as ET
 from .date_conversion import nt_to_unix
 
-TCVR_CH_NUM_MATCHER = re.compile('\d{6}-\w{1,2}')
 
 __all__ = ['SimradNMEAParser', 'SimradDepthParser', 'SimradBottomParser',
             'SimradAnnotationParser', 'SimradConfigParser', 'SimradRawParser',
             'SimradFILParser', 'SimradXMLParser', 'SimradMRUParser']
 
 log = logging.getLogger(__name__)
-
 
 
 class _SimradDatagramParser(object):
@@ -546,33 +544,15 @@ class SimradMRUParser(_SimradDatagramParser):
 
     def _pack_contents(self, data, version):
 
-        datagram_fmt      = self.header_fmt(version)
+        datagram_fmt = self.header_fmt(version)
         datagram_contents = []
 
         if version == 0:
 
             for field in self.header_fields(version):
+                if (sys.version_info.major > 2) and isinstance(data[field], str):
+                    data[field] = data[field].encode('latin_1')
                 datagram_contents.append(data[field])
-
-
-            if data['nmea_string'][-1] != '\x00':
-                tmp_string = data['nmea_string'] + '\x00'
-            else:
-                tmp_string = data['nmea_string']
-
-
-            #Pad with more nulls to 4-byte word boundry if necessary
-            if len(tmp_string) % 4:
-                tmp_string += '\x00' * (4 - (len(tmp_string) % 4))
-
-            datagram_fmt += '%ds' % (len(tmp_string))
-
-            #Convert to python string if needed
-            if isinstance(tmp_string, str):
-                tmp_string = tmp_string.encode('ascii', errors='replace')
-
-            datagram_contents.append(tmp_string)
-
 
         return struct.pack(datagram_fmt, *datagram_contents)
 
@@ -599,11 +579,9 @@ class SimradXMLParser(_SimradDatagramParser):
                             ready for writing to disk
     '''
 
-    #  define the XML parsing options - here we define dictionaries for various xml datagram
-    #  types. When parsing that xml datagram, these dictionaries are used to inform the parser about
-    #  type conversion, name wrangling, and delimiter. If a field is missing, the parser
-    #  assumes no conversion: type will be string, default mangling, and that there is only 1
-    #  element.
+    #  define the XML parsing options - here we define dictionaries for the various xml datagram
+    #  types. When parsing that datagram, these dictionaries are used to inform the parser about
+    #  type conversion, name wrangling, and delimiter.
     #
     #  the dicts are in the form:
     #       'XMLParamName':[converted type,'fieldname', 'parse char']
@@ -611,78 +589,100 @@ class SimradXMLParser(_SimradDatagramParser):
     #  For example: 'PulseDurationFM':[float,'pulse_duration_fm',';']
     #
     #  will result in a return dictionary field named 'pulse_duration_fm' that contains a list
-    #  of float values parsed from a string that uses ';' to separate values. Empty strings
-    #  for fieldname and/or parse char result in the default action for those parsing steps.
+    #  of float values parsed from a string that uses ';' to separate values. If the parse
+    #  char is empty, the field is not parsed.
+    #
+    #  The switch to OrderedDict we required to ensure that when writing files, the generated
+    #  XML follows the original XML parameter ordering.
 
-    channel_parsing_options = {'MaxTxPowerTransceiver':[int,'',''],
-                               'PulseDuration':[float,'',';'],
-                               'PulseDurationFM':[float,'pulse_duration_fm',';'],
-                               'SampleInterval':[float,'',';'],
-                               'ChannelID':[str,'channel_id',''],
-                               'HWChannelConfiguration':[str,'hw_channel_configuration','']
-                               }
+    # These parameters are the known parameters for the transceiver XML tag
+    transceiver_xml_map = OrderedDict({
+            'TransceiverName':[str,'transceiver_name',''],
+            'EthernetAddress':[str,'ethernet_address',''],
+            'IPAddress':[str,'ip_address',''],
+            'Version':[str,'transceiver_version',''],
+            'TransceiverSoftwareVersion':[str,'transceiver_software_version',''],
+            'TransceiverNumber':[int,'transceiver_number',''],
+            'MarketSegment':[str,'market_segment',''],
+            'TransceiverType':[str,'transceiver_type',''],
+            'SerialNumber':[str,'serial_number',''],
+            'Impedance':[int,'impedance',''],
+            'Multiplexing':[int,'multiplexing',''],
+            'RxSampleFrequency':[float,'rx_sample_frequency','']})
 
-    transceiver_parsing_options = {'TransceiverNumber':[int,'',''],
-                                   'Version':[str,'transceiver_version',''],
-                                   'IPAddress':[str,'ip_address',''],
-                                   'Impedance':[int,'',''],
-                                   'Multiplexing':[int,'',''],
-                                   'RxSampleFrequency':[float,'',''],
-                                   'HwChannelConfiguration':[int,'','']
-                                  }
+    channel_xml_map = OrderedDict({
+            'ChannelID':[str,'channel_id',''],
+            'ChannelIdShort':[str,'channel_id_short',''],
+            'MaxTxPowerTransceiver':[int,'max_tx_power_transceiver',''],
+            'PulseDuration':[float,'pulse_duration',';'],
+            'PulseDurationFM':[float,'pulse_duration_fm',';'],
+            'HWChannelConfiguration':[str,'hw_channel_configuration','']})
 
-    transducer_parsing_options = {'SerialNumber':[str,'transducer_serial_number',''],
-                                  'Frequency':[float,'transducer_frequency',''],
-                                  'FrequencyMinimum':[float,'transducer_frequency_minimum',''],
-                                  'FrequencyMaximum':[float,'transducer_frequency_maximum',''],
-                                  'BeamType':[int,'transducer_beam_type',''],
-                                  'Gain':[float,'',';'],
-                                  'SaCorrection':[float,'',';'],
-                                  'MaxTxPowerTransducer':[float,'',''],
-                                  'EquivalentBeamAngle':[float,'',''],
-                                  'BeamWidthAlongship':[float,'',''],
-                                  'BeamWidthAthwartship':[float,'',''],
-                                  'AngleSensitivityAlongship':[float,'',''],
-                                  'AngleSensitivityAthwartship':[float,'',''],
-                                  'AngleOffsetAlongship':[float,'',''],
-                                  'AngleOffsetAthwartship':[float,'',''],
-                                  'DirectivityDropAt2XBeamWidth':[float,'directivity_drop_at_2x_beam_width',''],
-                                  'TransducerOffsetX':[float,'',''],
-                                  'TransducerOffsetY':[float,'',''],
-                                  'TransducerOffsetZ':[float,'',''],
-                                  'TransducerAlphaX':[float,'',''],
-                                  'TransducerAlphaY':[float,'',''],
-                                  'TransducerAlphaZ':[float,'','']
-                                 }
+    channel_xdcr_xml_map = OrderedDict({
+            'TransducerName':[str,'transducer_name',''],
+            'SerialNumber':[str,'transducer_serial_number',''],
+            'Frequency':[float,'transducer_frequency',''],
+            'FrequencyMinimum':[float,'transducer_frequency_minimum',''],
+            'FrequencyMaximum':[float,'transducer_frequency_maximum',''],
+            'BeamType':[int,'transducer_beam_type',''],
+            'EquivalentBeamAngle':[float,'equivalent_beam_angle',''],
+            'Gain':[float,'gain',';'],
+            'SaCorrection':[float,'sa_correction',';'],
+            'MaxTxPowerTransducer':[float,'max_tx_power_transducer',''],
+            'BeamWidthAlongship':[float,'beam_width_alongship',''],
+            'BeamWidthAthwartship':[float,'beam_width_athwartship',''],
+            'AngleSensitivityAlongship':[float,'angle_sensitivity_alongship',''],
+            'AngleSensitivityAthwartship':[float,'angle_sensitivity_athwartship',''],
+            'AngleOffsetAlongship':[float,'angle_offset_alongship',''],
+            'AngleOffsetAthwartship':[float,'angle_offset_athwartship',''],
+            'DirectivityDropAt2XBeamWidth':[float,'directivity_drop_at_2x_beam_width','']})
 
-    header_parsing_options = {'Version':[str,'application_version','']
-                              }
+    xdcrs_xdcr_xml_map = OrderedDict({
+            'TransducerName':[str,'transducer_name',''],
+            'TransducerMounting':[str,'transducer_mounting',''],
+            'TransducerCustomName':[str,'transducer_custom_name',''],
+            'TransducerSerialNumber':[str,'transducer_serial_number',''],
+            'TransducerOrientation':[str,'transducer_orientation',''],
+            'TransducerOffsetX':[float,'transducer_offset_x',''],
+            'TransducerOffsetY':[float,'transducer_offset_y',''],
+            'TransducerOffsetZ':[float,'transducer_offset_z',''],
+            'TransducerAlphaX':[float,'transducer_alpha_x',''],
+            'TransducerAlphaY':[float,'transducer_alpha_y',''],
+            'TransducerAlphaZ':[float,'transducer_alpha_z','']})
 
-    envxdcr_parsing_options = {'SoundSpeed':[float,'transducer_sound_speed','']
-                              }
+    header_xml_map = OrderedDict({
+            'Copyright':[str,'copyright',''],
+            'ApplicationName':[str,'application_name',''],
+            'Version':[str,'application_version',''],
+            'FileFormatVersion':[str,'file_format_version',''],
+            'TimeBias':[str,'time_bias','']})
 
-    environment_parsing_options = {'Depth':[float,'',''],
-                                   'Acidity':[float,'',''],
-                                   'Salinity':[float,'',''],
-                                   'SoundSpeed':[float,'',''],
-                                   'Temperature':[float,'',''],
-                                   'Latitude':[float,'',''],
-                                   'SoundVelocityProfile':[float,'',';'],
-                                   'DropKeelOffset':[float,'',''],
-                                   'DropKeelOffsetIsManual':[int,'',''],
-                                   'WaterLevelDraft':[float,'',''],
-                                   'WaterLevelDraftIsManual':[int,'','']
-                                   }
+    #env_xdcr_xml_map = OrderedDict({
+    #        'SoundSpeed':[float,'transducer_sound_speed','']})
 
-    parameter_parsing_options = {'ChannelID':[str,'channel_id',''],
-                                 'ChannelMode':[int,'',''],
-                                 'PulseForm':[int,'',''],
-                                 'Frequency':[float,'',''],
-                                 'PulseDuration':[float,'',''],
-                                 'SampleInterval':[float,'',''],
-                                 'TransmitPower':[float,'',''],
-                                 'Slope':[float,'','']
-                                }
+    environment_xml_map = OrderedDict({
+            'Depth':[float,'depth',''],
+            'Acidity':[float,'acidity',''],
+            'Salinity':[float,'salinity',''],
+            'SoundSpeed':[float,'sound_speed',''],
+            'Temperature':[float,'temperature',''],
+            'Latitude':[float,'latitude',''],
+            'SoundVelocityProfile':[float,'sound_velocity_profile',';'],
+            'SoundVelocitySource':[str,'sound_velocity_source',''],
+            'DropKeelOffset':[float,'drop_keel_offset',''],
+            'DropKeelOffsetIsManual':[int,'drop_keel_offset_is_manual',''],
+            'WaterLevelDraft':[float,'water_level_draft',''],
+            'WaterLevelDraftIsManual':[int,'water_level_draft_is_manual','']})
+
+    parameter_xml_map = OrderedDict({
+            'ChannelID':[str,'channel_id',''],
+            'ChannelMode':[int,'channel_mode',''],
+            'PulseForm':[int,'pulse_form',''],
+            'Frequency':[float,'frequency',''],
+            'PulseDuration':[float,'pulse_duration',''],
+            'SampleInterval':[float,'sample_interval',''],
+            'TransmitPower':[float,'transmit_power',''],
+            'Slope':[float,'slope','']})
 
 
     def __init__(self):
@@ -697,34 +697,20 @@ class SimradXMLParser(_SimradDatagramParser):
 
     def _unpack_contents(self, raw_string, bytes_read, version):
         '''
-        Parses the NMEA string provided in raw_string
+        Parses the XML string provided in raw_string
 
-        :param raw_string:  Raw NMEA strin (i.e. '$GPZDA,160012.71,11,03,2004,-1,00*7D')
+        :param raw_string:  Raw XML string
         :type raw_string: str
 
-        :returns: None
+        :returns: Dictionary containing parsed XML data where the keys are the XML
+                  parameter names. Note that the names are converted from CamelCase
+                  to lower case with "_" to follow the pyEcholab naming convention.
         '''
-
-        def from_CamelCase(xml_param):
-            '''
-            convert name from CamelCase to fit with existing naming convention by
-            inserting an underscore before each capital and then lowering the caps
-            e.g. CamelCase becomes camel_case.
-            '''
-            idx = list(reversed([i for i, c in enumerate(xml_param) if c.isupper()]))
-            param_len = len(xml_param)
-            for i in idx:
-                #  check if we should insert an underscore
-                if (i > 0 and i < param_len):
-                    xml_param = xml_param[:i] + '_' + xml_param[i:]
-            xml_param = xml_param.lower()
-
-            return xml_param
 
 
         def dict_to_dict(xml_dict, data_dict, parse_opts):
             '''
-            dict_to_dict appends the ETree xml value dicts to a provided dictionary
+            dict_to_dict appends the xml value dicts to a provided dictionary
             and along the way converts the key name to conform to the project's
             naming convention and optionally parses and or converts values as
             specified in the parse_opts dictionary.
@@ -767,204 +753,230 @@ class SimradXMLParser(_SimradDatagramParser):
                         data = parse_opts[k][0](data)
 
                     #  and add the value to the provided dict
-                    if (parse_opts[k][1]):
-                        #  add using the specified key name
-                        data_dict[parse_opts[k][1]] = data
-                    else:
-                        #  add using the default key name wrangling
-                        data_dict[from_CamelCase(k)] = data
-                else:
-                    #  nothing to do with the value string
-                    data = xml_dict[k]
-
-                    #  add the parameter to the provided dictionary
-                    data_dict[from_CamelCase(k)] = data
+                    data_dict[parse_opts[k][1]] = data
 
 
-        header_values = struct.unpack(self.header_fmt(version), raw_string[:self.header_size(version)])
+        #  unpack the header data
         data = {}
-
+        header_values = struct.unpack(self.header_fmt(version), raw_string[:self.header_size(version)])
         for indx, field in enumerate(self.header_fields(version)):
             data[field] = header_values[indx]
             if isinstance(data[field], bytes):
                 data[field] = data[field].decode()
 
+        #  add the unix timestanp and bytes read
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
         data['bytes_read'] = bytes_read
 
+        #  parse the datagram based on the version
         if version == 0:
             if (sys.version_info.major > 2):
-                xml_string = str(raw_string[self.header_size(version):].strip(b'\x00'), 'ascii', errors='replace')
+                xml_string = raw_string[self.header_size(version):].strip(b'\x00')
             else:
                 xml_string = unicode(raw_string[self.header_size(version):].strip('\x00'), 'ascii', errors='replace')
 
             #  get the ElementTree element
-            root = ET.fromstring(xml_string)
+            root_node = ET.fromstring(xml_string)
 
             #  get the XML message type
-            data['subtype'] = root.tag.lower()
+            data['subtype'] = root_node.tag.lower()
 
             #  create the dictionary that contains the message data
             data[data['subtype']] = {}
 
             #  parse it
-            if (data['subtype'] == 'configuration'):
+            if data['subtype'] == 'configuration':
 
-                #  parse the Transceiver section
-                for tcvr in root.iter('Transceiver'):
-                    #  parse the Transceiver section
-                    tcvr_xml = tcvr.attrib
+                print(xml_string.decode('utf-8'))
+
+                transducer_map = {}
+                transducers_node = root_node.find('./Transducers')
+                for xdcrs_node in transducers_node.iter('Transducer'):
+                    transducer_map[xdcrs_node.get('TransducerName')] = xdcrs_node.attrib
+
+                # Parse the Transceiver section
+                xcvrs_node = root_node.find('./Transceivers')
+                for xcvr_node in xcvrs_node.iter('Transceiver'):
+                    # Get the transceiver attributes
+                    xcvr_attributes = xcvr_node.attrib
 
                     #  parse the Channel section -- this works with multiple channels under 1 transceiver
-                    for tcvr_ch in tcvr.iter('Channel'):
-                        tcvr_ch_xml = tcvr_ch.attrib
-                        channel_id = tcvr_ch_xml['ChannelID']
+                    for channel_node in xcvr_node.iter('Channel'):
+                        # Get this channel's attributes
+                        channel_attributes = channel_node.attrib
+                        channel_id = channel_attributes['ChannelID']
 
                         #  create the configuration dict for this channel
                         data['configuration'][channel_id] = {}
 
+                        # Save the raw XML string - needed when writing because we don't parse
+                        # the whole configuration with certain configuration strings
+                        data['configuration'][channel_id]['raw_xml'] = xml_string
+
                         #  add the transceiver data to the config dict (this is
-                        #  replicated for all channels)
-                        dict_to_dict(tcvr_xml, data['configuration'][channel_id],
-                                     self.transceiver_parsing_options)
+                        #  replicated for all channels configured for this transceiver)
+                        dict_to_dict(xcvr_attributes, data['configuration'][channel_id],
+                                     self.transceiver_xml_map)
 
                         #  add the general channel data to the config dict
-                        dict_to_dict(tcvr_ch_xml, data['configuration'][channel_id],
-                                     self.channel_parsing_options)
+                        dict_to_dict(channel_attributes, data['configuration'][channel_id],
+                                     self.channel_xml_map)
 
-                        #  check if there are >1 transducer under a single transceiver channel
-                        if len(tcvr_ch.getchildren()) > 1:
-                            ValueError('Found >1 transducer under a single transceiver channel!')
-                        else:   # should only have 1 transducer
-                            tcvr_ch_xducer = tcvr_ch.find('Transducer')  # get Element of this xducer
+                        # Get this channel's transducer params
+                        transducer_node = channel_node.find('./Transducer')
+                        transducer_attributes = transducer_node.attrib
 
-                            #  add the transducer data to the config dict
-                            dict_to_dict(tcvr_ch_xducer.attrib, data['configuration'][channel_id],
-                                         self.transducer_parsing_options)
+                        #  add the channel transducer attributes
+                        dict_to_dict(transducer_attributes, data['configuration'][channel_id],
+                                     self.channel_xdcr_xml_map)
 
-                        # get unique transceiver channel number stored in channel_id
-                        tcvr_ch_num = TCVR_CH_NUM_MATCHER.search(channel_id)[0]
+                        # Now add the matching transducer from the transducers section
+                        # we parsed above.
+                        transducer_map[transducer_attributes['TransducerName']]
+                        dict_to_dict(transducer_map[transducer_attributes['TransducerName']],
+                                data['configuration'][channel_id], self.xdcrs_xdcr_xml_map)
 
-                        # parse the Transducers section from the root
-                        xducer = root.find('Transducers')
+                #  add the header data to the config dict
+                h = root_node.find('Header')
+                dict_to_dict(h.attrib, data['configuration'][channel_id],
+                             self.header_xml_map)
 
-                        # built occurrence lookup table for transducer name
-                        xducer_name_list = []
-                        for xducer_ch in xducer.iter('Transducer'):
-                            xducer_name_list.append(xducer_ch.attrib['TransducerName'])
-
-                        # find matching transducer for this channel_id
-                        match_found = False
-                        for xducer_ch in xducer.iter('Transducer'):
-                            if not match_found:
-                                xducer_ch_xml = xducer_ch.attrib
-                                match_name = xducer_ch.attrib['TransducerName'] == \
-                                             tcvr_ch_xducer.attrib['TransducerName']
-                                if xducer_ch.attrib['TransducerSerialNumber'] == '':
-                                    match_sn = False
-                                else:
-                                    match_sn = xducer_ch.attrib['TransducerSerialNumber'] == \
-                                               tcvr_ch_xducer.attrib['SerialNumber']
-                                match_tcvr = tcvr_ch_num in xducer_ch.attrib['TransducerCustomName']
-
-                                # if find match add the transducer mounting details
-                                if Counter(xducer_name_list)[xducer_ch.attrib['TransducerName']] > 1:
-                                    # if more than one transducer has the same name
-                                    # only check sn and transceiver unique number
-                                    match_found = match_sn or match_tcvr
-                                else:
-                                    match_found = match_name or match_sn or match_tcvr
-
-                                # add transducer mounting details
-                                if match_found:
-
-
-
-
-                                    dict_to_dict(xducer_ch_xml, data['configuration'][channel_id],
-                                                 self.transducer_parsing_options)
-
-                        #  add the header data to the config dict
-                        h = root.find('Header')
-
-                        dict_to_dict(h.attrib, data['configuration'][channel_id],
-                                     self.header_parsing_options)
-
-            elif (data['subtype'] == 'parameter'):
+            elif data['subtype'] == 'parameter':
 
                 #  parse the parameter XML datagram
-                for h in root.iter('Channel'):
+                for h in root_node.iter('Channel'):
                     parm_xml = h.attrib
                     #  add the data to the environment dict
-                    dict_to_dict(parm_xml, data['parameter'],
-                            self.parameter_parsing_options)
+                    dict_to_dict(parm_xml, data['parameter'], self.parameter_xml_map)
 
-            elif (data['subtype'] == 'environment'):
+            elif data['subtype'] == 'environment':
 
                 #  parse the environment XML datagram
-                for h in root.iter('Environment'):
+                for h in root_node.iter('Environment'):
                     env_xml = h.attrib
                     #  add the data to the environment dict
-                    dict_to_dict(env_xml, data['environment'],
-                            self.environment_parsing_options)
+                    dict_to_dict(env_xml, data['environment'], self.environment_xml_map)
 
-                for h in root.iter('Transducer'):
+                #  add the xdcr environment data
+                data['environment']['transducer_name'] = []
+                data['environment']['transducer_sound_speed'] = []
+                for h in root_node.iter('Transducer'):
                     transducer_xml = h.attrib
-                    #  add the data to the environment dict
-                    dict_to_dict(transducer_xml, data['environment'],
-                            self.envxdcr_parsing_options)
-
+                    data['environment']['transducer_name'].append(transducer_xml['TransducerName'])
+                    data['environment']['transducer_sound_speed'].append(float(transducer_xml['SoundSpeed']))
 
         return data
 
 
     def _pack_contents(self, data, version):
 
-        def to_CamelCase(xml_param):
+        def update_xml(node, xml_map, data):
+            '''update_xml updates a property in the xml tree using the provided
+               node, map and data.
             '''
-            convert name from project's convention to CamelCase for converting back to
-            XML to in Kongsberg's convention.
-            '''
-            idx = list(reversed([i for i, c in enumerate(xml_param) if c.isupper()]))
-            param_len = len(xml_param)
-            for i in idx:
-                #  check if we should insert an underscore
-                if (idx > 0 and idx < param_len - 1):
-                    xml_param = xml_param[:idx] + '_' + xml_param[idx:]
-            xml_param = xml_param.lower()
+            # Iterate through the map keys
+            for prop in xml_map:
+                # try to extract a value from the dat
+                str_val = None
+                value = data.get(xml_map[prop][1], None)
+                if isinstance(value, np.ndarray):
+                    str_val = []
+                    for v in value:
+                        str_val.append('%f' % v)
+                    str_val = xml_map[prop][2].join(str_val)
+                elif value is not None:
+                    str_val = str(value)
 
-            return xml_param
+                # If there is a value, the property
+                if str_val:
+                    node.set(prop, str_val)
 
-        datagram_fmt      = self.header_fmt(version)
+        # Initialize the datagram format and contents
+        datagram_fmt = self.header_fmt(version)
         datagram_contents = []
+
+        # Insert the datagram header fields
+        for field in self.header_fields(version):
+            if (sys.version_info.major > 2) and isinstance(data[field], str):
+                data[field] = data[field].encode('latin_1')
+            datagram_contents.append(data[field])
 
         if version == 0:
 
-            for field in self.header_fields(version):
-                datagram_contents.append(data[field])
+            if data['subtype'] == 'configuration':
+                # This is a configuration datagram we need to pack
 
+                # Get a list of the channels we're dealing with
+                channel_ids = list(data['configuration'].keys())
 
-            if data['nmea_string'][-1] != '\x00':
-                tmp_string = data['nmea_string'] + '\x00'
-            else:
-                tmp_string = data['nmea_string']
+                # Load the original configuration XML into etree - certain systems
+                # write extended configuration data that we don't parse at this time.
+                # Changes to parameters from the <Configuration> section will be updated
+                # below. Other sections will pass through unchanged.
+                root_node = ET.fromstring(data['configuration'][channel_ids[0]]['raw_xml'])
 
+                #  update the header
+                header_node = root_node.find('./Header')
+                update_xml(header_node, self.header_xml_map, data['configuration'][channel_ids[0]])
+
+                # Now work through the channels in the transceivers section
+                transceivers_node = root_node.find('./Transceivers')
+                for chan in channel_ids:
+                    # Get a reference to this channels configuration data
+                    chan_data = data['configuration'][chan]
+
+                    # Update this channel's transceiver node
+                    for xcvr_node in transceivers_node.findall('./Transceiver[@TransceiverName="' +
+                            chan_data['transceiver_name'] + '"]'):
+                        update_xml(xcvr_node, self.transceiver_xml_map, chan_data)
+
+                        # And update this channels channel node
+                        channels_node = xcvr_node.find('./Channels')
+                        for channel_node in channels_node.findall('./Channel[@ChannelID="' + chan + '"]'):
+                            update_xml(channel_node, self.channel_xml_map, chan_data)
+                            # Update this channel's transducer node
+                            for chan_xdcr_node in channel_node.findall('./Transducer[@TransducerName="' + chan_data['transducer_name'] + '"]'):
+                                update_xml(chan_xdcr_node, self.channel_xdcr_xml_map, chan_data)
+
+                # Now update the transducers section
+                transducers_node = root_node.find('./Transducers')
+                for xdcr_node in transducers_node.findall('./Transducer[@TransducerCustomName="' +
+                        chan_data['transducer_custom_name'] + '"]'):
+                    update_xml(xdcr_node, self.xdcrs_xdcr_xml_map, chan_data)
+
+            elif data['subtype'] == 'parameter':
+
+                # Build the parameter XML string
+                root_node = ET.Element('Parameter')
+                chan_node = ET.SubElement(root_node, "Channel")
+                update_xml(chan_node, self.parameter_xml_map, data['parameter'])
+
+            elif data['subtype'] == 'environment':
+
+                # Build the environment XML string
+                root_node = ET.Element('Environment')
+                update_xml(root_node, self.environment_xml_map, data['environment'])
+
+                # Now add the transducer environmental params
+                for i in range(len(data['environment']['transducer_name'])):
+                    xdcr_node = ET.SubElement(root_node, "Transducer")
+                    xdcr_node.set('TransducerName', data['environment']['transducer_name'][i])
+                    xdcr_node.set('SoundSpeed', str(data['environment']['transducer_sound_speed'][i]))
+
+            # Get the xml obj as a bytes, insert header, and convert to string
+            xml_string = ET.tostring(root_node, encoding='utf8', method='xml',
+                        pretty_print=True)
+            xml_string = b'<?xml version="1.0" encoding="utf-8"?>\n' + xml_string
+            #print(xml_string.decode('utf-8'))
 
             #Pad with more nulls to 4-byte word boundry if necessary
-            if len(tmp_string) % 4:
-                tmp_string += '\x00' * (4 - (len(tmp_string) % 4))
+            xml_string = xml_string + bytes(len(xml_string) % 4)
 
-            datagram_fmt += '%ds' % (len(tmp_string))
-
-            #Convert to python string if needed
-            if isinstance(tmp_string, str):
-                tmp_string = tmp_string.encode('ascii', errors='replace')
-
-            datagram_contents.append(tmp_string)
-
+            # Update the format string and append to the contents list
+            datagram_fmt += '%ds' % (len(xml_string))
+            datagram_contents.append(xml_string)
 
         return struct.pack(datagram_fmt, *datagram_contents)
-
 
 
 class SimradFILParser(_SimradDatagramParser):
@@ -1032,22 +1044,28 @@ class SimradFILParser(_SimradDatagramParser):
 
         return data
 
-
     def _pack_contents(self, data, version):
 
         datagram_fmt = self.header_fmt(version)
         datagram_contents = []
 
-        if version == 0:
+        # No known version 0
 
-           pass
+        if version == 1:
 
-        elif version == 1:
+            # Add the spare value (2 byte padding in datagram)
+            data['spare'] = ''
+
+            # Append the datagram values
             for field in self.header_fields(version):
+                if (sys.version_info.major > 2) and isinstance(data[field], str):
+                    data[field] = data[field].encode('latin_1')
                 datagram_contents.append(data[field])
 
-            datagram_fmt += '%ds' %(len(data['beam_config']))
-            datagram_contents.append(data['beam_config'])
+            # Reform the coefficients into float vector
+            coefficients = data['coefficients'].view(np.float32)
+            datagram_contents.extend(coefficients)
+            datagram_fmt += '%df' % (coefficients.shape[0])
 
         return struct.pack(datagram_fmt, *datagram_contents)
 
@@ -1662,5 +1680,15 @@ class SimradRawParser(_SimradDatagramParser):
                     angles = data['angle'][:,0].astype('uint16') << 8
                     angles = angles + data['angle'][:,1]
                     datagram_contents.extend(angles)
+
+        elif version == 3:
+
+            data['spare'] = ''
+            for field in self.header_fields(version):
+                if (sys.version_info.major > 2) and isinstance(data[field], str):
+                    data[field] = data[field].encode('latin_1')
+                datagram_contents.append(data[field])
+
+
 
         return struct.pack(datagram_fmt, *datagram_contents)

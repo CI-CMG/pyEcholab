@@ -7,8 +7,6 @@ This is a simple script to plot up the differences between pyEcholab outputs
 and data exported from echoview.
 
 """
-import sys
-sys.path.append('C:/Users/rick.towler/Work/AFSCGit/pyEcholab')
 
 from echolab2.instruments import EK80
 import echolab2.processing.processed_data as processed_data
@@ -16,7 +14,7 @@ from echolab2.plotting.matplotlib import echogram
 import matplotlib.pyplot as plt
 
 
-input_path = 'C:/EK80 Test Data/EK60/'
+input_path = './data/EK60/'
 
 #  define the paths to the reference data files
 raw_filename = 'DY1803-D20180312-T212915.raw'

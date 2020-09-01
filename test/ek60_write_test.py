@@ -130,10 +130,10 @@ for channel_id in rewrite_chan_data:
 
     #  plot up a single Sv ping
     fig2 = plt.figure()
-    plt.plot(orig_Sv[-1], orig_Sv.range, label='Original', color='blue', linewidth=1.5)
-    plt.plot( rewrite_Sv[-1], rewrite_Sv.range, label='Rewrite', color='red', linewidth=1)
+    plt.plot(orig_Sv[-2], orig_Sv.range, label='Original', color='blue', linewidth=1.5)
+    plt.plot( rewrite_Sv[-2], rewrite_Sv.range, label='Rewrite', color='red', linewidth=1)
     plt.gca().invert_yaxis()
-    fig2.suptitle("Ping " + str(rewrite_Sv.n_pings) + " comparison original vs pyEcholab2 re-write")
+    fig2.suptitle("Ping " + str(rewrite_Sv.n_pings-1) + " comparison original vs pyEcholab2 re-write")
     plt.xlabel("Sv (dB)")
     plt.ylabel("Range (m)")
     plt.legend()

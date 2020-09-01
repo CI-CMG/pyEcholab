@@ -13,7 +13,7 @@ from echolab2.plotting.matplotlib import echogram
 import matplotlib.pyplot as plt
 
 
-input_path = 'C:/EK80 Test Data/EK80/CW/reduced/'
+input_path = './data/EK80/CW/reduced/'
 
 #  define the paths to the reference data files
 raw_filename = 'DY2000_EK80_Cal-D20200126-T061004.raw'

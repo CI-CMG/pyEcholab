@@ -49,6 +49,8 @@ from .util.simrad_raw_file import RawSimradFile, SimradEOF
 from .util.nmea_data import nmea_data
 from .util.motion_data import motion_data
 from .util import simrad_signal_proc
+from .util import date_conversion
+from .util import simrad_parsers
 from ..ping_data import ping_data
 from ..processing.processed_data import processed_data
 from ..processing import line
@@ -482,11 +484,10 @@ class EK80(object):
                     self.n_channels += 1
 
                     # and populate the frequency map
-                    this_freq = config_datagram['configuration'][channel_id]['transducer_frequency']
-                    if this_freq in self.frequency_map:
-                        self.frequency_map[this_freq].append(channel_id)
+                    if frequency in self.frequency_map:
+                        self.frequency_map[frequency].append(channel_id)
                     else:
-                        self.frequency_map[this_freq] = [channel_id]
+                        self.frequency_map[frequency] = [channel_id]
 
                 #  check if we need to create an entry for this channel's filters
                 if channel_id not in self._filters:
@@ -804,6 +805,540 @@ class EK80(object):
             channel_data = self.raw_data
 
         return channel_data
+
+
+    def write_raw(self, output_filenames, power=True, angles=True,
+                 complex=True, max_sample_count=None, start_time=None,
+                 end_time=None, start_ping=None, end_ping=None, frequencies=None,
+                 channel_ids=None, time_format_string='%Y-%m-%d %H:%M:%S',
+                 start_sample=None, end_sample=None, progress_callback=None,
+                 overwrite=False, async_window=5):
+        """Writes one or more Simrad EK80 .raw files.
+
+
+        Args:
+            output_filenames (str, dict): A string specifying the full path and
+                output filename header that will be used to generate all of the
+                output filenames OR a dict, keyed by *input* filename where the
+                values specify the full path and *full* output filename that will
+                be used when writing data associated with that input file.
+
+                Providing a string will result in behavior similar to ER60 software
+                where you provide the folder and filename header and it generates
+                data in that folder naming the files with the header and appending
+                the date and time:
+
+                    output_filenames = 'C:\temp\test_ek60_file'
+
+                would result in files named similar to:
+
+                    C:\temp\test_ek60_file-D202020101-T120000.raw
+                    C:\temp\test_ek60_file-D202020101-T122513.raw
+
+                If, in the off chance that you have read data from two files that
+                both start at the same time, the subsequent files will have a
+                "-#" appended to the time, to ensure that the file names are
+                unique.
+
+                Providing a dict, keyed by input filename will allow full control
+                of the output file naming. It is your responsibility to provide a
+                dict where the keys map 1:1 to the input file names. If they do
+                not, an error will be raised.
+
+            power (bool): Controls whether power data is written
+            angles (bool): Controls whether angle data is written
+
+            start_time (str): Specify a start time if you do not want to write
+                from the first ping. The format of the time string must
+                match the format specified in time_format_string.
+            end_time (str): Specify an end time if you do not want to write
+                to the last ping. The format of the time string must
+                match the format specified in time_format_string.
+            start_ping (int): Specify starting ping number if you do not want
+                to start writing at first ping.
+            end_ping (int): Specify end ping number if you do not want
+                to write all pings.
+            frequencies (list): List of floats (i.e. 18000.0) if you
+                only want to write specific frequencies.
+            channel_ids (list): A list of strings that contain the unique
+                channel IDs to write. If no list is supplied, all channels are
+                written.
+            time_format_string (str): String containing the format of the
+                start and end time arguments. Format is used to create datetime
+                objects from the start and end time strings
+            start_sample (int): Specify starting sample number if not
+                writing from first sample.
+            end_sample (int): Specify ending sample number if not
+                writing to last sample.
+        """
+
+        def new_datagram(dg_time, dg_type, dg_version):
+            '''
+            new_datagram builds a dict containing the keys common to all datagram
+            dictionaries.
+            '''
+
+            # build the base datagram dict. These fields are common to all datagrams
+            dgram = {}
+            low_date, high_date = date_conversion.dt64_to_nt(dg_time)
+            dgram['low_date'] = low_date
+            dgram['high_date'] = high_date
+            dgram['type'] = dg_type + str(dg_version)
+            dgram['dg_version'] = dg_version
+
+            return dgram
+
+
+        #  initialize some vars to hold the current vessel attitude data
+        this_heave = 0.0
+        this_roll = 0.0
+        this_pitch = 0.0
+        this_heading = 0.0
+
+        files_written = []
+
+        # Process the args
+        if start_time:
+            start_time = self._convert_time_bound(
+                    start_time, format_string=time_format_string)
+        else:
+            start_time = self.start_time
+
+        if end_time:
+            end_time = self._convert_time_bound(
+                    end_time, format_string=time_format_string)
+        else:
+            end_time = self.end_time
+
+        if channel_ids is None:
+            channel_ids = self.channel_ids
+
+        if start_sample is None:
+            start_sample = 0
+
+        if start_sample < 0:
+            start_sample = 0
+
+        if end_sample:
+            if end_sample <= start_sample:
+                end_sample = start_sample
+
+        # Create the async data time delta - used when extracting async data
+        # like NMEA or TAG for writing
+        async_window_secs = np.timedelta64(async_window, 's')
+
+        #  map dg_type to its parser
+        DGRAM_PARSE_KEY = {'RAW': simrad_parsers.SimradRawParser(),
+                           'FIL': simrad_parsers.SimradFILParser(),
+                           'TAG': simrad_parsers.SimradAnnotationParser(),
+                           'NME': simrad_parsers.SimradNMEAParser(),
+                           'MRU': simrad_parsers.SimradMRUParser(),
+                           'XML': simrad_parsers.SimradXMLParser()}
+
+        # map dg_type to version for this class/raw file spec
+        DGRAM_VERSION_KEY = {'RAW':3,
+                             'NME':0,
+                             'FIL':1,
+                             'TAG':0,
+                             'MRU':0,
+                             'XML':0}
+
+        # Because a user can load multiple .raw files into an EK80 object, and those
+        # .raw files can contain data from various system configurations, we need to
+        # write potentially different configurations as separate files to ensure the
+        # new data are interpreted correctly when read.
+        #
+        # Each ping in a raw_data object references a dict containing the system
+        # configuration data for that channel as written in the .raw file header. That
+        # dict also contains the input raw file name. The unique raw file names can be
+        # used to determine how many files to write and the channel data that will be
+        # in them.
+        #
+        # This is important to remember if you are trying to combine data from two raw
+        # files into one. It is your responsibility to only combine data from files
+        # recorded using the exact same system parameters (there is some nuance here,
+        # but either you'll know when you can break this rule or not.) After combining
+        # data from two or more files, you need to replicate the first configuration
+        # dict in each raw_data object across all pings:
+        #
+        # raw_data_38khz.configuration[:] = raw_data_38khz.configuration[0]
+
+        # The first thing we need to do is identify all of the data that meets our
+        # time/ping number, channel/frequency constraints. Then we group that by input
+        # file name and again by channel. The result is a dict, keyed by file name,
+        # with values that are dicts keyed by the channel ID
+
+        # Work thru the specified channels
+        data_by_file = {}
+        n_datagrams_by_file = {}
+        for channel in channel_ids:
+            # and then this channel's raw_data objects
+
+            for data in self.raw_data[channel]:
+                # Get the indices of data from this channel/data that fall within the
+                # time span provided.
+                this_idx = data.get_indices(start_time=start_time,
+                        end_time=end_time, start_ping=start_ping,
+                        end_ping=end_ping)
+
+                # check if we have any data from this channel/data
+                if this_idx.size > 0:
+                    # Find the unique configuration objects for this data/time range
+                    # The config objects are different for each file read and we use
+                    # that to determine what data goes in what output file.
+                    # We can't use np.unique on dicts so we do it the hard way...
+                    unique_configs = []
+                    for c in data.configuration[this_idx]:
+                        if c not in unique_configs:
+                            # this is a convienient place to filter by frequency...
+                            if frequencies:
+                                #  freqs specified, check if this is one of them
+                                if c['transducer_frequency'] in frequencies:
+                                    unique_configs.append(c)
+                            else:
+                                # writing all freqs
+                                unique_configs.append(c)
+
+                    # Determine the indices for each config
+                    for conf in unique_configs:
+                        # Get the indices for each unique config
+                        conf_idx = this_idx[data.configuration[this_idx] == conf]
+
+                        # To track progress, we'll total up the number of raw
+                        # datagrams that we will ultimately write for this file.
+                        n_datagrams = conf_idx.size
+
+                        # Store the channel ID, condif dict, reference to the
+                        # raw data, and the index to the data by filename
+                        this_data = {'channel_id':channel, 'configuration':conf,
+                                'data':data, 'index':conf_idx}
+
+                        if conf['file_name'] not in data_by_file:
+                            # this is a new file, add it
+                            data_by_file[conf['file_name']] = {channel:[this_data]}
+                            # and set the initial datagram count
+                            n_datagrams_by_file[conf['file_name']] = n_datagrams
+                        else:
+                            # this file is already on the list, check if the channel exists (this
+                            # is the rare, but possible, multiple data types per channel case.)
+                            if channel in data_by_file[conf['file_name']]:
+                                data_by_file[conf['file_name']][channel].append(this_data)
+                            else:
+                                data_by_file[conf['file_name']][channel] = [this_data]
+                            n_datagrams_by_file[conf['file_name']] += n_datagrams
+
+        # Now that we have references to the data we need to write, grouped by input
+        # filename, we can iterate through the this dict and write the data to disk.
+        for infile in data_by_file:
+
+            outfile_name = ''
+
+            # check if we've been given a dict of filenames and if we have one for
+            # this input file.
+            if isinstance(output_filenames, dict):
+                if infile in output_filenames:
+                    outfile_name = output_filenames[infile]
+                else:
+                    raise ValueError("Input filename '" + infile + "' not found in " +
+                        "output_filenames dictionary. No output filename available to " +
+                        "map to.")
+
+            # .raw files are always written in time order. We need to create a vector
+            # of timestamps from all of our data sources (raw data, NMEA data, annotations,
+            # and motion data)and use the sort indices to create a our datagram roadmap.
+
+            # create the map arrays
+            dg_times = np.array([], dtype='datetime64[ms]')
+            dg_objects = np.array([], dtype='object')
+            dg_obj_idx = np.array([], dtype=np.uint32)
+            dg_type = np.array([], dtype='S3')
+
+            # Add the raw data
+            for channel in data_by_file[infile]:
+                for data in data_by_file[infile][channel]:
+                    times = data['data'].ping_time[data['index']]
+                    dg_times = np.concatenate((dg_times, times))
+                    dg_objects = np.concatenate((dg_objects, np.repeat(data['data'], times.size)))
+                    dg_obj_idx = np.concatenate((dg_obj_idx, data['index']))
+                    dg_type = np.concatenate((dg_type, np.repeat('RAW', times.size)))
+
+            # Determine the data time window
+            raw_start_time = dg_times[0]
+            async_start_time = dg_times[0] - async_window_secs
+            async_end_time = dg_times[-1] - async_window_secs
+#
+#            # Next, add the annotation data
+#            annotation_idx = self.annotations.get_indices(start_time=async_start_time,
+#                end_time=async_end_time)
+#            times = self.annotations.times[annotation_idx]
+#            dg_times = np.insert(dg_times, 0, times)
+#            dg_objects = np.insert(dg_objects, 0, np.repeat(self.annotations, times.size))
+#            dg_obj_idx = np.insert(dg_obj_idx, 0, annotation_idx)
+#            dg_type = np.insert(dg_type, 0, np.repeat('TAG', times.size))
+
+            # Get the unique environment datagrams - we can use the reference to the
+            # last data object in the last channel that exists after adding the raw
+            # data above to get the environment data. The references to the environment
+            # datagrams are shared between all channels.
+            data_by_file[infile][channel]
+            _, env_idx = np.unique(np.array([id(xi) for xi in data['data'].environment]),
+                    return_index=True)
+
+            times = data['data'].ping_time[env_idx]
+            dg_times = np.insert(dg_times, 0, times)
+            dg_objects = np.insert(dg_objects, 0, data['data'].environment[env_idx])
+            dg_obj_idx = np.insert(dg_obj_idx, 0, env_idx)
+            dg_type = np.insert(dg_type, 0, np.repeat('ENV', times.size))
+
+
+            # Then the motion data using our new time window
+            motion_idx = self.motion_data.get_indices(start_time=async_start_time,
+                        end_time=async_end_time)
+            times = self.motion_data.times[motion_idx]
+            dg_times = np.insert(dg_times, 0, times)
+            dg_objects = np.insert(dg_objects, 0, np.repeat(self.motion_data, times.size))
+            dg_obj_idx = np.insert(dg_obj_idx, 0, motion_idx)
+            dg_type = np.insert(dg_type, 0, np.repeat('MRU', times.size))
+
+            # Lastly, insert the NMEA data using our new time window
+            nmea_idx = self.nmea_data.get_indices(start_time=async_start_time,
+                        end_time=async_end_time)
+            times = self.nmea_data.nmea_times[nmea_idx]
+            dg_times = np.insert(dg_times, 0, times)
+            dg_objects = np.insert(dg_objects, 0, np.repeat(self.nmea_data, times.size))
+            dg_obj_idx = np.insert(dg_obj_idx, 0, nmea_idx)
+            dg_type = np.insert(dg_type, 0, np.repeat('NME', times.size))
+
+            # Now sort the time vector - must use stable sort to ensure proper dg order
+            sorted_time_idx = np.argsort(dg_times, kind='stable')
+
+            # Sort the map arrays using the sorted time index
+            dg_times = dg_times[sorted_time_idx]
+            dg_objects = dg_objects[sorted_time_idx]
+            dg_obj_idx = dg_obj_idx[sorted_time_idx]
+            dg_type = dg_type[sorted_time_idx]
+            n_datagrams = dg_times.size
+
+            # we are finally ready to write...
+
+            # Generate output filename if needed - we assume we're passed
+            # a valid path and filename prefix. e.g. 'c:/test/DY2020'
+            if outfile_name == '':
+                timestamp = date_conversion.dt64_to_datetime(raw_start_time)
+                timestamp = timestamp.strftime("D%Y%m%d-T%H%M%S")
+                outfile_name = output_filenames + '-' + timestamp + '.raw'
+
+            # open the raw file
+            outfile_name = os.path.normpath(outfile_name)
+            if not overwrite and os.path.exists(outfile_name):
+                raise IOError('File %s already exists and overwrite == False.' %(outfile_name))
+            raw_fid = open(outfile_name, 'wb')
+
+            # Initialize some vars to track our progress
+            bytes_written = 0
+            cumulative_pct = -1
+            datagrams_processed = 0
+
+            #  keep track of the files we're writing to return to caller
+            files_written.append(outfile_name)
+
+            # Build the configuration dict and collect the filter params
+            filter_params = {}
+            config_dgram = new_datagram(dg_times[0], 'XML', DGRAM_VERSION_KEY['XML'])
+            config_dgram['configuration'] = {}
+            config_dgram['subtype'] = 'configuration'
+            for channel in data_by_file[infile]:
+                filter_params[channel] = data_by_file[infile][channel][0]['data'].filters[0]
+                config_dgram['configuration'][channel] = \
+                    data_by_file[infile][channel][0]['configuration']
+
+            #  pack config dict into raw byte stream and write
+            bytes_written += raw_fid.write(DGRAM_PARSE_KEY['XML'].to_string(config_dgram))
+
+            # Now write the filter datagrams
+            for channel in filter_params:
+                for stage in filter_params[channel]:
+                    # Create a FIL datagram
+                    filter_dgram = new_datagram(dg_times[0], 'FIL', DGRAM_VERSION_KEY['FIL'])
+                    filter_dgram['channel_id'] = channel
+                    filter_dgram['stage'] = stage
+                    filter_dgram['n_coefficients'] = filter_params[channel][stage]['n_coefficients']
+                    filter_dgram['decimation_factor'] = filter_params[channel][stage]['decimation_factor']
+                    filter_dgram['coefficients'] = filter_params[channel][stage]['coefficients']
+
+                    # And write
+                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY['FIL'].to_string(filter_dgram))
+
+
+            #  now write out all the rest of the datagrams
+            for idx in range(n_datagrams):
+
+                #  now assemble the datagram dict based on the type
+                if dg_type[idx] == 'RAW':
+
+
+                    channel_id = data_by_file[infile][dg_objects[idx].channel_id][0]['configuration']['channel_id']
+                    # Create the base datagram dict for the XML Parameter datagram
+                    dgram_dict = new_datagram(dg_times[idx], 'XML',
+                            DGRAM_VERSION_KEY['XML'])
+                    # Build the datagram dictionary
+                    dgram_dict['subtype'] = 'parameter'
+                    dgram_dict['parameter'] = {}
+                    dgram_dict['parameter']['channel_id'] = channel_id
+                    dgram_dict['parameter']['channel_mode'] = dg_objects[idx].channel_mode[dg_obj_idx[idx]]
+                    dgram_dict['parameter']['pulse_form'] = dg_objects[idx].pulse_form[dg_obj_idx[idx]]
+                    dgram_dict['parameter']['frequency'] = dg_objects[idx].frequency[dg_obj_idx[idx]]
+                    dgram_dict['parameter']['pulse_duration'] = dg_objects[idx].pulse_duration[dg_obj_idx[idx]]
+                    dgram_dict['parameter']['sample_interval'] = dg_objects[idx].sample_interval[dg_obj_idx[idx]]
+                    dgram_dict['parameter']['transmit_power'] = dg_objects[idx].transmit_power[dg_obj_idx[idx]]
+                    dgram_dict['parameter']['slope'] = dg_objects[idx].slope[dg_obj_idx[idx]]
+
+                    # and write the datagram
+                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY['XML'].to_string(dgram_dict))
+
+                    # Create the base datagram dict for the RAW3 datagram
+                    dgram_dict = new_datagram(dg_times[idx], dg_type[idx],
+                            DGRAM_VERSION_KEY[dg_type[idx]])
+
+                    # Build the datagram dictionary
+
+
+                    dgram_dict['channel_id'] = channel_id
+                    dgram_dict['data_type'] = dg_objects[idx].transducer_depth[dg_obj_idx[idx]]
+                    dgram_dict['offset'] = dg_objects[idx].frequency[dg_obj_idx[idx]]
+                    dgram_dict['count'] = dg_objects[idx].transmit_power[dg_obj_idx[idx]]
+
+
+
+                    dgram_dict['pulse_length'] = dg_objects[idx].pulse_length[dg_obj_idx[idx]]
+                    dgram_dict['bandwidth'] = dg_objects[idx].bandwidth[dg_obj_idx[idx]]
+                    dgram_dict['sample_interval'] = dg_objects[idx].sample_interval[dg_obj_idx[idx]]
+                    dgram_dict['sound_velocity'] = dg_objects[idx].sound_velocity[dg_obj_idx[idx]]
+                    dgram_dict['absorption_coefficient'] = dg_objects[idx].absorption_coefficient[dg_obj_idx[idx]]
+                    dgram_dict['heave'] = this_heave
+                    dgram_dict['roll'] = this_roll
+                    dgram_dict['pitch'] = this_pitch
+                    dgram_dict['temperature'] = dg_objects[idx].temperature[dg_obj_idx[idx]]
+                    dgram_dict['heading'] = this_heading
+                    dgram_dict['transmit_mode'] = dg_objects[idx].transmit_mode[dg_obj_idx[idx]]
+                    dgram_dict['spare0'] = ''
+
+                    # adjust the sample offset if we're creating an additional offset during writing
+                    # and update the sample count.
+                    sample_offset = start_sample + dg_objects[idx].sample_offset[dg_obj_idx[idx]]
+                    dgram_dict['offset'] = sample_offset
+                    if (end_sample):
+                        sample_count = end_sample - start_sample
+                    else:
+                        if hasattr(dg_objects[idx], 'power'):
+                            sample_count = dg_objects[idx].power[dg_obj_idx[idx],start_sample:end_sample].size - start_sample
+                        elif hasattr(dg_objects[idx], 'angles_athwartship_e'):
+                            sample_count = dg_objects[idx].power[dg_obj_idx[idx],start_sample:end_sample].size - start_sample
+                    dgram_dict['count'] = sample_count
+
+                    #  initialize the beam mode
+                    mode = 0
+
+                    # If we have angle data, we have to convert it back to indexed and combine.
+                    if hasattr(dg_objects[idx], 'angles_athwartship_e'):
+                        # Convert from electrical angles to indexed.
+                        athwartship_e = (dg_objects[idx].angles_athwartship_e[dg_obj_idx[idx],start_sample:end_sample] /
+                                raw_data.INDEX2ELEC).astype('uint8')
+                        alongship_e = (dg_objects[idx].angles_alongship_e[dg_obj_idx[idx],start_sample:end_sample] /
+                                raw_data.INDEX2ELEC).astype('uint8')
+                        dgram_dict['angle'] = np.column_stack((athwartship_e,alongship_e))
+
+                        #  set the angles bit in the beam mode
+                        mode = mode | (1<<1)
+
+                    # If we have power data, we have to convert it back to indexed
+                    if hasattr(dg_objects[idx], 'power'):
+                        dgram_dict['power'] = (dg_objects[idx].power[dg_obj_idx[idx],start_sample:end_sample] /
+                                raw_data.INDEX2POWER).astype('int16')
+
+                        # Set the power bit in the beam mode
+                        mode = mode | (1<<0)
+
+                    #  set the mode
+                    dgram_dict['mode'] = mode
+
+                    #  write it
+                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram_dict))
+
+                elif dg_type[idx] == 'TAG':
+                    #  create the base datagram dict
+                    dgram_dict = new_datagram(dg_times[idx], dg_type[idx],
+                            DGRAM_VERSION_KEY[dg_type[idx]])
+
+                    # Set the annotation text datagram value
+                    dgram_dict['text'] = dg_objects[idx].text[dg_obj_idx[idx]]
+
+                    #  write it
+                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram_dict))
+
+                elif dg_type[idx] == 'NME':
+                    #  create the base datagram dict
+                    dgram_dict = new_datagram(dg_times[idx], dg_type[idx],
+                            DGRAM_VERSION_KEY[dg_type[idx]])
+
+                    # Set the NME0 datagram values
+                    dgram_dict['nmea_string'] = dg_objects[idx].raw_datagrams[dg_obj_idx[idx]]
+
+                    #  write it
+                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram_dict))
+
+                elif dg_type[idx] == 'MRU':
+                    #  create the base datagram dict
+                    dgram_dict = new_datagram(dg_times[idx], dg_type[idx],
+                            DGRAM_VERSION_KEY[dg_type[idx]])
+                    # Assign the datagram values
+                    dgram_dict['heave'] = dg_objects[idx].heave[dg_obj_idx[idx]]
+                    dgram_dict['pitch'] = dg_objects[idx].pitch[dg_obj_idx[idx]]
+                    dgram_dict['roll'] = dg_objects[idx].roll[dg_obj_idx[idx]]
+                    dgram_dict['heading'] = dg_objects[idx].heading[dg_obj_idx[idx]]
+
+                    #  write it
+                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram_dict))
+
+                elif dg_type[idx] == 'ENV':
+                    #  create the base datagram dict
+                    dgram_dict = new_datagram(dg_times[idx], 'XML', DGRAM_VERSION_KEY['XML'])
+                    # Set the environment XML datagram values
+
+                    dgram_dict['environment'] = dg_objects[idx]
+                    dgram_dict['subtype'] = 'environment'
+
+                    #  write it
+                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY['XML'].to_string(dgram_dict))
+
+                else:
+                    #  we should never encounter an unknown type, but raise exception if so
+                    raise ValueError('Unknown datagram type encountered: ' + dg_type[idx] +
+                            '. This should never happen...')
+
+                #  call progress callback if supplied
+                if (progress_callback):
+                    #  determine the progress as percent.
+                    pct_progress = round(datagrams_processed / n_datagrams * 100.)
+
+                    #  call the callback when the percent changes
+                    if cumulative_pct != pct_progress:
+                        # Call the provided callback - the callback has 3 args,
+                        # the first is the full path to the current file and the
+                        # second is the percent written and the third is the bytes
+                        # written.
+                        progress_callback(outfile_name, pct_progress, bytes_written)
+                        cumulative_pct = pct_progress
+
+                # Increment our datagram counter - do this after the progress callback
+                # block to ensure we emit a 0 percent callback
+                datagrams_processed += 1
+
+            # Done writing this file - close it
+            raw_fid.close()
+
+        # Writing complete, return a list of files written
+        return files_written
 
 
 

@@ -1,12 +1,16 @@
 
-#from PyQt5 import QtGui
 from PyQt5.QtCore import *
+from PyQt5.QtGui import *
 import numpy
 import datetime
-from QViewerBase import QViewerBase
+from .QViewerBase import QViewerBase
 
 
 class QEchogramViewer(QViewerBase):
+
+    mouseRelease = pyqtSignal(object, object, int, object, list)
+    mousePress = pyqtSignal(object, object, int, object, list)
+    mouseMove = pyqtSignal(object, object, object, list, list)
 
     def __init__(self, parent=None, useGL=False, backgroundColor=[50,50,50]):
         super(QEchogramViewer, self).__init__(parent, useGL=useGL,
@@ -406,7 +410,7 @@ class QEchogramViewer(QViewerBase):
         pixelPoints = []
 
         #  first determine what form our vertices are in
-        if (len(axesVerts) > 1):
+        if (len(axesVerts) > 2):
             #  we have been passed a list of [x,y] tuples
 
             #  check if we're dealing with time on any of our axes
@@ -435,22 +439,28 @@ class QEchogramViewer(QViewerBase):
 
         else:
             #  we have been passed a list of lists 2 elements long
-
-            #  check if we're dealing with time on any of our axes
             if (type(axesVerts[0][0]) in (datetime.datetime, numpy.datetime64)):
-                xIdx = (numpy.abs(self.__xTimeAxis - self.serializeTime(axesVerts[0][0]))).argmin()
+                xIsTime = True
             else:
-                #  find the closest match to this x value
-                xIdx = (numpy.abs(self.xAxis - axesVerts[0][0])).argmin()
-            if (type(axesVerts[0][1]) in (datetime.datetime, numpy.datetime64)):
-                #  serialize this vertex's time value and find closest match
-                yIdx = (numpy.abs(self.__yTimeAxis - self.serializeTime(axesVerts[0][1]))).argmin()
-            else:
-                #  find the closest match to this y value
-                yIdx = (numpy.abs(self.yAxis - axesVerts[0][1])).argmin()
+                yIsTime = True
 
-                #  append this converted vertex to the list of verts to return
-            pixelPoints.append([xIdx,yIdx])
+            for i in range(len(axesVerts[0])):
+
+                #  check if we're dealing with time on any of our axes
+                if xIsTime:
+                    xIdx = (numpy.abs(self.__xTimeAxis - self.serializeTime(axesVerts[0][i]))).argmin()
+                else:
+                    #  find the closest match to this x value
+                    xIdx = (numpy.abs(self.xAxis - axesVerts[0][i])).argmin()
+                if yIsTime:
+                    #  serialize this vertex's time value and find closest match
+                    yIdx = (numpy.abs(self.__yTimeAxis - self.serializeTime(axesVerts[1][i]))).argmin()
+                else:
+                    #  find the closest match to this y value
+                    yIdx = (numpy.abs(self.yAxis - axesVerts[1][i])).argmin()
+
+                    #  append this converted vertex to the list of verts to return
+                pixelPoints.append([xIdx,yIdx])
 
         return pixelPoints
 
@@ -480,7 +490,7 @@ class QEchogramViewer(QViewerBase):
         convertedLocation = self.pixelToAxes(clickLocation)
 
         #  emit the mousePressEvent signal
-        self.emit(SIGNAL("mousePressEvent"), self, convertedLocation, button, currentKbKey, items)
+        self.mousePress.emit(self, convertedLocation, button, currentKbKey, items)
 
 
     def emitMouseMoveEvent(self, location, currentKbKey, draggedItems, items):
@@ -492,7 +502,7 @@ class QEchogramViewer(QViewerBase):
         convertedLocation = self.pixelToAxes(location)
 
         #  emit the mouseMoveEvent signal
-        self.emit(SIGNAL("mouseMoveEvent"), self, convertedLocation, currentKbKey, draggedItems, items)
+        self.mouseMove.emit(self, convertedLocation, currentKbKey, draggedItems, items)
 
 
     def emitReleaseEvent(self, clickLocation, button, currentKbKey, items):
@@ -504,7 +514,7 @@ class QEchogramViewer(QViewerBase):
         convertedLocation = self.pixelToAxes(clickLocation)
 
         #  emit the mouseReleaseEvent signal
-        self.emit(SIGNAL("mouseReleaseEvent"), self, convertedLocation, button, currentKbKey, items)
+        self.mouseRelease.emit(self, convertedLocation, button, currentKbKey, items)
 
 
     def emitRubberbandSelection(self, rubberBandRect, items):
@@ -519,7 +529,7 @@ class QEchogramViewer(QViewerBase):
         convertedRect = [topLeft, bottomRight]
 
         #  emit the rubberband selection signal
-        self.emit(SIGNAL("rubberBandSelection"), self, convertedRect, items)
+        self.rubberBand.emit(self, convertedRect, items)
 
 
     def getColorTable(self):

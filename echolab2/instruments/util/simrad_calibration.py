@@ -174,9 +174,6 @@ class calibration(object):
             # Yes. Get a reference to it
             param = getattr(self, param_name)
 
-            if param_name == 'gain':
-                print()
-
             # Check if it contains data
             if param is None:
                 # It doesn't, extract from the raw_data object - do not
@@ -216,6 +213,10 @@ class calibration(object):
             elif type(param) in [str, object, dict, list]:
                 param_data = np.empty((return_indices.shape[0]), dtype='object')
                 param_data.fill(param)
+            elif param is None:
+                # This must be a computed parameter since it exists but None is returned.
+                # Pass along the None - the value will be computed later.
+                param_data = None
             else:
                 # Invalid type provided.
                 raise ValueError("The calibration parameter " + param_name +

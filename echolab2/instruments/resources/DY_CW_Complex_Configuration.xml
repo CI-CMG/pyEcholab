@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration>
+  <Header Copyright="Copyright(c) Kongsberg Maritime AS, Norway" ApplicationName="EK80" Version="1.12.4.0" FileFormatVersion="1.22" TimeBias="0" />
+  <Transceivers MergeOperation="AddNodeTree">
+    <Transceiver TransceiverName="WBT 978209" EthernetAddress="0090720eed21" IPAddress="157.237.15.105" Version="[0] Ethernet: 00:90:72:0E:ED:21&#xD;&#xA;[1] Parts-list: WBT 371790/F&#xD;&#xA;[2] Product: WBT&#xD;&#xA;IP Address: 157.237.15.105&#xD;&#xA;Subnet mask: 255.255.0.0&#xD;&#xA;Default gateway: 157.237.15.1&#xD;&#xA;Serial number: 978209&#xD;&#xA;Embedded software: Rev. 2.20&#xD;&#xA;FPGA TX firmware: Rev. 5&#xD;&#xA;FPGA RX firmware: Rev. 7&#xD;&#xA;CH1: 499W CH2: 502W CH3: 489W CH4: 507W&#xD;&#xA;TRD1: Unable to detect transducer&#xD;&#xA;TRD2: Unable to detect transducer&#xD;&#xA;TRD3: Unable to detect transducer&#xD;&#xA;TRD4: Unable to detect transducer&#xD;&#xA;" TransceiverSoftwareVersion="2.20" TransceiverNumber="1" MarketSegment="Scientific" TransceiverType="WBT" SerialNumber="978209" Impedance="5400" Multiplexing="0" RxSampleFrequency="1500000">
+      <Channels>
+        <Channel ChannelID="WBT 978209-15 ES18" ChannelIdShort="ES18 Serial No: 2042" MaxTxPowerTransceiver="2000" PulseDuration="0.000512;0.001024;0.002048;0.004096;0.008192" PulseDurationFM="0.000512;0.001024;0.002048;0.004096;0.008192" HWChannelConfiguration="15">
+          <Transducer TransducerName="ES18" SerialNumber="2042" Frequency="18000" FrequencyMinimum="18000" FrequencyMaximum="18000" BeamType="1" EquivalentBeamAngle="-17" Gain="20.3;22.4;22.9;23;23" SaCorrection="0;0;0;0;0" MaxTxPowerTransducer="1600" BeamWidthAlongship="11" BeamWidthAthwartship="11" AngleSensitivityAlongship="15.5" AngleSensitivityAthwartship="15.5" AngleOffsetAlongship="0" AngleOffsetAthwartship="0" DirectivityDropAt2XBeamWidth="0" />
+        </Channel>
+      </Channels>
+    </Transceiver>
+    <Transceiver TransceiverName="WBT 978217" EthernetAddress="0090720eed29" IPAddress="157.237.15.107" Version="[0] Ethernet: 00:90:72:0E:ED:29&#xD;&#xA;[1] Parts-list: WBT 371790/F&#xD;&#xA;[2] Product: WBT&#xD;&#xA;IP Address: 157.237.15.107&#xD;&#xA;Subnet mask: 255.255.0.0&#xD;&#xA;Default gateway: 157.237.15.1&#xD;&#xA;Serial number: 978217&#xD;&#xA;Embedded software: Rev. 2.20&#xD;&#xA;FPGA TX firmware: Rev. 5&#xD;&#xA;FPGA RX firmware: Rev. 7&#xD;&#xA;CH1: 510W CH2: 496W CH3: 481W CH4: 478W&#xD;&#xA;TRD1: 321842/A;SN324&#xD;&#xA;TRD2: Unable to detect transducer&#xD;&#xA;TRD3: Unable to detect transducer&#xD;&#xA;TRD4: Unable to detect transducer&#xD;&#xA;" TransceiverSoftwareVersion="2.20" TransceiverNumber="2" MarketSegment="Scientific" TransceiverType="WBT" SerialNumber="978217" Impedance="5400" Multiplexing="0" RxSampleFrequency="1500000">
+      <Channels>
+        <Channel ChannelID="WBT 978217-15 ES38-7" ChannelIdShort="ES38-7 Serial No: 324 - Narrow" MaxTxPowerTransceiver="2000" PulseDuration="0.000256;0.000512;0.001024;0.002048;0.004096" PulseDurationFM="0.000512;0.001024;0.002048;0.004096;0.008192" HWChannelConfiguration="15">
+          <Transducer TransducerName="ES38-7" ArticleNumber="321842" SerialNumber="324" Frequency="38000" FrequencyMinimum="34000" FrequencyMaximum="45000" BeamType="65" EquivalentBeamAngle="-20.7" Gain="25.5;25.5;25.5;25.5;25.5" SaCorrection="0;0;0;0;0" MaxTxPowerTransducer="2000" BeamWidthAlongship="7" BeamWidthAthwartship="7" AngleSensitivityAlongship="18" AngleSensitivityAthwartship="18" AngleOffsetAlongship="0" AngleOffsetAthwartship="0" DirectivityDropAt2XBeamWidth="0" />
+        </Channel>
+      </Channels>
+    </Transceiver>
+    <Transceiver TransceiverName="WBT 978213" EthernetAddress="0090720eed25" IPAddress="157.237.15.104" Version="[0] Ethernet: 00:90:72:0E:ED:25&#xD;&#xA;[1] Parts-list: WBT 371790/F&#xD;&#xA;[2] Product: WBT&#xD;&#xA;IP Address: 157.237.15.104&#xD;&#xA;Subnet mask: 255.255.0.0&#xD;&#xA;Default gateway: 157.237.15.1&#xD;&#xA;Serial number: 978213&#xD;&#xA;Embedded software: Rev. 2.20&#xD;&#xA;FPGA TX firmware: Rev. 5&#xD;&#xA;FPGA RX firmware: Rev. 7&#xD;&#xA;CH1: 516W CH2: 496W CH3: 491W CH4: 496W&#xD;&#xA;TRD1: Unable to detect transducer&#xD;&#xA;TRD2: Unable to detect transducer&#xD;&#xA;TRD3: Unable to detect transducer&#xD;&#xA;TRD4: Unable to detect transducer&#xD;&#xA;" TransceiverSoftwareVersion="2.20" TransceiverNumber="3" MarketSegment="Scientific" TransceiverType="WBT" SerialNumber="978213" Impedance="5400" Multiplexing="0" RxSampleFrequency="1500000">
+      <Channels>
+        <Channel ChannelID="WBT 978213-15 ES70-7C" ChannelIdShort="ES70-7C Serial No: 122" MaxTxPowerTransceiver="2000" PulseDuration="0.000128;0.000256;0.000512;0.001024;0.002048" PulseDurationFM="0.000512;0.001024;0.002048;0.004096;0.008192" HWChannelConfiguration="15">
+          <Transducer TransducerName="ES70-7C" SerialNumber="122" Frequency="70000" FrequencyMinimum="45000" FrequencyMaximum="90000" BeamType="1" EquivalentBeamAngle="-20.7" Gain="27;27;27;27;27" SaCorrection="0;0;0;0;0" MaxTxPowerTransducer="750" BeamWidthAlongship="7" BeamWidthAthwartship="7" AngleSensitivityAlongship="23" AngleSensitivityAthwartship="23" AngleOffsetAlongship="0" AngleOffsetAthwartship="0" DirectivityDropAt2XBeamWidth="0" />
+        </Channel>
+      </Channels>
+    </Transceiver>
+    <Transceiver TransceiverName="WBT 976714" EthernetAddress="0090720ee74a" IPAddress="157.237.15.102" Version="[0] Ethernet: 00:90:72:0E:E7:4A&#xD;&#xA;[1] Parts-list: WBT 371790/F&#xD;&#xA;[2] Product: WBT&#xD;&#xA;IP Address: 157.237.15.102&#xD;&#xA;Subnet mask: 255.255.0.0&#xD;&#xA;Default gateway: 157.237.15.1&#xD;&#xA;Serial number: 976714&#xD;&#xA;Embedded software: Rev. 2.20&#xD;&#xA;FPGA TX firmware: Rev. 5&#xD;&#xA;FPGA RX firmware: Rev. 7&#xD;&#xA;CH1: 514W CH2: 494W CH3: 486W CH4: 498W&#xD;&#xA;TRD1: Unable to detect transducer&#xD;&#xA;TRD2: Unable to detect transducer&#xD;&#xA;TRD3: Unable to detect transducer&#xD;&#xA;TRD4: Unable to detect transducer&#xD;&#xA;" TransceiverSoftwareVersion="2.20" TransceiverNumber="4" MarketSegment="Scientific" TransceiverType="WBT" SerialNumber="976714" Impedance="5400" Multiplexing="0" RxSampleFrequency="1500000">
+      <Channels>
+        <Channel ChannelID="WBT 976714-15 ES120-7C" ChannelIdShort="ES120-7C Serial No: 306" MaxTxPowerTransceiver="2000" PulseDuration="6.4E-05;0.000128;0.000256;0.000512;0.001024" PulseDurationFM="0.000512;0.001024;0.002048;0.004096;0.008192" HWChannelConfiguration="15">
+          <Transducer TransducerName="ES120-7C" SerialNumber="306" Frequency="120000" FrequencyMinimum="90000" FrequencyMaximum="170000" BeamType="1" EquivalentBeamAngle="-20.7" Gain="27;27;27;27;27" SaCorrection="0;0;0;0;0" MaxTxPowerTransducer="250" BeamWidthAlongship="7" BeamWidthAthwartship="7" AngleSensitivityAlongship="23" AngleSensitivityAthwartship="23" AngleOffsetAlongship="0" AngleOffsetAthwartship="0" DirectivityDropAt2XBeamWidth="0" />
+        </Channel>
+      </Channels>
+    </Transceiver>
+    <Transceiver TransceiverName="WBT 978208" EthernetAddress="0090720eed20" IPAddress="157.237.15.106" Version="[0] Ethernet: 00:90:72:0E:ED:20&#xD;&#xA;[1] Parts-list: WBT 371790/F&#xD;&#xA;[2] Product: WBT&#xD;&#xA;IP Address: 157.237.15.106&#xD;&#xA;Subnet mask: 255.255.0.0&#xD;&#xA;Default gateway: 157.237.15.1&#xD;&#xA;Serial number: 978208&#xD;&#xA;Embedded software: Rev. 2.20&#xD;&#xA;FPGA TX firmware: Rev. 5&#xD;&#xA;FPGA RX firmware: Rev. 7&#xD;&#xA;CH1: 505W CH2: 499W CH3: 485W CH4: 491W&#xD;&#xA;TRD1: Unable to detect transducer&#xD;&#xA;TRD2: Unable to detect transducer&#xD;&#xA;TRD3: Unable to detect transducer&#xD;&#xA;TRD4: Unable to detect transducer&#xD;&#xA;" TransceiverSoftwareVersion="2.20" TransceiverNumber="5" MarketSegment="Scientific" TransceiverType="WBT" SerialNumber="978208" Impedance="5400" Multiplexing="0" RxSampleFrequency="1500000">
+      <Channels>
+        <Channel ChannelID="WBT 978208-15 ES200-7C" ChannelIdShort="ES200-7C Serial No: 274" MaxTxPowerTransceiver="2000" PulseDuration="6.4E-05;0.000128;0.000256;0.000512;0.001024" PulseDurationFM="0.000512;0.001024;0.002048;0.004096;0.008192" HWChannelConfiguration="15">
+          <Transducer TransducerName="ES200-7C" SerialNumber="274" Frequency="200000" FrequencyMinimum="160000" FrequencyMaximum="260000" BeamType="1" EquivalentBeamAngle="-20.7" Gain="27;27;27;27;27" SaCorrection="0;0;0;0;0" MaxTxPowerTransducer="150" BeamWidthAlongship="7" BeamWidthAthwartship="7" AngleSensitivityAlongship="23" AngleSensitivityAthwartship="23" AngleOffsetAlongship="0" AngleOffsetAthwartship="0" DirectivityDropAt2XBeamWidth="0" />
+        </Channel>
+      </Channels>
+    </Transceiver>
+    <Transceiver TransceiverName="WBT 976726" EthernetAddress="0090720ee756" IPAddress="157.237.15.103" Version="[0] Ethernet: 00:90:72:0E:E7:56&#xD;&#xA;[1] Parts-list: WBT 371790/F&#xD;&#xA;[2] Product: WBT&#xD;&#xA;IP Address: 157.237.15.103&#xD;&#xA;Subnet mask: 255.255.0.0&#xD;&#xA;Default gateway: 157.237.15.1&#xD;&#xA;Serial number: 976726&#xD;&#xA;Embedded software: Rev. 2.20&#xD;&#xA;FPGA TX firmware: Rev. 5&#xD;&#xA;FPGA RX firmware: Rev. 7&#xD;&#xA;CH1: 515W CH2: 501W CH3: 488W CH4: 489W&#xD;&#xA;TRD1: Unable to detect transducer&#xD;&#xA;TRD2: Unable to detect transducer&#xD;&#xA;TRD3: Unable to detect transducer&#xD;&#xA;TRD4: Unable to detect transducer&#xD;&#xA;" TransceiverSoftwareVersion="2.20" TransceiverNumber="6" MarketSegment="Scientific" TransceiverType="WBT" SerialNumber="976726" Impedance="5400" Multiplexing="0" RxSampleFrequency="1500000">
+      <Channels>
+        <Channel ChannelID="WBT 976726-15 ES333-7C" ChannelIdShort="ES333-7C Serial No: 256" MaxTxPowerTransceiver="2000" PulseDuration="6.4E-05;0.000128;0.000256;0.000512;0.001024" PulseDurationFM="0.000512;0.001024;0.002048;0.004096;0.008192" HWChannelConfiguration="15">
+          <Transducer TransducerName="ES333-7C" SerialNumber="256" Frequency="333000" FrequencyMinimum="280000" FrequencyMaximum="450000" BeamType="1" EquivalentBeamAngle="-20.7" Gain="24;24;24;24;24" SaCorrection="0;0;0;0;0" MaxTxPowerTransducer="50" BeamWidthAlongship="7" BeamWidthAthwartship="7" AngleSensitivityAlongship="23" AngleSensitivityAthwartship="23" AngleOffsetAlongship="0" AngleOffsetAthwartship="0" DirectivityDropAt2XBeamWidth="0" />
+        </Channel>
+      </Channels>
+    </Transceiver>
+  </Transceivers>
+  <Transducers MergeOperation="AddNodeTree">
+    <Transducer TransducerName="ES333-7C" TransducerMounting="DropKeel" TransducerCustomName="ES333-7C Serial No: 256" TransducerSerialNumber="256" TransducerOrientation="Vertical" TransducerOffsetX="0" TransducerOffsetY="0" TransducerOffsetZ="9.15" TransducerAlphaX="0" TransducerAlphaY="0" TransducerAlphaZ="0" />
+    <Transducer TransducerName="ES38-7" TransducerMounting="DropKeel" TransducerCustomName="ES38-7 Serial No: 324" TransducerSerialNumber="324" TransducerOrientation="Vertical" TransducerOffsetX="0" TransducerOffsetY="0" TransducerOffsetZ="9.15" TransducerAlphaX="0" TransducerAlphaY="0" TransducerAlphaZ="0" />
+    <Transducer TransducerName="ES18" TransducerMounting="DropKeel" TransducerCustomName="ES18 Serial No: 2042" TransducerSerialNumber="2042" TransducerOrientation="Vertical" TransducerOffsetX="0" TransducerOffsetY="0" TransducerOffsetZ="9.15" TransducerAlphaX="0" TransducerAlphaY="0" TransducerAlphaZ="0" />
+    <Transducer TransducerName="ES70-7C" TransducerMounting="DropKeel" TransducerCustomName="ES70-7C Serial No: 122" TransducerSerialNumber="122" TransducerOrientation="Vertical" TransducerOffsetX="0" TransducerOffsetY="0" TransducerOffsetZ="9.15" TransducerAlphaX="0" TransducerAlphaY="0" TransducerAlphaZ="0" />
+    <Transducer TransducerName="ES120-7C" TransducerMounting="DropKeel" TransducerCustomName="ES120-7C Serial No: 306" TransducerSerialNumber="306" TransducerOrientation="Vertical" TransducerOffsetX="0" TransducerOffsetY="0" TransducerOffsetZ="9.15" TransducerAlphaX="0" TransducerAlphaY="0" TransducerAlphaZ="0" />
+    <Transducer TransducerName="ES200-7C" TransducerMounting="DropKeel" TransducerCustomName="ES200-7C Serial No: 274" TransducerSerialNumber="274" TransducerOrientation="Vertical" TransducerOffsetX="0" TransducerOffsetY="0" TransducerOffsetZ="9.15" TransducerAlphaX="0" TransducerAlphaY="0" TransducerAlphaZ="0" />
+  </Transducers>
+  <ConfiguredSensors MergeOperation="AddNodeTree">
+    <Sensor Name="GPS From GPS IN" Type="GPS" Port="Serial Port 3" TalkerID="" X="0" Y="0" Z="0" AngleX="0" AngleY="0" AngleZ="0" Unique="0" Timeout="20">
+      <Telegram Name="GLL from GPS From GPS IN" SensorType="GPS" Type="GLL" SubscriptionPath="GPS From GPS IN@GPS.Geographical.Position" Enabled="1">
+        <Value Name="Latitude" Priority="1" />
+        <Value Name="Longitude" Priority="1" />
+      </Telegram>
+      <Telegram Name="GGA from GPS From GPS IN" SensorType="GPS" Type="GGA" SubscriptionPath="GPS From GPS IN@GPS.Global.Position" Enabled="1">
+        <Value Name="Latitude" Priority="2" />
+        <Value Name="Longitude" Priority="2" />
+      </Telegram>
+      <Telegram Name="RMC from GPS From GPS IN" SensorType="GPS" Type="RMC" SubscriptionPath="GPS From GPS IN@GPS.Specific.PositionSpeedCourse" Enabled="1">
+        <Value Name="Latitude" Priority="3" />
+        <Value Name="Longitude" Priority="3" />
+        <Value Name="Course" Priority="1" />
+        <Value Name="Speed" Priority="1" />
+      </Telegram>
+      <Telegram Name="GGK from GPS From GPS IN" SensorType="GPS" Type="GGK" SubscriptionPath="GPS From GPS IN@GPS.GGK.Position" Enabled="1">
+        <Value Name="Latitude" Priority="4" />
+        <Value Name="Longitude" Priority="4" />
+      </Telegram>
+      <Telegram Name="VTG from GPS From GPS IN" SensorType="GPS" Type="VTG" SubscriptionPath="GPS From GPS IN@GPS.Ground" Enabled="1">
+        <Value Name="Course" Priority="2" />
+        <Value Name="CourseNotUsedMagnetic" Priority="1" />
+        <Value Name="Speed" Priority="2" />
+      </Telegram>
+      <Telegram Name="ZDA from GPS From GPS IN" SensorType="GPS" Type="ZDA" SubscriptionPath="GPS From GPS IN@GPS.TimeInfo" Enabled="1">
+        <Value Name="TimeInfo" Priority="1" />
+      </Telegram>
+    </Sensor>
+    <Sensor Name="ITI-FS From FS70/ITI IN" Type="ITI-FS" Port="Serial Port 5" TalkerID="II" X="0" Y="0" Z="0" AngleX="0" AngleY="0" AngleZ="0" Unique="0" Timeout="20">
+      <Telegram Name="ITI-FS Datagrams from ITI-FS From FS70/ITI IN" SensorType="ITI-FS" Type="ITI-FS Datagrams" SubscriptionPath="ITI-FS From FS70/ITI IN@ITI-FS.ITI-FS" Enabled="1">
+        <Value Name="ITI-FS" Priority="1" />
+      </Telegram>
+    </Sensor>
+  </ConfiguredSensors>
+</Configuration>
