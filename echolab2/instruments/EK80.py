@@ -48,12 +48,12 @@ from .util.simrad_calibration import calibration
 from .util.simrad_raw_file import RawSimradFile, SimradEOF
 from .util.nmea_data import nmea_data
 from .util.motion_data import motion_data
+from .util.annotation_data import annotation_data
 from .util import simrad_signal_proc
 from .util import date_conversion
 from .util import simrad_parsers
 from ..ping_data import ping_data
 from ..processing.processed_data import processed_data
-from ..processing import line
 
 
 class EK80(object):
@@ -219,10 +219,9 @@ class EK80(object):
         #  This object has methods to extract and interpolate the motion data.
         self.motion_data = motion_data()
 
-        # annotation_data stores the contents of the TAG0 aka "annotation"
-        # datagrams. Currently we're storing the raw dict returned by the
-        # parser.
-        self.annotation_data = []
+        # annotations stores the contents of the TAG0 aka "annotation"
+        # datagrams.
+        self.annotations = annotation_data()
 
         # data_array_dims contains the dimensions of the sample and angle or
         # complex data arrays specified as [n_pings, n_samples].  Values of
@@ -442,6 +441,7 @@ class EK80(object):
                 raw.trim()
         self.nmea_data.trim()
         self.motion_data.trim()
+        self.annotations.trim()
 
 
     def _read_config(self, fid):
@@ -554,7 +554,7 @@ class EK80(object):
                 self.n_pings += 1
                 self._this_ping_time = new_datagram['timestamp']
 
-                # check if we'restoring this channel
+                # check if we're storing this channel
                 if new_datagram['channel_id'] not in self.channel_ids:
                     #  no, it's not in the list - just return
                     return result
@@ -658,11 +658,11 @@ class EK80(object):
                     new_datagram['nmea_string'])
 
         # TAG datagrams contain time-stamped annotations inserted via the
-        # recording software.
+        # recording software. They are not associated with a specific channel
         elif new_datagram['type'].startswith('TAG'):
-            # Currently we store the raw annotation datagrams. A bit rough
-            # but you can get at what you need.
-            self.annotation_data.append(new_datagram)
+            # Add this datagram to our annotation_data object
+            self.annotations.add_datagram(new_datagram['timestamp'],
+                    new_datagram['text'])
 
         # XML datagrams contain contain data encoded as an XML string.
         elif new_datagram['type'].startswith('XML'):
@@ -812,8 +812,11 @@ class EK80(object):
                  end_time=None, start_ping=None, end_ping=None, frequencies=None,
                  channel_ids=None, time_format_string='%Y-%m-%d %H:%M:%S',
                  start_sample=None, end_sample=None, progress_callback=None,
-                 overwrite=False, async_window=5):
+                 overwrite=False, async_window=5, reduce_complex_precision=False,
+                 raw_index_array=None, nmea_index_array=None,
+                 annotation_index_array=None):
         """Writes one or more Simrad EK80 .raw files.
+
 
 
         Args:
@@ -846,30 +849,66 @@ class EK80(object):
                 not, an error will be raised.
 
             power (bool): Controls whether power data is written
+
             angles (bool): Controls whether angle data is written
 
-            start_time (str): Specify a start time if you do not want to write
-                from the first ping. The format of the time string must
-                match the format specified in time_format_string.
-            end_time (str): Specify an end time if you do not want to write
-                to the last ping. The format of the time string must
-                match the format specified in time_format_string.
-            start_ping (int): Specify starting ping number if you do not want
-                to start writing at first ping.
-            end_ping (int): Specify end ping number if you do not want
-                to write all pings.
-            frequencies (list): List of floats (i.e. 18000.0) if you
-                only want to write specific frequencies.
+            complex (bool): Controls whether complex data is written
+
+            start_time (datetime64): Specify a start time when defining a range
+                of data to write. When start_time is not provided, the start
+                time will be the time of the first ping.
+
+            end_time (datetime64): Specify a end time when defining a range
+                of data to write. When end_time is not provided, the end
+                time will be the time of the last ping.
+
+            start_ping (int): Specify the starting ping number when defining a
+                range of pings to write. If start_ping is not specified,
+                the start ping is 1.
+
+            end_ping (int): Specify the end ping number when defining a range
+                of pings to write. If end_ping is not provided, the last
+                ping is used.
+
+            frequencies (list): List of floats specifying the frequencies in
+                Hz you want to write. If frequencies is not specified, all
+                frequencies will be written.
+
             channel_ids (list): A list of strings that contain the unique
                 channel IDs to write. If no list is supplied, all channels are
                 written.
+
             time_format_string (str): String containing the format of the
-                start and end time arguments. Format is used to create datetime
-                objects from the start and end time strings
+                start and end time arguments *IF* they are provided as strings.
+                The format string is used to create datetime64 objects from the
+                start and end time strings. While you can pass tim estrings, it
+                is recommened that you pass datetime64 objects to start/end time.
+
             start_sample (int): Specify starting sample number if not
                 writing from first sample.
+
             end_sample (int): Specify ending sample number if not
                 writing to last sample.
+
+            reduce_complex_precision (bool): Set to True to write complex data
+                as 16-bit values. This has no effect if the data were originally
+                recorded as 16-bit values but can reduce the file sizes of files
+                where complex data is stored as 32-bit values.
+
+            The following keywords are for advanced indexing and writing of the
+            data. This can allow you to easily write subsets of data where the
+            pings do not have to be contiguous.
+
+            raw_index_array (np.array): Set this to a dictionary, keyed by
+                raw_data object reference, where the values are index arrays that
+                specify the pings to write for each raw_data object. If you specify
+                this keyword, the start/stop time/ping and time_order keywords will
+                be ignored.
+
+            nmea_index_array (np.array):
+
+
+
         """
 
         def new_datagram(dg_time, dg_type, dg_version):
@@ -889,12 +928,7 @@ class EK80(object):
             return dgram
 
 
-        #  initialize some vars to hold the current vessel attitude data
-        this_heave = 0.0
-        this_roll = 0.0
-        this_pitch = 0.0
-        this_heading = 0.0
-
+        # Initialize a list to hold the filenames of the files we write
         files_written = []
 
         # Process the args
@@ -986,28 +1020,58 @@ class EK80(object):
                     # Find the unique configuration objects for this data/time range
                     # The config objects are different for each file read and we use
                     # that to determine what data goes in what output file.
-                    # We can't use np.unique on dicts so we do it the hard way...
+                    #
+                    # We can't use np.unique on dicts and the dict == operator does
+                    # a deep comparison which fails when the values are numpy arrays.
+                    #
+                    # Instead we have to brute force this using the dict object ID.
+                    # We still need a reference to the unique dicts so we have to
+                    # keep a list of both the ID and dict. As we're doing the comparison
+                    # we'll build an array of object IDs which we use below when
+                    # identifying pings with each unique configuration.
                     unique_configs = []
-                    for c in data.configuration[this_idx]:
-                        if c not in unique_configs:
+                    unique_ids = []
+                    conf_ids = []
+                    for c in data.configuration:
+                        this_id = id(c)
+                        conf_ids.append(this_id)
+                        is_unique = True
+                        for uc in unique_configs:
+                            if uc['file_name'] == c['file_name']:
+                                is_unique = False
+
+                        if is_unique:
                             # this is a convienient place to filter by frequency...
                             if frequencies:
                                 #  freqs specified, check if this is one of them
-                                if c['transducer_frequency'] in frequencies:
+                                if c['frequency'] in frequencies:
+                                    unique_ids.append(this_id)
                                     unique_configs.append(c)
                             else:
                                 # writing all freqs
+                                unique_ids.append(this_id)
                                 unique_configs.append(c)
 
+                    # Convert the list of cinfiguration IDs to a numpy array
+                    conf_ids = np.array(conf_ids)
+
                     # Determine the indices for each config
-                    for conf in unique_configs:
-                        # Get the indices for each unique config
-                        conf_idx = this_idx[data.configuration[this_idx] == conf]
+                    for idx in range(len(unique_configs)):
+                        # Get this config object and object ID
+                        conf = unique_configs[idx]
+                        conf_id = unique_ids[idx]
+
+                        # Get the indices for each unique config - if we are passed a
+                        # boolean array, we have to convert it to an index array.
+                        if this_idx.dtype == np.bool_:
+                            conf_idx = np.nonzero(np.logical_and(conf_ids == conf_id,
+                                    this_idx))[0]
+                        else:
+                            conf_idx = this_idx[conf_ids[this_idx] == conf_id]
 
                         # To track progress, we'll total up the number of raw
                         # datagrams that we will ultimately write for this file.
                         n_datagrams = conf_idx.size
-
                         # Store the channel ID, condif dict, reference to the
                         # raw data, and the index to the data by filename
                         this_data = {'channel_id':channel, 'configuration':conf,
@@ -1066,15 +1130,6 @@ class EK80(object):
             raw_start_time = dg_times[0]
             async_start_time = dg_times[0] - async_window_secs
             async_end_time = dg_times[-1] - async_window_secs
-#
-#            # Next, add the annotation data
-#            annotation_idx = self.annotations.get_indices(start_time=async_start_time,
-#                end_time=async_end_time)
-#            times = self.annotations.times[annotation_idx]
-#            dg_times = np.insert(dg_times, 0, times)
-#            dg_objects = np.insert(dg_objects, 0, np.repeat(self.annotations, times.size))
-#            dg_obj_idx = np.insert(dg_obj_idx, 0, annotation_idx)
-#            dg_type = np.insert(dg_type, 0, np.repeat('TAG', times.size))
 
             # Get the unique environment datagrams - we can use the reference to the
             # last data object in the last channel that exists after adding the raw
@@ -1083,13 +1138,20 @@ class EK80(object):
             data_by_file[infile][channel]
             _, env_idx = np.unique(np.array([id(xi) for xi in data['data'].environment]),
                     return_index=True)
-
             times = data['data'].ping_time[env_idx]
             dg_times = np.insert(dg_times, 0, times)
             dg_objects = np.insert(dg_objects, 0, data['data'].environment[env_idx])
             dg_obj_idx = np.insert(dg_obj_idx, 0, env_idx)
             dg_type = np.insert(dg_type, 0, np.repeat('ENV', times.size))
 
+            # Next, add the annotation data
+            annotation_idx = self.annotations.get_indices(start_time=async_start_time,
+                end_time=async_end_time)
+            times = self.annotations.times[annotation_idx]
+            dg_times = np.insert(dg_times, 0, times)
+            dg_objects = np.insert(dg_objects, 0, np.repeat(self.annotations, times.size))
+            dg_obj_idx = np.insert(dg_obj_idx, 0, annotation_idx)
+            dg_type = np.insert(dg_type, 0, np.repeat('TAG', times.size))
 
             # Then the motion data using our new time window
             motion_idx = self.motion_data.get_indices(start_time=async_start_time,
@@ -1175,141 +1237,143 @@ class EK80(object):
 
                 #  now assemble the datagram dict based on the type
                 if dg_type[idx] == 'RAW':
-
-
+                    #  get the channel ID
                     channel_id = data_by_file[infile][dg_objects[idx].channel_id][0]['configuration']['channel_id']
-                    # Create the base datagram dict for the XML Parameter datagram
-                    dgram_dict = new_datagram(dg_times[idx], 'XML',
-                            DGRAM_VERSION_KEY['XML'])
-                    # Build the datagram dictionary
-                    dgram_dict['subtype'] = 'parameter'
-                    dgram_dict['parameter'] = {}
-                    dgram_dict['parameter']['channel_id'] = channel_id
-                    dgram_dict['parameter']['channel_mode'] = dg_objects[idx].channel_mode[dg_obj_idx[idx]]
-                    dgram_dict['parameter']['pulse_form'] = dg_objects[idx].pulse_form[dg_obj_idx[idx]]
-                    dgram_dict['parameter']['frequency'] = dg_objects[idx].frequency[dg_obj_idx[idx]]
-                    dgram_dict['parameter']['pulse_duration'] = dg_objects[idx].pulse_duration[dg_obj_idx[idx]]
-                    dgram_dict['parameter']['sample_interval'] = dg_objects[idx].sample_interval[dg_obj_idx[idx]]
-                    dgram_dict['parameter']['transmit_power'] = dg_objects[idx].transmit_power[dg_obj_idx[idx]]
-                    dgram_dict['parameter']['slope'] = dg_objects[idx].slope[dg_obj_idx[idx]]
 
-                    # and write the datagram
-                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY['XML'].to_string(dgram_dict))
+                    # Create the base datagram dict for the XML Parameter datagram
+                    dgram = new_datagram(dg_times[idx], 'XML', DGRAM_VERSION_KEY['XML'])
+
+                    # Build the datagram dictionary
+                    dgram['subtype'] = 'parameter'
+                    dgram['parameter'] = {}
+                    dgram['parameter']['channel_id'] = channel_id
+                    dgram['parameter']['channel_mode'] = dg_objects[idx].channel_mode[dg_obj_idx[idx]]
+                    dgram['parameter']['pulse_form'] = dg_objects[idx].pulse_form[dg_obj_idx[idx]]
+                    dgram['parameter']['frequency'] = dg_objects[idx].frequency[dg_obj_idx[idx]]
+                    dgram['parameter']['pulse_duration'] = dg_objects[idx].pulse_duration[dg_obj_idx[idx]]
+                    dgram['parameter']['sample_interval'] = dg_objects[idx].sample_interval[dg_obj_idx[idx]]
+                    dgram['parameter']['transmit_power'] = dg_objects[idx].transmit_power[dg_obj_idx[idx]]
+                    dgram['parameter']['slope'] = dg_objects[idx].slope[dg_obj_idx[idx]]
+
+                    # write theparameter XML datagram
+                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY['XML'].to_string(dgram))
 
                     # Create the base datagram dict for the RAW3 datagram
-                    dgram_dict = new_datagram(dg_times[idx], dg_type[idx],
-                            DGRAM_VERSION_KEY[dg_type[idx]])
+                    dgram = new_datagram(dg_times[idx], dg_type[idx], DGRAM_VERSION_KEY[dg_type[idx]])
 
-                    # Build the datagram dictionary
-
-
-                    dgram_dict['channel_id'] = channel_id
-                    dgram_dict['data_type'] = dg_objects[idx].transducer_depth[dg_obj_idx[idx]]
-                    dgram_dict['offset'] = dg_objects[idx].frequency[dg_obj_idx[idx]]
-                    dgram_dict['count'] = dg_objects[idx].transmit_power[dg_obj_idx[idx]]
-
-
-
-                    dgram_dict['pulse_length'] = dg_objects[idx].pulse_length[dg_obj_idx[idx]]
-                    dgram_dict['bandwidth'] = dg_objects[idx].bandwidth[dg_obj_idx[idx]]
-                    dgram_dict['sample_interval'] = dg_objects[idx].sample_interval[dg_obj_idx[idx]]
-                    dgram_dict['sound_velocity'] = dg_objects[idx].sound_velocity[dg_obj_idx[idx]]
-                    dgram_dict['absorption_coefficient'] = dg_objects[idx].absorption_coefficient[dg_obj_idx[idx]]
-                    dgram_dict['heave'] = this_heave
-                    dgram_dict['roll'] = this_roll
-                    dgram_dict['pitch'] = this_pitch
-                    dgram_dict['temperature'] = dg_objects[idx].temperature[dg_obj_idx[idx]]
-                    dgram_dict['heading'] = this_heading
-                    dgram_dict['transmit_mode'] = dg_objects[idx].transmit_mode[dg_obj_idx[idx]]
-                    dgram_dict['spare0'] = ''
+                    # Build the datagram dictionary starting with channel ID
+                    dgram['channel_id'] = channel_id
 
                     # adjust the sample offset if we're creating an additional offset during writing
-                    # and update the sample count.
                     sample_offset = start_sample + dg_objects[idx].sample_offset[dg_obj_idx[idx]]
-                    dgram_dict['offset'] = sample_offset
-                    if (end_sample):
-                        sample_count = end_sample - start_sample
-                    else:
-                        if hasattr(dg_objects[idx], 'power'):
-                            sample_count = dg_objects[idx].power[dg_obj_idx[idx],start_sample:end_sample].size - start_sample
-                        elif hasattr(dg_objects[idx], 'angles_athwartship_e'):
-                            sample_count = dg_objects[idx].power[dg_obj_idx[idx],start_sample:end_sample].size - start_sample
-                    dgram_dict['count'] = sample_count
+                    dgram['offset'] = sample_offset
 
-                    #  initialize the beam mode
-                    mode = 0
+                    # Extract the data and update the sample count
+                    if hasattr(dg_objects[idx], 'power'):
+                        power_data = dg_objects[idx].power[dg_obj_idx[idx],start_sample:end_sample]
+                        sample_count = power_data.shape[0] - start_sample
+                    if hasattr(dg_objects[idx], 'angles_athwartship_e'):
+                        angles_athwart_data = dg_objects[idx].angles_athwartship_e[dg_obj_idx[idx],start_sample:end_sample]
+                        angles_along_data = dg_objects[idx].angles_alongship_e[dg_obj_idx[idx],start_sample:end_sample]
+                        sample_count = angles_athwart_data.shape[0] - start_sample
+                    if hasattr(dg_objects[idx], 'complex'):
+                        complex_data = dg_objects[idx].complex[dg_obj_idx[idx],start_sample:end_sample,:]
+                        sample_count = complex_data.shape[0] - start_sample
+                    dgram['count'] = sample_count
+
+                    #  initialize the datatype
+                    datatype = 0
 
                     # If we have angle data, we have to convert it back to indexed and combine.
                     if hasattr(dg_objects[idx], 'angles_athwartship_e'):
                         # Convert from electrical angles to indexed.
-                        athwartship_e = (dg_objects[idx].angles_athwartship_e[dg_obj_idx[idx],start_sample:end_sample] /
-                                raw_data.INDEX2ELEC).astype('uint8')
-                        alongship_e = (dg_objects[idx].angles_alongship_e[dg_obj_idx[idx],start_sample:end_sample] /
-                                raw_data.INDEX2ELEC).astype('uint8')
-                        dgram_dict['angle'] = np.column_stack((athwartship_e,alongship_e))
+                        angles_athwart_data = (angles_athwart_data / raw_data.INDEX2ELEC).astype('uint8')
+                        angles_along_data = (angles_along_data / raw_data.INDEX2ELEC).astype('uint8')
+                        dgram['angle'] = np.column_stack((angles_athwart_data,angles_along_data))
 
-                        #  set the angles bit in the beam mode
-                        mode = mode | (1<<1)
+                        #  set the angles bit in the datatype value
+                        datatype = datatype | (1 << 1)
 
                     # If we have power data, we have to convert it back to indexed
                     if hasattr(dg_objects[idx], 'power'):
-                        dgram_dict['power'] = (dg_objects[idx].power[dg_obj_idx[idx],start_sample:end_sample] /
-                                raw_data.INDEX2POWER).astype('int16')
+                        dgram['power'] = (power_data / raw_data.INDEX2POWER).astype('int16')
 
-                        # Set the power bit in the beam mode
-                        mode = mode | (1<<0)
+                        #  set the power bit in the datatype value
+                        datatype = datatype | (1 << 0)
 
-                    #  set the mode
-                    dgram_dict['mode'] = mode
+                    # If we have complex data, we have to convert to non-complex for writing
+                    if hasattr(dg_objects[idx], 'complex'):
+
+                        # Determine the precision we'll use to write the data
+                        if reduce_complex_precision:
+                            # reduced complex
+                            complex_dtype = np.float16
+                            datatype = datatype | (1 << 2)
+                        else:
+                            # non-reduced complex
+                            complex_dtype = dg_objects[idx].file_complex_dtype
+                            datatype = datatype | (1 << 3)
+
+                        # Set the number of complex samples in the datatype
+                        n_complex = complex_data.shape[1]
+                        datatype = datatype | (n_complex << 8)
+
+                        # Now pack the complex data - use a view to transform complex64
+                        # to the output type. Reshape to interleave sample data.
+                        dgram['complex'] = complex_data.view(complex_dtype)
+                        dgram['complex'].shape = (dgram['count'] * 2 * n_complex)
+
+                    # Set the datatype
+                    dgram['data_type'] = datatype
 
                     #  write it
-                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram_dict))
+                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram))
 
                 elif dg_type[idx] == 'TAG':
                     #  create the base datagram dict
-                    dgram_dict = new_datagram(dg_times[idx], dg_type[idx],
+                    dgram = new_datagram(dg_times[idx], dg_type[idx],
                             DGRAM_VERSION_KEY[dg_type[idx]])
 
                     # Set the annotation text datagram value
-                    dgram_dict['text'] = dg_objects[idx].text[dg_obj_idx[idx]]
+                    dgram['text'] = dg_objects[idx].text[dg_obj_idx[idx]]
 
                     #  write it
-                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram_dict))
+                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram))
 
                 elif dg_type[idx] == 'NME':
                     #  create the base datagram dict
-                    dgram_dict = new_datagram(dg_times[idx], dg_type[idx],
+                    dgram = new_datagram(dg_times[idx], dg_type[idx],
                             DGRAM_VERSION_KEY[dg_type[idx]])
 
                     # Set the NME0 datagram values
-                    dgram_dict['nmea_string'] = dg_objects[idx].raw_datagrams[dg_obj_idx[idx]]
+                    dgram['nmea_string'] = dg_objects[idx].raw_datagrams[dg_obj_idx[idx]]
 
                     #  write it
-                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram_dict))
+                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram))
 
                 elif dg_type[idx] == 'MRU':
                     #  create the base datagram dict
-                    dgram_dict = new_datagram(dg_times[idx], dg_type[idx],
+                    dgram = new_datagram(dg_times[idx], dg_type[idx],
                             DGRAM_VERSION_KEY[dg_type[idx]])
                     # Assign the datagram values
-                    dgram_dict['heave'] = dg_objects[idx].heave[dg_obj_idx[idx]]
-                    dgram_dict['pitch'] = dg_objects[idx].pitch[dg_obj_idx[idx]]
-                    dgram_dict['roll'] = dg_objects[idx].roll[dg_obj_idx[idx]]
-                    dgram_dict['heading'] = dg_objects[idx].heading[dg_obj_idx[idx]]
+                    dgram['heave'] = dg_objects[idx].heave[dg_obj_idx[idx]]
+                    dgram['pitch'] = dg_objects[idx].pitch[dg_obj_idx[idx]]
+                    dgram['roll'] = dg_objects[idx].roll[dg_obj_idx[idx]]
+                    dgram['heading'] = dg_objects[idx].heading[dg_obj_idx[idx]]
 
                     #  write it
-                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram_dict))
+                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram))
 
                 elif dg_type[idx] == 'ENV':
                     #  create the base datagram dict
-                    dgram_dict = new_datagram(dg_times[idx], 'XML', DGRAM_VERSION_KEY['XML'])
+                    dgram = new_datagram(dg_times[idx], 'XML', DGRAM_VERSION_KEY['XML'])
                     # Set the environment XML datagram values
 
-                    dgram_dict['environment'] = dg_objects[idx]
-                    dgram_dict['subtype'] = 'environment'
+                    dgram['environment'] = dg_objects[idx]
+                    dgram['subtype'] = 'environment'
 
                     #  write it
-                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY['XML'].to_string(dgram_dict))
+                    bytes_written += raw_fid.write(DGRAM_PARSE_KEY['XML'].to_string(dgram))
 
                 else:
                     #  we should never encounter an unknown type, but raise exception if so
@@ -1341,8 +1405,6 @@ class EK80(object):
         return files_written
 
 
-
-
     def __str__(self):
         """
         Reimplemented string method that provides some basic info about the
@@ -1354,9 +1416,6 @@ class EK80(object):
 
         # Print the class and address.
         msg = str(self.__class__) + " at " + str(hex(id(self))) + "\n"
-
-
-
 
         # Print some more info about the EK60 instance.
         if self.channel_ids:
@@ -1493,6 +1552,11 @@ class raw_data(ping_data):
         #   complex - contains complex data
         self.data_type = ''
 
+        # The file_complex_dtype is the data type the complex data are stored
+        # as. This attribute is set when the first ping is appended and is
+        # ignored for reduced data.
+        self.file_complex_dtype = np.float32
+
         # transceiver_type stores the hardware identifier of the transceiver
         # used to collect the data. This is set when reading the file.
         # I believe that the types are:
@@ -1524,6 +1588,18 @@ class raw_data(ping_data):
                                   'sample_count',
                                   'sample_offset']
 
+        #  create a list that stores the scalar object attributes
+        self._obj_attributes = ['rolling_array',
+                                'chunk_width',
+                                'store_power',
+                                'store_angles',
+                                'store_complex',
+                                'max_sample_number',
+                                'data_type',
+                                'transceiver_type',
+                                'file_complex_dtype']
+
+
 
     def empty_like(self, n_pings):
         """Returns raw_data object with data arrays filled with NaNs.
@@ -1546,6 +1622,16 @@ class raw_data(ping_data):
                 max_sample_number=self.max_sample_number)
 
         return self._like(empty_obj, n_pings, np.nan, empty_times=True)
+
+
+    def copy(self):
+        """creates a deep copy of this object."""
+
+        # Create an empty raw_data object with the same basic props as this object.
+        rd_copy = raw_data(self.channel_id)
+
+        # Call the parent _copy helper method and return the result.
+        return self._copy(rd_copy)
 
 
     def insert(self, obj_to_insert, ping_number=None, ping_time=None,
@@ -1662,7 +1748,16 @@ class raw_data(ping_data):
                 self.store_power = False
                 self.store_angles = False
                 self.data_type = 'complex'
-                #  for complex data, we set the sample array type to complex64
+
+                # Set the file's complex data type
+                if sample_datagram['data_type'] & 0b1000:
+                    self.file_complex_dtype = np.float32
+                else:
+                    self.file_complex_dtype = np.float16
+
+                # For complex data, we set the sample array type to complex64
+                # regardless of the file_complex_dtype since numpy doesn't
+                # support the complex32 type.
                 self.sample_dtype = np.complex64
 
             else:
@@ -1687,6 +1782,9 @@ class raw_data(ping_data):
                 # At this point if we're power, we're not storing angle data
                 if self.data_type == 'power':
                     self.store_angles = False
+
+                # Set the "short" data type
+                self.short_data_type = sample_datagram['data_type']
 
             #  determine the initial number of samples in our arrays
             if self.max_sample_number:
@@ -1935,7 +2033,7 @@ class raw_data(ping_data):
         return much faster if the raw data share the same sample thickness,
         offset and sound speed.
 
-        If calibration is set to an instance of EK80.calibration the
+        If calibration is set to an instance of EK60.ek60_ calibration the
         values in that object (if set) will be used when performing the
         transformations required to return the results. If the required
         parameters are not set in the calibration object or if no object is
@@ -1943,10 +2041,76 @@ class raw_data(ping_data):
         data.
 
         Args:
-            **kwargs (dict): A keyworded argument list.
+
+            resample_interval (float): Set this to a float specifying the
+                sampling interval (in seconds) used when generating the
+                vertical axis for the return data. If the raw data sampling
+                interval is different than the specified interval, the raw
+                data will be resampled at the specified rate. 0 and 1 have
+                special meaning. If set to 0 or 1, the data will only be resampled
+                if the sampling interval changes. If it does change, when
+                set to 0, the data will be resampled to the shortest sampling
+                interval present in the data. If set to 1, it will be resampled
+                to the longest interval present in the data.
+
+                The following constants are defined in the class:
+
+                    RESAMPLE_SHORTEST = 0
+                    RESAMPLE_16   = 0.000016
+                    RESAMPLE_32  = 0.000032
+                    RESAMPLE_64  = 0.000064
+                    RESAMPLE_128  = 0.000128
+                    RESAMPLE_256 = 0.000256
+                    RESAMPLE_512 = 0.000512
+                    RESAMPLE_1024 = 0.001024
+                    RESAMPLE_2048 = 0.002048
+                    RESAMPLE_LONGEST = 1
+
+                Default: RESAMPLE_SHORTEST
+
+            return_indices (np.array uint32): Set this to a numpy array that contains
+                the index values to return in the processed data object. This can be
+                used for more advanced anipulations where start/end ping/time are
+                inadequate.
+
+            calibration (EK60.ek60_calibration): Set to an instance of
+                EK60.ek60_calibration containing the calibration parameters
+                you want to use when transforming to Sv/sv. If no calibration
+                object is provided, the values will be extracted from the raw
+                data.
+
+            start_time (datetime64): Set to a numpy datetime64 oject specifying
+                the start time of the data to convert. All data between the start
+                and end time will be returned. If set to None, the start time is
+                the first ping.
+                Default: None
+
+            end_time (datetime64): Set to a numpy datetime64 oject specifying
+                the end time of the data to convert. All data between the start
+                and end time will be returned. If set to None, the end time is
+                the last ping.
+                Default: None
+
+            start_ping (int): Set to an integer specifying the first ping number
+                to return. All pings between the start and end ping will be
+                returned. If set to None, the first ping is set as the start ping.
+                Default: None
+
+            end_ping (int): Set to an integer specifying the end ping number
+                to return. All pings between the start and end ping will be
+                returned. If set to None, the last ping is set as the end ping.
+                Default: None
+
+            Note that you can set a start/end time OR a start/end ping. If you
+            set both, one will be ignored.
+
+            time_order (bool): Set to True to return data in time order. If
+                False, data will be returned in the order it was read.
+                Default: True
 
         Returns:
-            The processed_data object, p_data.
+            A processed_data object containing power data.
+
         """
 
         # Call the _get_sample_data method requesting the appropriate sample attribute.
@@ -2010,10 +2174,11 @@ class raw_data(ping_data):
         the linear keyword to True.
 
         Args:
-            **kwargs (dict): A keyworded argument list.
+            See getSv for arguments.
 
         Returns:
-            A processed data object containing sv.
+            A processed_data object containing sv.
+
         """
 
         # Remove the linear keyword.
@@ -2027,25 +2192,99 @@ class raw_data(ping_data):
                return_depth=False, **kwargs):
         """Gets Sv data
 
-        The value passed to cal_parameters is a calibration parameters object.
-        If cal_parameters == None, the calibration parameters will be extracted
-        from the corresponding fields in the raw_data object.
+        This method returns a processed_data object containing Sv or sv data.
 
-        Sv is calculated as follows:
+        This method performs all of the required transformations to place the
+        raw power data into a rectangular array where all samples share the same
+        thickness and are correctly arranged relative to each other. It then
+        computes Sv/sv as follows:
 
-            Sv = recvPower + 20 log10(Range) + (2 *  alpha * Range) - (10 * ...
-                log10((xmitPower * (10^(gain/10))^2 * lambda^2 * ...
+            Sv = power + 20 log10(Range) + (2 *  alpha * Range) - (10 * ...
+                log10((TransmitPower * (10^(Gain/10))^2 * lambda^2 * ...
                 c * tau * 10^(psi/10)) / (32 * pi^2)) - (2 * SaCorrection)
+
         Args:
-            calibration (float):
+            resample_interval (float): Set this to a float specifying the
+                sampling interval (in seconds) used when generating the
+                vertical axis for the return data. If the raw data sampling
+                interval is different than the specified interval, the raw
+                data will be resampled at the specified rate. 0 and 1 have
+                special meaning. If set to 0 or 1, the data will only be resampled
+                if the sampling interval changes. If it does change, when
+                set to 0, the data will be resampled to the shortest sampling
+                interval present in the data. If set to 1, it will be resampled
+                to the longest interval present in the data.
+
+                The following constants are defined in the class:
+
+                    RESAMPLE_SHORTEST = 0
+                    RESAMPLE_16   = 0.000016
+                    RESAMPLE_32  = 0.000032
+                    RESAMPLE_64  = 0.000064
+                    RESAMPLE_128  = 0.000128
+                    RESAMPLE_256 = 0.000256
+                    RESAMPLE_512 = 0.000512
+                    RESAMPLE_1024 = 0.001024
+                    RESAMPLE_2048 = 0.002048
+                    RESAMPLE_LONGEST = 1
+
+                Default: RESAMPLE_SHORTEST
+
+            return_indices (np.array uint32): Set this to a numpy array that contains
+                the index values to return in the processed data object. This can be
+                used for more advanced anipulations where start/end ping/time are
+                inadequate.
+
+            calibration (EK60.ek60_calibration): Set to an instance of
+                EK60.ek60_calibration containing the calibration parameters
+                you want to use when transforming to Sv/sv. If no calibration
+                object is provided, the values will be extracted from the raw
+                data.
+
             linear (bool): Set to True if getting "sv" data
-            tvg_correction:
-            return_depth (float):
-            **kwargs (dict): A keyworded argument list.
+                Default: False
+
+            tvg_correction (bool): Set to True to apply TVG range correction.
+                Typically you want to leave this at True.
+                Default: True
+
+            return_depth (bool): Set to True to return a processed_data object
+                with a depth axis. When False, the processed_data object has
+                a range axis.
+                Default: False
+
+            start_time (datetime64): Set to a numpy datetime64 oject specifying
+                the start time of the data to convert. All data between the start
+                and end time will be returned. If set to None, the start time is
+                the first ping.
+                Default: None
+
+            end_time (datetime64): Set to a numpy datetime64 oject specifying
+                the end time of the data to convert. All data between the start
+                and end time will be returned. If set to None, the end time is
+                the last ping.
+                Default: None
+
+            start_ping (int): Set to an integer specifying the first ping number
+                to return. All pings between the start and end ping will be
+                returned. If set to None, the first ping is set as the start ping.
+                Default: None
+
+            end_ping (int): Set to an integer specifying the end ping number
+                to return. All pings between the start and end ping will be
+                returned. If set to None, the last ping is set as the end ping.
+                Default: None
+
+            Note that you can set a start/end time OR a start/end ping. If you
+            set both, one will be ignored.
+
+            time_order (bool): Set to True to return data in time order. If
+                False, data will be returned in the order it was read.
+                Default: True
 
         Returns:
-            A processed_data object, p_data, containing Sv (or sv if linear is
-            True).
+            A processed_data object containing Sv (or sv if linear is True).
+
         """
 
         # Get the power data - this step also resamples and arranges the raw data.
@@ -2078,11 +2317,14 @@ class raw_data(ping_data):
     def get_sp(self, **kwargs):
         """Gets sp data.
 
-        This is a convenience method which simply calls get_Sp and forces
-        the linear keyword to True.
+        This method returns a processed_data object containing sp data. This is
+        a convenience method which simply calls get_Sp and forces the linear
+        keyword to True.
+
+        See get_Sp for more detail.
 
         Args:
-            **kwargs (dict): A keyworded argument list.
+            See get_Sp for argument descriptions.
 
         Returns:
             returns a processed_data object containing sp
@@ -2099,35 +2341,107 @@ class raw_data(ping_data):
             return_depth=False, **kwargs):
         """Gets Sp data.
 
-        Sp is calculated as follows:
+        This method returns a processed_data object containing Sp or sp data.
 
-             Sp = recvPower + 40 * log10(Range) + (2 *  alpha * Range) - (10
-             * ... log10((xmitPower * (10^(gain/10))^2 * lambda^2) / (16 *
+        This method performs all of the required transformations to place the
+        raw power data into a rectangular array where all samples share the same
+        thickness and are correctly arranged relative to each other. It then
+        computes Sp as follows:
+
+             Sp = power + 40 * log10(Range) + (2 *  alpha * Range) - (10
+             * ... log10((TransmitPower * (10^(gain/10))^2 * lambda^2) / (16 *
              pi^2)))
 
-        By default, TVG range correction is not applied to the data. This
-        results in output that is consistent with the Simrad "P" telegram and TS
-        data exported from Echoview version 4.3 and later (prior versions
-        applied the correction by default).
-
-        If you intend to perform single target detections you must apply the
-        TVG range correction at some point in your process. This can be done by
-        either setting the tvgCorrection keyword of this function or it can be
-        done as part of your single target detection routine.
-
         Args:
-            calibration (calibration object): The data calibration object where
-                calibration data will be retrieved.
-            linear (bool): Set to True if getting Sp data.
-            tvg_correction (bool): Set to True to apply a correction to the
-                range of 2 * sample thickness.
-            return_depth (bool): If true, return the vertical axis of the
-                data as depth.  Otherwise, return as range.
-            **kwargs
+            resample_interval (float): Set this to a float specifying the
+                sampling interval (in seconds) used when generating the
+                vertical axis for the return data. If the raw data sampling
+                interval is different than the specified interval, the raw
+                data will be resampled at the specified rate. 0 and 1 have
+                special meaning. If set to 0 or 1, the data will only be resampled
+                if the sampling interval changes. If it does change, when
+                set to 0, the data will be resampled to the shortest sampling
+                interval present in the data. If set to 1, it will be resampled
+                to the longest interval present in the data.
+
+                The following constants are defined in the class:
+
+                    RESAMPLE_SHORTEST = 0
+                    RESAMPLE_16   = 0.000016
+                    RESAMPLE_32  = 0.000032
+                    RESAMPLE_64  = 0.000064
+                    RESAMPLE_128  = 0.000128
+                    RESAMPLE_256 = 0.000256
+                    RESAMPLE_512 = 0.000512
+                    RESAMPLE_1024 = 0.001024
+                    RESAMPLE_2048 = 0.002048
+                    RESAMPLE_LONGEST = 1
+
+                Default: RESAMPLE_SHORTEST
+
+            return_indices (np.array uint32): Set this to a numpy array that contains
+                the index values to return in the processed data object. This can be
+                used for more advanced anipulations where start/end ping/time are
+                inadequate.
+
+            calibration (EK60.ek60_calibration): Set to an instance of
+                EK60.ek60_calibration containing the calibration parameters
+                you want to use when transforming to Sv/sv. If no calibration
+                object is provided, the values will be extracted from the raw
+                data.
+
+            linear (bool): Set to True if getting "sv" data
+                Default: False
+
+            tvg_correction (bool): Set to True to apply TVG range correction.
+                By default, TVG range correction is not applied to the data. This
+                results in output that is consistent with the Simrad "P" telegram
+                and TS data exported from Echoview version 4.3 and later (prior
+                versions applied the correction by default).
+
+                If you intend to perform single target detections you must apply
+                the TVG range correction at some point in your process. This can
+                be done by either setting the tvgCorrection keyword of this function
+                or it can be done as part of your single target detection routine.
+                Default: False
+
+            return_depth (bool): Set to True to return a processed_data object
+                with a depth axis. When False, the processed_data object has
+                a range axis.
+                Default: False
+
+            start_time (datetime64): Set to a numpy datetime64 oject specifying
+                the start time of the data to convert. All data between the start
+                and end time will be returned. If set to None, the start time is
+                the first ping.
+                Default: None
+
+            end_time (datetime64): Set to a numpy datetime64 oject specifying
+                the end time of the data to convert. All data between the start
+                and end time will be returned. If set to None, the end time is
+                the last ping.
+                Default: None
+
+            start_ping (int): Set to an integer specifying the first ping number
+                to return. All pings between the start and end ping will be
+                returned. If set to None, the first ping is set as the start ping.
+                Default: None
+
+            end_ping (int): Set to an integer specifying the end ping number
+                to return. All pings between the start and end ping will be
+                returned. If set to None, the last ping is set as the end ping.
+                Default: None
+
+            Note that you can set a start/end time OR a start/end ping. If you
+            set both, one will be ignored.
+
+            time_order (bool): Set to True to return data in time order. If
+                False, data will be returned in the order it was read.
+                Default: True
 
         Returns:
-            A processed_data object, p_data, containing Sp (or sp if linear is
-            True).
+            A processed_data object containing Sp (or sp if linear is True).
+
         """
 
         # Get the power data - this step also resamples and arranges the raw data.
@@ -2156,91 +2470,65 @@ class raw_data(ping_data):
         return p_data
 
 
-    def get_bottom(self, calibration=None, return_indices=None,
-            return_depth=False, **kwargs):
-        """Gets a echolab2 line object containing the sounder detected bottom
-        depths.
-
-        The sounder detected bottom depths are computed using the sound speed
-        setting at the time of recording. If you are applying a different sound
-        speed setting via the calibration argument when getting the converted
-        sample data, you must also pass the same calibration object to this method
-        to ensure that the sounder detected bottom depths align with your sample
-        data.
-
-        Args:
-            calibration (calibration object): The data calibration object where
-                calibration data will be retrieved.
-            return_indices (array): A numpy array
-            return_depth (bool): If true, return the vertical axis of the
-                data as depth.  Otherwise, return as range.
-            **kwargs
-
-        Raises:
-            ValueError: The return indices exceed the number of pings in
-                the raw data object
-
-        Returns:
-            A line object, bottom_line, containing the sounder detected bottom
-            depths.
-        """
-
-        # Check if the user supplied an explicit list of indices to return.
-        if isinstance(return_indices, np.ndarray):
-            if max(return_indices) > self.ping_time.shape[0]:
-                raise ValueError("One or more of the return indices provided " +
-                        "exceeds the number of pings in the raw_data object")
-        else:
-            # Get an array of index values to return.
-            return_indices = self.get_indices(**kwargs)
-
-        # Check if user provided a cal object
-        if calibration is None:
-            # No - create an empty one - all cal values will come from the raw data
-            calibration = ek80_calibration()
-
-        # Extract the recorded sound velocity.
-        sv_recorded = self.sound_velocity[return_indices]
-
-        # Get the calibration params required for detected depth conversion.
-        cal_parms = {'sound_velocity':None,
-                     'transducer_depth':None}
-
-        # Next, iterate through the dict, calling the method to extract the
-        # values for each parameter.
-        for key in cal_parms:
-            cal_parms[key] = calibration.get_calibration_param(self, key,
-                    return_indices)
-
-        # Check if we have to adjust the depth due to a change in sound speed.
-        if np.all(np.isclose(sv_recorded, cal_parms['sound_velocity'])):
-            converted_depths = self.detected_bottom[return_indices]
-        else:
-            cf = sv_recorded / cal_parms['sound_velocity']
-            converted_depths = cf * self.detected_bottom[return_indices]
-
-        # Check if we're returning range by subtracting a transducer offset.
-        if return_depth == False:
-            # Data is recorded as depth - convert to range.
-            converted_depths -= cal_parms['transducer_depth'][return_indices]
-
-        # Create a line object to return with our adjusted data.
-        bottom_line = line.Line(ping_time=self.ping_time[return_indices],
-                data=converted_depths)
-
-        return bottom_line
-
-
     def get_physical_angles(self, calibration=None, **kwargs):
         """Gets the alongship and athwartship angle data.
 
+        This method returns an tuple of processed data objects (alongship,
+        athwartship) containing the physical angle data.
+
+        This method performs all of the required transformations to place the
+        raw electrical angle data into rectangular arrays where all samples
+        share the same thickness and are correctly arranged relative to each other.
+        It then transform the electrical angles into physical angles.
+
         Args:
-            calibration (calibration object): The data calibration object where
-                calibration data will be retrieved.
-            **kwargs
+            return_indices (np.array uint32): Set this to a numpy array that contains
+                the index values to return in the processed data object. This can be
+                used for more advanced anipulations where start/end ping/time are
+                inadequate.
+
+            calibration (EK60.ek60_calibration): Set to an instance of
+                EK60.ek60_calibration containing the calibration parameters
+                you want to use when transforming to Sv/sv. If no calibration
+                object is provided, the values will be extracted from the raw
+                data.
+
+            return_depth (bool): Set to True to return a line object with a
+                with a depth axis. When False, the line object has a range axis.
+                Default: False
+
+            start_time (datetime64): Set to a numpy datetime64 oject specifying
+                the start time of the data to convert. All data between the start
+                and end time will be returned. If set to None, the start time is
+                the first ping.
+                Default: None
+
+            end_time (datetime64): Set to a numpy datetime64 oject specifying
+                the end time of the data to convert. All data between the start
+                and end time will be returned. If set to None, the end time is
+                the last ping.
+                Default: None
+
+            start_ping (int): Set to an integer specifying the first ping number
+                to return. All pings between the start and end ping will be
+                returned. If set to None, the first ping is set as the start ping.
+                Default: None
+
+            end_ping (int): Set to an integer specifying the end ping number
+                to return. All pings between the start and end ping will be
+                returned. If set to None, the last ping is set as the end ping.
+                Default: None
+
+            Note that you can set a start/end time OR a start/end ping. If you
+            set both, one will be ignored. If you provide an index array, both
+            ping and time bounds will be ignored.
+
+            time_order (bool): Set to True to return data in time order. If
+                False, data will be returned in the order it was read.
+                Default: True
 
         Returns:
-            Processed data objects with alongship and athwartship angle data.
+            Two rocessed_data objects with alongship and athwartship angle data.
         """
 
         # Check if user provided a cal object
@@ -2284,14 +2572,15 @@ class raw_data(ping_data):
 
 
     def get_electrical_angles(self, return_depth=False, calibration=None, **kwargs):
-        """Gets unconverted angles_alongship_e and angles_athwartship_e data.
+        """Gets unconverted angle data.
+
+        This method returns a tuple of processed_data objects containing angle data
+        as electrical angles.
+
+        See get_physical_angles for more detail.
 
         Args:
-            return_depth (bool): If true, return the vertical axis of the
-                data as depth.  Otherwise, return as range.
-            calibration (calibration object): The data calibration object where
-                calibration data will be retrieved.
-            **kwargs
+            See get_physical_angles for argument descriptions.
 
         Returns:
             Two processed data objects containing the unconverted
@@ -2722,8 +3011,6 @@ class raw_data(ping_data):
         cal_parms = {'transducer_depth':None,
                      'heave':None}
 
-
-
         # Next, iterate through the dictionary, calling the method to extract
         # the values for each parameter.
         for key in cal_parms:
@@ -2743,9 +3030,6 @@ class raw_data(ping_data):
 
         # Now shift the pings.
         p_data.shift_pings(vert_shift, to_depth=True)
-
-
-
 
 
     def _create_arrays(self, n_pings, n_samples, initialize=False, create_power=False,
@@ -2956,7 +3240,6 @@ class ek80_calibration(calibration):
         self.effective_pulse_duration = None
 
 
-
     def from_raw_data(self, raw_data, return_indices=None):
         """Populates the calibration object.
 
@@ -3029,7 +3312,6 @@ class ek80_calibration(calibration):
                      new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
             param_data = new_data
 
-
         elif param_name == 'effective_pulse_duration':
             # The EK60 does not use effective_pulse_duration so we only compute
             # it for EK80 hardware
@@ -3039,8 +3321,8 @@ class ek80_calibration(calibration):
             else:
                 param_data = None
 
-
         return param_data
+
 
     def __str__(self):
         """Re-implements string method that provides some basic info about

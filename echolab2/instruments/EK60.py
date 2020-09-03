@@ -355,6 +355,12 @@ class EK60(object):
                 reading from first sample.
             end_sample (int): Specify ending sample number if not
                 reading to last sample.
+            progress_callback (function reference): Pass a reference to a
+                function that accepts three arguments:
+                    (filename, cumulative_pct, cumulative_bytes)
+                This function will be periodicaly called, passing the
+                current file name that is being read, the percent read,
+                and the bytes read.
         """
 
         # Update the reader state variables.
@@ -910,7 +916,8 @@ class EK60(object):
                  start_ping=None, end_ping=None, frequencies=None,
                  channel_ids=None, time_format_string='%Y-%m-%d %H:%M:%S',
                  start_sample=None, end_sample=None, progress_callback=None,
-                 overwrite=False, async_window=5):
+                 overwrite=False, async_window=5, raw_index_array=None,
+                 nmea_index_array=None, annotation_index_array=None):
         """Writes one or more Simrad Ex60/ES70/ME70 .raw files.
 
 
@@ -944,29 +951,56 @@ class EK60(object):
                 not, an error will be raised.
 
             power (bool): Controls whether power data is written
+
             angles (bool): Controls whether angle data is written
-            start_time (str): Specify a start time if you do not want to write
-                from the first ping. The format of the time string must
-                match the format specified in time_format_string.
-            end_time (str): Specify an end time if you do not want to write
-                to the last ping. The format of the time string must
-                match the format specified in time_format_string.
-            start_ping (int): Specify starting ping number if you do not want
-                to start writing at first ping.
-            end_ping (int): Specify end ping number if you do not want
-                to write all pings.
-            frequencies (list): List of floats (i.e. 18000.0) if you
-                only want to write specific frequencies.
+
+            start_time (datetime64): Specify a start time when defining a range
+                of data to write. When start_time is not provided, the start
+                time will be the time of the first ping.
+
+            end_time (datetime64): Specify a end time when defining a range
+                of data to write. When end_time is not provided, the end
+                time will be the time of the last ping.
+
+            start_ping (int): Specify the starting ping number when defining a
+                range of pings to write. If start_ping is not specified,
+                the start ping is 1.
+
+            end_ping (int): Specify the end ping number when defining a range
+                of pings to write. If end_ping is not provided, the last
+                ping is used.
+
+            frequencies (list): List of floats specifying the frequencies in
+                Hz you want to write. If frequencies is not specified, all
+                frequencies will be written.
+
             channel_ids (list): A list of strings that contain the unique
                 channel IDs to write. If no list is supplied, all channels are
                 written.
+
             time_format_string (str): String containing the format of the
-                start and end time arguments. Format is used to create datetime
-                objects from the start and end time strings
+                start and end time arguments *IF* they are provided as strings.
+                The format string is used to create datetime64 objects from the
+                start and end time strings. While you can pass tim estrings, it
+                is recommened that you pass datetime64 objects to start/end time.
+
             start_sample (int): Specify starting sample number if not
                 writing from first sample.
+
             end_sample (int): Specify ending sample number if not
                 writing to last sample.
+
+            The following keywords are for advanced indexing and writing of the
+            data. This can allow you to easily write subsets of data where the
+            pings do not have to be contiguous.
+
+            raw_index_array (np.array): Set this to a dictionary, keyed by
+                raw_data object reference, where the values are index arrays that
+                specify the pings to write for each raw_data object. If you specify
+                this keyword, the start/stop time/ping and time_order keywords will
+                be ignored.
+
+            nmea_index_array (np.array):
         """
 
         def new_datagram(dg_time, dg_type, dg_version):
@@ -1030,10 +1064,6 @@ class EK60(object):
         for number in self.channel_map:
             channel_number_map[self.channel_map[number]] = number
 
-
-        # these next few definitions could be moved to class globals, especially
-        # if EK60 and EK80 are refactored to share a common "simrad_ek" parent
-
         #  map dg_type to its parser
         DGRAM_PARSE_KEY = {'RAW': simrad_parsers.SimradRawParser(),
                            'CON': simrad_parsers.SimradConfigParser(),
@@ -1062,7 +1092,7 @@ class EK60(object):
         #
         # This is important to remember if you are trying to combine data from two raw
         # files into one. It is your responsibility to only combine data from files
-        # recorded using the exact same system parameters (there is some nuance here,
+        # recorded using the same system parameters (there is some nuance here,
         # but either you'll know when you can break this rule or not.) After combining
         # data from two or more files, you need to replicate the first configuration
         # dict in each raw_data object across all pings:
@@ -1081,34 +1111,76 @@ class EK60(object):
             # and then this channel's raw_data objects
 
             for data in self.raw_data[channel]:
-                # Get the indices of data from this channel/data that fall within the
-                # time span provided.
-                this_idx = data.get_indices(start_time=start_time,
-                        end_time=end_time, start_ping=start_ping,
-                        end_ping=end_ping)
+                # Check if we've been provided with an index array
+                if raw_index_array:
+                    if data in raw_index_array:
+                        this_idx = raw_index_array[data]
+                    else:
+                        # Get the indices of data from this channel/data that fall within the
+                        # time span provided.
+                        this_idx = data.get_indices(start_time=start_time,
+                                end_time=end_time, start_ping=start_ping,
+                                end_ping=end_ping)
+                else:
+                    # Get the indices of data from this channel/data that fall within the
+                    # time span provided.
+                    this_idx = data.get_indices(start_time=start_time,
+                            end_time=end_time, start_ping=start_ping,
+                            end_ping=end_ping)
 
                 # check if we have any data from this channel/data
                 if this_idx.size > 0:
                     # Find the unique configuration objects for this data/time range
                     # The config objects are different for each file read and we use
                     # that to determine what data goes in what output file.
-                    # We can't use np.unique on dicts so we do it the hard way...
+                    #
+                    # We can't use np.unique on dicts and the dict == operator does
+                    # a deep comparison which fails when the values are numpy arrays.
+                    #
+                    # Instead we have to brute force this using the dict object ID.
+                    # We still need a reference to the unique dicts so we have to
+                    # keep a list of both the ID and dict. As we're doing the comparison
+                    # we'll build an array of object IDs which we use below when
+                    # identifying pings with each unique configuration.
                     unique_configs = []
-                    for c in data.configuration[this_idx]:
-                        if c not in unique_configs:
+                    unique_ids = []
+                    conf_ids = []
+                    for c in data.configuration:
+                        this_id = id(c)
+                        conf_ids.append(this_id)
+                        is_unique = True
+                        for uc in unique_configs:
+                            if uc['file_name'] == c['file_name']:
+                                is_unique = False
+
+                        if is_unique:
                             # this is a convienient place to filter by frequency...
                             if frequencies:
                                 #  freqs specified, check if this is one of them
                                 if c['frequency'] in frequencies:
+                                    unique_ids.append(this_id)
                                     unique_configs.append(c)
                             else:
                                 # writing all freqs
+                                unique_ids.append(this_id)
                                 unique_configs.append(c)
 
+                    # Convert the list of cinfiguration IDs to a numpy array
+                    conf_ids = np.array(conf_ids)
+
                     # Determine the indices for each config
-                    for conf in unique_configs:
-                        # Get the indices for each unique config
-                        conf_idx = this_idx[data.configuration[this_idx] == conf]
+                    for idx in range(len(unique_configs)):
+                        # Get this config object and object ID
+                        conf = unique_configs[idx]
+                        conf_id = unique_ids[idx]
+
+                        # Get the indices for each unique config - if we are passed a
+                        # boolean array, we have to convert it to an index array.
+                        if this_idx.dtype == np.bool_:
+                            conf_idx = np.nonzero(np.logical_and(conf_ids == conf_id,
+                                    this_idx))[0]
+                        else:
+                            conf_idx = this_idx[conf_ids[this_idx] == conf_id]
 
                         # To track progress, we'll total up the number of raw
                         # datagrams that we will ultimately write for this file.
@@ -1271,16 +1343,17 @@ class EK60(object):
                     dgram_dict['spare0'] = ''
 
                     # adjust the sample offset if we're creating an additional offset during writing
-                    # and update the sample count.
                     sample_offset = start_sample + dg_objects[idx].sample_offset[dg_obj_idx[idx]]
                     dgram_dict['offset'] = sample_offset
-                    if (end_sample):
-                        sample_count = end_sample - start_sample
-                    else:
-                        if hasattr(dg_objects[idx], 'power'):
-                            sample_count = dg_objects[idx].power[dg_obj_idx[idx],start_sample:end_sample].size - start_sample
-                        elif hasattr(dg_objects[idx], 'angles_athwartship_e'):
-                            sample_count = dg_objects[idx].power[dg_obj_idx[idx],start_sample:end_sample].size - start_sample
+
+                    # Extract the data and update the sample count
+                    if hasattr(dg_objects[idx], 'power'):
+                        power_data = dg_objects[idx].power[dg_obj_idx[idx],start_sample:end_sample]
+                        sample_count = power_data.shape[0] - start_sample
+                    if hasattr(dg_objects[idx], 'angles_athwartship_e'):
+                        angles_athwart_data = dg_objects[idx].angles_athwartship_e[dg_obj_idx[idx],start_sample:end_sample]
+                        angles_along_data = dg_objects[idx].angles_alongship_e[dg_obj_idx[idx],start_sample:end_sample]
+                        sample_count = angles_athwart_data.shape[0] - start_sample
                     dgram_dict['count'] = sample_count
 
                     #  initialize the beam mode
@@ -1289,22 +1362,19 @@ class EK60(object):
                     # If we have angle data, we have to convert it back to indexed and combine.
                     if hasattr(dg_objects[idx], 'angles_athwartship_e'):
                         # Convert from electrical angles to indexed.
-                        athwartship_e = (dg_objects[idx].angles_athwartship_e[dg_obj_idx[idx],start_sample:end_sample] /
-                                raw_data.INDEX2ELEC).astype('uint8')
-                        alongship_e = (dg_objects[idx].angles_alongship_e[dg_obj_idx[idx],start_sample:end_sample] /
-                                raw_data.INDEX2ELEC).astype('uint8')
-                        dgram_dict['angle'] = np.column_stack((athwartship_e,alongship_e))
+                        angles_athwart_data = (angles_athwart_data / raw_data.INDEX2ELEC).astype('uint8')
+                        angles_along_data = (angles_along_data / raw_data.INDEX2ELEC).astype('uint8')
+                        dgram_dict['angle'] = np.column_stack((angles_athwart_data,angles_along_data))
 
                         #  set the angles bit in the beam mode
-                        mode = mode | (1<<1)
+                        mode = mode | (1 << 1)
 
                     # If we have power data, we have to convert it back to indexed
                     if hasattr(dg_objects[idx], 'power'):
-                        dgram_dict['power'] = (dg_objects[idx].power[dg_obj_idx[idx],start_sample:end_sample] /
-                                raw_data.INDEX2POWER).astype('int16')
+                        dgram_dict['power'] = (power_data / raw_data.INDEX2POWER).astype('int16')
 
                         # Set the power bit in the beam mode
-                        mode = mode | (1<<0)
+                        mode = mode | (1 << 0)
 
                     #  set the mode
                     dgram_dict['mode'] = mode
@@ -1844,6 +1914,10 @@ class raw_data(ping_data):
         """Returns a calibration object populated from the data contained in this
         raw_data object.
 
+        Calibration objects are passed to methods that transform the raw data
+        to more useful forms and provide those methods the parameters they require
+        such as sound speed, salinity, sampling interval, etc. The
+
         Args:
 
             absorption_method (str): Set to 'F&G' to use the method published by
@@ -1852,6 +1926,8 @@ class raw_data(ping_data):
                 published by Ainslie and McColm.
                 Default: 'F&G'
 
+        Returns:
+            A ek60_calibration object containing values from the raw data.
         """
 
         # Create an empty ek60 calibration object
@@ -2475,7 +2551,8 @@ class raw_data(ping_data):
                 Default: None
 
             Note that you can set a start/end time OR a start/end ping. If you
-            set both, one will be ignored.
+            set both, one will be ignored. If you provide an index array, both
+            ping and time bounds will be ignored.
 
             time_order (bool): Set to True to return data in time order. If
                 False, data will be returned in the order it was read.

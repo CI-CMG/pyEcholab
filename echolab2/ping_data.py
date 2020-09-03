@@ -936,9 +936,9 @@ class ping_data(object):
         Args:
             start_ping (int): The starting ping of the range of pings specified.
             end_ping (int): The ending ping of the range of pings specified.
-            start_time (datetime): The starting time of the range of pings
+            start_time (datetime64): The starting time of the range of pings
                 specified.
-            end_time (datetime): The ending time of the range of pings
+            end_time (datetime64): The ending time of the range of pings
                 specified.
             time_order (bool): Controls the order the indices will return.  If
                 set to True, the indices will be in time order.  If False,

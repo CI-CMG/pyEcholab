@@ -37,7 +37,7 @@ import logging
 import struct
 import re
 import sys
-from collections import Counter, OrderedDict
+from collections import OrderedDict
 from lxml import etree as ET
 from .date_conversion import nt_to_unix
 
@@ -787,7 +787,7 @@ class SimradXMLParser(_SimradDatagramParser):
             #  parse it
             if data['subtype'] == 'configuration':
 
-                print(xml_string.decode('utf-8'))
+                #print(xml_string.decode('utf-8'))
 
                 transducer_map = {}
                 transducers_node = root_node.find('./Transducers')
@@ -1431,7 +1431,6 @@ class SimradConfigParser(_SimradDatagramParser):
 
             txcvr_header_fields = [x[0] for x in transducer_header]
             txcvr_header_fmt    = '=' + ''.join([x[1] for x in transducer_header])
-            txcvr_header_size   = struct.calcsize(txcvr_header_fmt)
 
             for txcvr_indx, txcvr in list(data['configuration'].items()):
                 txcvr_contents = []
@@ -1653,9 +1652,7 @@ class SimradRawParser(_SimradDatagramParser):
 
     def _pack_contents(self, data, version):
 
-
         datagram_fmt = self.header_fmt(version)
-
         datagram_contents = []
 
         if version == 0:
@@ -1683,12 +1680,41 @@ class SimradRawParser(_SimradDatagramParser):
 
         elif version == 3:
 
+            # Add the spare field
             data['spare'] = ''
+
+            # work through the parameter dict and append data values to the
+            # packed datagram list.
             for field in self.header_fields(version):
                 if (sys.version_info.major > 2) and isinstance(data[field], str):
                     data[field] = data[field].encode('latin_1')
                 datagram_contents.append(data[field])
 
+            # Check if we have data to write
+            if data['count'] > 0:
 
+                if data['data_type'] & 0b0001:
+                    # Add the power data
+                    datagram_fmt += '%dh' % (data['count'])
+                    datagram_contents.extend(data['power'])
+
+                if data['data_type'] & 0b0010:
+                    # Add the angle data
+                    datagram_fmt += '%dH' % (data['count'])
+                    #  reshape the angle array for writing
+                    angles = data['angle'][:,0].astype('uint16') << 8
+                    angles = angles + data['angle'][:,1]
+                    datagram_contents.extend(angles)
+
+                if data['data_type'] & 0b1100:
+                    # Add the complex data
+                    if data['data_type'] & 0b0100:
+                        # pack as 16 bit floats - struct doesn't have support for
+                        # half floats so we use just pack them as bytes.
+                        datagram_fmt += '%dB' % (data['complex'].shape[0] * 2)
+                    else:
+                        # pack as 32 bit floats
+                        datagram_fmt += '%dB' % (data['complex'].shape[0] * 4)
+                    datagram_contents.extend(data['complex'].view(np.ubyte))
 
         return struct.pack(datagram_fmt, *datagram_contents)
