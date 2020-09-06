@@ -44,15 +44,21 @@ orig_chan_data = ek60.get_channel_data()
 # in non-contiguous chunks without having to modify the underlying data.
 
 
-# Create the empty raw index dictionary
+# Create the empty raw index dictionary. This will be keyed by channel ID
+# and contain the boolean array identifying the pings to write.
 raw_index_array = {}
+
+# At this point it is up to you as to how to create your index arrays. For
+# this example I'll write 50 pings, then skip 100, and write 50 and skip
+# 100 and so on. We'll just brute force this and iterate through the channels
+# and build an index for each one.
 
 # first, iterate through the channels we have read
 for channel in ek60.raw_data:
     # And then the data objects associated with each channel
     for data in ek60.raw_data[channel]:
 
-        # Create the boolean index array
+        # Create the boolean array we'll use to specify the pings to write
         n_pings = data.ping_time.shape[0]
         idx_array = np.full(data.ping_time.shape, 0, np.bool_)
 
@@ -84,10 +90,11 @@ for channel in ek60.raw_data:
         # file for each input file specified above.
         data.configuration[:] = data.configuration[0]
 
+
 # Write the subsampled file. The key is that we're passing the
 # boolean array that specifies the pings to write. In theory this
 # should work with an index array too (array that contains index
-# numbers instead of True/False.
+# numbers instead of True/False.) I haven't tested that yet.
 out_files = ek60.write_raw(out_dir, raw_index_array=raw_index_array,
         overwrite=True)
 
@@ -114,15 +121,15 @@ for channel_id in rewrite_chan_data:
 
     #  now get our original file's Sv - Since these files should be the same, we know
     #  we will have the same channel IDs so we'll use the id from our iterator. Also,
-    # we know there is only one datatype so we index into this directly.
+    #  we know there is only one datatype so we index into this directly.
     orig_data = orig_chan_data[channel_id][0]
 
     #  convert to Sv
     orig_Sv = orig_data.get_Sv(calibration=orig_data.get_calibration())
     orig_freq = orig_data.frequency[0]
 
-
-    #  now plot all of this up
+    # To illustrate the subsampling, we'll match the subsampled data to the
+    # original. The missing pings will be replaced with NaNs in the echogram.
     rewrite_Sv.match_pings(orig_Sv)
 
     #  show the Sv echograms
@@ -133,7 +140,6 @@ for channel_id in rewrite_chan_data:
     fig = plt.figure()
     eg = echogram.Echogram(fig, rewrite_Sv, threshold=[-70,-34])
     eg.axes.set_title("Matched rewrite Sv " + str(rewrite_freq) + " kHz")
-
 
     # Show our figures.
     plt.show()

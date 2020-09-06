@@ -694,33 +694,51 @@ class ping_data(object):
         self.shape = self._shape()
 
 
-    def match_pings(self, other_data):
+    def match_pings(self, other_data, match_to='cs'):
         """Matches the ping times in this object to the ping times in the object
-        provided. It does this by *matching* times, inserting and/or deleting
+        provided. It does this by matching times, inserting and/or deleting
         pings as needed. It does not interpolate. Ping times in the other object
         that aren't in this object are inserted. Ping times in this object that
         aren't in the other object are deleted. If the time axes do not intersect
         at all, all of the data in this object will be deleted and replaced with
         empty pings for the ping times in the other object.
 
-        While similar to Echoview's match_ping_times operator, this method does
-        not support "allowed slop" where you could specify how close the match
-        needed to be to be included. This method is intended to be used with
-        data that have been collected on the same PC and whos times
 
         Args:
             other_data (ping_data): A ping_data type object that this object
             will be matched to.
+
+            match_to (str): Set to a string defining the precision of the match.
+
+                cs : Match to a 100th of a second or
+                ds : Match to a 10th of a second
+                s  : Match to the second
+
         """
         # Create a dict to store info on which pings were inserted/removed
         results = {'inserted':[], 'removed':[]}
 
+        if match_to == 'cs':
+            round_amt = np.uint64(5)
+            truncate_to = -2
+        elif match_to == 'ds':
+            round_amt = np.uint64(50)
+            truncate_to = -3
+        elif match_to == 's':
+            round_amt = np.uint64(500)
+            truncate_to = -4
+
         # don't allow a recursive match
         if other_data is not self:
 
+            # round our times to allow for a loose match window
+            this_time = np.around(self.ping_time.astype('uint64') + round_amt,
+                    truncate_to)
+            other_time = np.around(other_data.ping_time.astype('uint64') + round_amt,
+                    truncate_to)
+
             #  remove any "extra" pings this object may have
-            idx_out = np.isin(self.ping_time, other_data.ping_time,
-                    invert=True)
+            idx_out = np.isin(this_time, other_time, invert=True)
             idx_out = np.nonzero(idx_out)[0]
             if idx_out.size > 0:
                 # We have some extra pings, delete them
@@ -728,8 +746,7 @@ class ping_data(object):
                 self.delete(index_array=idx_out)
 
             # Insert any pings that this object is missing
-            idx_in = np.isin(other_data.ping_time, self.ping_time,
-                    invert=True)
+            idx_in = np.isin(other_time, this_time, invert=True)
             idx_in = np.nonzero(idx_in)[0]
             if idx_in.size > 0:
                 # There were missing pings, we'll insert "empty" pings in their place

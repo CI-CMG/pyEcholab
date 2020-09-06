@@ -112,10 +112,6 @@ def nt_to_unix(nt_timestamp_tuple, return_datetime=True):
 
     The timestamp is a 64bit count of 100ns intervals since the NT epoch
     broken into two 32bit longs, least significant first:
-
-    >>> dt = nt_to_unix((19496896L, 30196149L))
-    >>> match_dt = datetime.datetime(2011, 12, 23, 20, 54, 3, 964000, pytz_utc)
-    >>> assert abs(dt - match_dt) <= dt.resolution
     '''
 
     lowDateTime, highDateTime = nt_timestamp_tuple
@@ -133,21 +129,9 @@ def unix_to_nt(unix_timestamp):
     '''
     Given a date, return the 2-element tuple used for timekeeping with SIMRAD echosounders
 
-
-    #Simple conversion
-    >>> dt = datetime.datetime(2011, 12, 23, 20, 54, 3, 964000, pytz_utc)
-    >>> assert (19496896L, 30196149L) == unix_to_nt(dt)
-
-    #Converting back and forth between the two standards:
-    >>> orig_dt = datetime.datetime.now(tz=pytz_utc)
-    >>> nt_tuple = unix_to_nt(orig_dt)
-
     #converting back may not yield the exact original date,
     #but will be within the datetime's precision
-    >>> back_to_dt = nt_to_unix(nt_tuple)
-    >>> d_mu_seconds = abs(orig_dt - back_to_dt).microseconds
-    >>> mu_sec_resolution = orig_dt.resolution.microseconds
-    >>> assert d_mu_seconds <= mu_sec_resolution
+
     '''
 
     if isinstance(unix_timestamp, datetime.datetime):
@@ -188,10 +172,6 @@ def unix_to_datetime(unix_timestamp, tz=pytz_utc):
     Returns a datetime object from a unix timestamp.  Simple wrapper for
     :func:`datetime.datetime.fromtimestamp`
 
-    >>> from pytz import utc
-    >>> from datetime import datetime
-    >>> epoch = unix_to_datetime(0.0, tz=utc)
-    >>> assert epoch == datetime(1970, 1, 1, tzinfo=utc)
     '''
 
     if isinstance(unix_timestamp, datetime.datetime):
@@ -223,11 +203,6 @@ def datetime_to_unix(datetime_obj):
     :param tz: Timezone to use for converted time -- if None, uses timezone
                 information contained within datetime_obj
     :type tz: :class:datetime.tzinfo
-
-    >>> from pytz import utc
-    >>> from datetime import datetime
-    >>> epoch = datetime(1970, 1, 1, tzinfo=utc)
-    >>> assert datetime_to_unix(epoch) == 0
     '''
 
     timestamp = (datetime_obj - UTC_UNIX_EPOCH).total_seconds()

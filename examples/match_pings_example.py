@@ -28,7 +28,7 @@ max_pings_to_remove = 10
 # as the other channels. If True, the match channel may have
 # fewer pings than the other channels. This tests the two
 # way removal of the pings.
-remove_from_match = False
+remove_from_match = True
 
 
 # Specify a data file for this test
