@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""insert_delete_test.py tests er, insertion and deletion of data. It generates
+"""insert_delete_test-2.py tests er, insertion and deletion of data. It generates
 a simple synthetic processed_data object and deletes and inserts a few pings
 and displays the data along the way.
 
