@@ -144,10 +144,8 @@ class processed_data(ping_data):
         self._nav_attributes = ['latitude', 'longitude', 'heading', 'trip_distance_nmi',
                 'spd_over_grnd_kts', 'pitch', 'heave', 'roll']
 
-
         #  extend the _data_attributes list adding our data attribute
         self._data_attributes += ['data']
-
 
         #  create a list that stores the scalar object attributes
         self._obj_attributes = ['sample_thickness',
@@ -1746,6 +1744,7 @@ def read_ev_mat(channel_id, frequency, ev_mat_filename, data_type='Sv',
 
     #  create an empty processed_data object
     p_data = processed_data(channel_id, frequency, data_type)
+    p_data.is_log = True
 
     #  create the data arrays
     data = np.empty((n_pings, max_samples), dtype=sample_dtype)
@@ -1831,6 +1830,7 @@ def read_ev_csv(channel_id, frequency, ev_csv_filename, data_type='Ts',
 
     #  create an empty processed_data object
     p_data = processed_data(channel_id, frequency, data_type)
+    p_data.is_log = True
 
     #  create the data arrays
     data = np.empty((n_pings, max_samples), dtype=sample_dtype)

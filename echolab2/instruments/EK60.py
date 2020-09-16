@@ -950,9 +950,11 @@ class EK60(object):
                 dict where the keys map 1:1 to the input file names. If they do
                 not, an error will be raised.
 
-            power (bool): Controls whether power data is written
+            power (bool): Controls whether power data is written. Has no effect if
+                there is no power data to write.
 
-            angles (bool): Controls whether angle data is written
+            angles (bool): Controls whether angle data is written. Has no effect if
+                there is no angle data to write.
 
             start_time (datetime64): Specify a start time when defining a range
                 of data to write. When start_time is not provided, the start
@@ -994,13 +996,23 @@ class EK60(object):
             data. This can allow you to easily write subsets of data where the
             pings do not have to be contiguous.
 
-            raw_index_array (np.array): Set this to a dictionary, keyed by
+            raw_index_array (dict): Set this to a dictionary, keyed by
                 raw_data object reference, where the values are index arrays that
                 specify the pings to write for each raw_data object. If you specify
                 this keyword, the start/stop time/ping and time_order keywords will
                 be ignored.
 
-            nmea_index_array (np.array):
+            THE FOLLOWING KEYWORDS ARE NOT IMPLEMENTED YET
+
+            nmea_index_array (np.array):Set this to an index array that specifies
+                the NMEA data that will be written to the raw file. This will
+                override the default behavior of using the data start and end times
+                (including when raw_index_array is defined.)
+
+            annotation_index_array (np.array):Set this to an index array that specifies
+                the annotation data that will be written to the raw file. This will
+                override the default behavior of using the data start and end times
+                (including when raw_index_array is defined.)
         """
 
         def new_datagram(dg_time, dg_type, dg_version):
@@ -1077,7 +1089,7 @@ class EK60(object):
                              'NME':0,
                              'TAG':0,
                              'CON':0,
-                             'IMU':0}
+                             'MRU':0}
 
         # Because a user can load multiple .raw files into an ER60 object, and those
         # .raw files can contain data from various system configurations, we need to
@@ -1261,7 +1273,7 @@ class EK60(object):
             dg_times = np.insert(dg_times, 0, times)
             dg_objects = np.insert(dg_objects, 0, np.repeat(self.motion_data, times.size))
             dg_obj_idx = np.insert(dg_obj_idx, 0, motion_idx)
-            dg_type = np.insert(dg_type, 0, np.repeat('IMU', times.size))
+            dg_type = np.insert(dg_type, 0, np.repeat('MRU', times.size))
 
             # Lastly, insert the NMEA data using our new time window
             nmea_idx = self.nmea_data.get_indices(start_time=async_start_time,
@@ -1396,15 +1408,14 @@ class EK60(object):
                     #  write it
                     bytes_written += raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram_dict))
 
-                elif dg_type[idx] == 'IMU':
-                    # We don't actually write IMU datagrams for EK60 type raw files but since
+                elif dg_type[idx] == 'MRU':
+                    # We don't actually write MRU datagrams for EK60 type raw files but since
                     # we store the data as if it were asyncronous, we process it like it is.
                     this_heave = dg_objects[idx].heave[dg_obj_idx[idx]]
                     this_roll = dg_objects[idx].roll[dg_obj_idx[idx]]
                     this_pitch = dg_objects[idx].pitch[dg_obj_idx[idx]]
                     this_heading = dg_objects[idx].heading[dg_obj_idx[idx]]
 
-                    #  we don't write an IMU datagram for EK60 type raw files
 
                 else:
                     #  we should never encounter an unknown type, but raise exception if so

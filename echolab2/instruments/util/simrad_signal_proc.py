@@ -37,7 +37,6 @@ def create_ek80_tx(raw_data, calibration, return_indices=None):
     '''create_ek80_tx returns an array representing the ideal
     EK80 transmit signal computed using the parameters in the raw_data
     and calibration objects.
-
     '''
 
     # If we're not given specific indices, grab everything.
@@ -182,8 +181,10 @@ def filter_and_decimate(y, filters, stages):
         # get the filter coefficients and decimation factor
         coefficients = filters[stage]['coefficients']
         decimation_factor = filters[stage]['decimation_factor']
+
         # apply filter
         y = np.convolve(y, coefficients)
+
         # and decimate
         y = y[0::decimation_factor]
 
@@ -223,8 +224,44 @@ def ek80_chirp(txpower, fstart, fstop, slope, tau, z, rx_freq):
     beta = (fstop - fstart) * (tau ** -1)
     chirp = np.cos(2.0 * np.pi * (beta / 2.0 * (t ** 2) + fstart * t))
     y_tmp = a * chirp * wtx
+
     # The transmit signal must have a max amplitude of 1
     y = y_tmp / np.max(np.abs(y_tmp))
 
     return t, y
+
+
+def pulse_compression(p_data, raw_data, calibration, return_indices=None):
+    '''pulse_compression applies a matched filter to the received signal using
+    the simulated Tx signal as the filter template. This method will only apply
+    the filter to FM pings. It does nothing to CW pings. The p_data object is
+    modified in-place.
+    '''
+
+    # If we're not given specific indices, grab everything.
+    if return_indices is None:
+        return_indices = np.arange(raw_data.ping_time.shape[0])
+    # Ensure that return_indices is a numpy array
+    elif type(return_indices) is not np.ndarray:
+        return_indices = np.array(return_indices, ndmin=1)
+
+    # Check if we have any fm pings to process
+    is_fm = raw_data.pulse_form[return_indices] > 0
+    if np.any(is_fm):
+        # we do have fm pings - get the indices for those fm pings
+        fm_pings = return_indices[is_fm]
+        # get the simulated tx signal for these pings
+        tx_signal = create_ek80_tx(raw_data, calibration, return_indices=fm_pings)
+
+        # apply match filter to these pings
+        for p_idx, tx in enumerate(tx_signal):
+            # create matched filter using tx signal for this ping
+            tx_mf = np.flipud(np.conj(tx))
+            ltx = len(tx_mf)
+            tx_n = np.linalg.norm(tx) ** 2
+            #compressed = np.empty(p_data.data[p_idx,:,0].shape, dtype=p_data.data.dtype)
+            for q_idx in range(p_data.data[p_idx,:,:].shape[1]):
+                compressed = np.convolve(p_data.data[p_idx,:,q_idx], tx_mf) / tx_n
+                p_data.data[p_idx,:,q_idx] = compressed[ltx-1:]
+
 

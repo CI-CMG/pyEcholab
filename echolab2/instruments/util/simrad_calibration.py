@@ -509,27 +509,43 @@ class calibration(object):
         absorption is returned as dB/m
         '''
         # Get depth in m
-        D = self.get_attribute_from_raw(raw_data, 'depth',
+        D = self.get_parameter(raw_data, 'depth',
                 return_indices=return_indices)
 
         # Acidity pH
-        pH = self.get_attribute_from_raw(raw_data, 'acidity',
+        pH = self.get_parameter(raw_data, 'acidity',
                 return_indices=return_indices)
 
         # Salinity in PSU
-        S = self.get_attribute_from_raw(raw_data, 'salinity',
+        S = self.get_parameter(raw_data, 'salinity',
                 return_indices=return_indices)
 
         # Temperature in deg c
-        T = self.get_attribute_from_raw(raw_data, 'temperature',
+        T = self.get_parameter(raw_data, 'temperature',
                 return_indices=return_indices)
+
+        # Get the tx frequency
+        fhz = self.get_parameter(raw_data, 'frequency',
+                return_indices=return_indices)
+        if fhz is None:
+            # Must be FM - get the center frequency
+            fhz_start = self.get_parameter(raw_data, 'frequency_start',
+                return_indices=return_indices)
+            fhz_end = self.get_parameter(raw_data, 'frequency_end',
+                return_indices=return_indices)
+            # Compute center freq in kHz
+            fkhz = (fhz_start + fhz_end) / 2000.
+        else:
+            # This is CW - just convert freq to kHz
+            fkhz = fhz / 1000.0
+
 
         # Compute absorption using the specified method
         if method.lower() in ['am', 'a&m']:
             # Ainslie M. A., McColm J. G.
 
             # Frequency in kHz squared
-            fsq = np.square(raw_data.frequency / 1000.0)
+            fsq = np.square(fkhz)
 
             # Depth in km
             D = D / 1000.0
@@ -549,7 +565,7 @@ class calibration(object):
             # Francois R. E., Garrison G. R.
 
             # Frequency in kHz
-            f = raw_data.frequency / 1000.0
+            f = fkhz
 
             # from echopype.utils.uwa.calc_seawater_absorption
             c = 1412.0 + 3.21 * T + 1.19 * S + 0.0167 * D
@@ -560,11 +576,12 @@ class calibration(object):
             P2 = 1.0 - 1.37e-4 * D + 6.2e-9 * D * D
             f2 = 8.17 * 10 ** (8 - 1990 / (T + 273)) / (1 + 0.0018 * (S - 35))
             P3 = 1.0 - 3.83e-5 * D + 4.9e-10 * D * D
-            if T < 20:
-                A3 = (4.937e-4 - 2.59e-5 * T + 9.11e-7 * T ** 2 -
-                      1.5e-8 * T ** 3)
-            else:
-                A3 = 3.964e-4 - 1.146e-5 * T + 1.45e-7 * T ** 2 - 6.5e-10 * T ** 3
+            A3 = np.empty((T.shape[0]), np.float32)
+            tidx = T < 20
+            A3[tidx] = (4.937e-4 - 2.59e-5 * T[tidx] + 9.11e-7 * T[tidx] ** 2 -
+                  1.5e-8 * T[tidx] ** 3)
+            tidx = T > 20
+            A3[tidx] = 3.964e-4 - 1.146e-5 * T[tidx] + 1.45e-7 * T[tidx] ** 2 - 6.5e-10 * T[tidx] ** 3
 
             # Compute absorption in dB/m
             a = A1 * P1 * f1 * f * f / (f1 * f1 + f * f) + A2 * P2 * f2 * f * \

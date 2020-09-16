@@ -139,7 +139,7 @@ class ping_data(object):
         if isinstance(data, np.ndarray):
             if data.ndim == 1:
                 data_width = data.shape[0]
-            if data.ndim == 2:
+            if data.ndim > 1:
                 data_width = data.shape[0]
                 data_height = data.shape[1]
                 # Check if n_samples has been set yet.  If not, set it.
@@ -149,6 +149,10 @@ class ping_data(object):
                 elif self.n_samples != data_height:
                     raise ValueError('Cannot add attribute. New attribute has ' +
                         'a different number of samples than the other attributes.')
+            if data.ndim == 3:
+                # Add or update ourself.
+                setattr(self, 'n_sectors', data.shape[2])
+                self._object_attributes += ['n_sectors']
         else:
             # We only allow numpy arrays as data attributes.
             raise TypeError('Invalid data attribute type. Data attributes must ' +
@@ -1255,11 +1259,11 @@ class ping_data(object):
         '''Internal method used to update the shape attribute
         '''
         shape = None
-        if self.data_type == 'power' or self.data_type == 'power/angle':
+        if hasattr(self, 'power'):
             shape = self.power.shape
-        elif self.data_type == 'angle':
+        elif hasattr(self, 'angles_alongship_e'):
             shape = self.angles_alongship_e.shape
-        elif self.data_type == 'complex':
+        elif hasattr(self, 'complex'):
             shape = self.complex.shape
         elif hasattr(self, 'data'):
             shape = self.data.shape

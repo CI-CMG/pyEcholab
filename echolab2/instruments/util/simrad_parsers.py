@@ -679,6 +679,8 @@ class SimradXMLParser(_SimradDatagramParser):
             'ChannelMode':[int,'channel_mode',''],
             'PulseForm':[int,'pulse_form',''],
             'Frequency':[float,'frequency',''],
+            'FrequencyStart':[float,'frequency_start',''],
+            'FrequencyEnd':[float,'frequency_end',''],
             'PulseDuration':[float,'pulse_duration',''],
             'SampleInterval':[float,'sample_interval',''],
             'TransmitPower':[float,'transmit_power',''],
@@ -843,6 +845,8 @@ class SimradXMLParser(_SimradDatagramParser):
 
             elif data['subtype'] == 'parameter':
 
+                #print(xml_string.decode('utf-8'))
+
                 #  parse the parameter XML datagram
                 for h in root_node.iter('Channel'):
                     parm_xml = h.attrib
@@ -850,6 +854,8 @@ class SimradXMLParser(_SimradDatagramParser):
                     dict_to_dict(parm_xml, data['parameter'], self.parameter_xml_map)
 
             elif data['subtype'] == 'environment':
+
+                #print(xml_string.decode('utf-8'))
 
                 #  parse the environment XML datagram
                 for h in root_node.iter('Environment'):

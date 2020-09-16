@@ -23,11 +23,12 @@ chan_data['beam_width_alongship']=789.123
 chan_data['impedance']=12345
 '''
 
+# EK80 CW Complex
+in_files = ['C:/EK80 Test Data/Saildrone/SD_alaska_2019-Phase0-D20190516-T030157-0.raw']
 
-one_file = ['C:/EK80 Test Data/Saildrone/SD_alaska_2019-Phase0-D20190516-T030157-0.raw']
+# EK80 FM
+#in_files = ['C:/EK80 Test Data/EK80/FM/FM_-_70_KHZ_2MS_CAL-Phase0-D20190531-T194722-0.raw']
 
-#one_file = ['C:/EK80 Test Data/EK80/FM/DY1802_EK80-D20180301-T185940.raw']
-#one_file = ['C:/EK80 Test Data/EK80/CW/complex/DY2000_EK80_Cal-D20200126-T060729.raw']
 
 
 #  specify the output path AND file name header
@@ -39,11 +40,15 @@ out_file = 'C:/Temp_EK_Test/EK-Raw-Write-Test'
 ek80 = EK80.EK80()
 
 # Use the read_raw method to read in our list of data files.
-ek80.read_raw(one_file)
+ek80.read_raw(in_files)
 
 # Print some basic info about our object.
 print(ek80)
 
+channels = list(ek80.raw_data.keys())
+raw_data = ek80.raw_data[channels[0]][0]
+
+power = raw_data.get_power()
 
 out_files = ek80.write_raw(out_file, overwrite=True)
 

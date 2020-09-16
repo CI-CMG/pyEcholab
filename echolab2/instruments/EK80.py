@@ -623,10 +623,16 @@ class EK80(object):
                     # also contains power/angle data
                     this_raw_data = raw_obj
                     break
-                if new_datagram['data_type'] > 3 and raw_obj.data_type == 'complex':
-                    # This raw_data object contains complex data and this datagram
-                    # also contains complex data
-                    this_raw_data = raw_obj
+                if new_datagram['data_type'] > 3:
+                    # This datagram contains complex data - check if FM or CW
+                    if self._tx_params[new_datagram['channel_id']].get('frequency', None):
+                        if raw_obj.data_type == 'complex-CW':
+                            # This raw_data object contains complex CW data and so do we
+                            this_raw_data = raw_obj
+                    else:
+                        if raw_obj.data_type == 'complex-FM':
+                            # This raw_data object contains complex FM data and so do we
+                            this_raw_data = raw_obj
                     break
 
             #  check if we need to create a new raw_data object
@@ -818,7 +824,6 @@ class EK80(object):
         """Writes one or more Simrad EK80 .raw files.
 
 
-
         Args:
             output_filenames (str, dict): A string specifying the full path and
                 output filename header that will be used to generate all of the
@@ -848,11 +853,14 @@ class EK80(object):
                 dict where the keys map 1:1 to the input file names. If they do
                 not, an error will be raised.
 
-            power (bool): Controls whether power data is written
+            power (bool): Controls whether power data is written. Has no effect if
+                there is no power data to write.
 
-            angles (bool): Controls whether angle data is written
+            angles (bool): Controls whether angle data is written. Has no effect if
+                there is no angle data to write.
 
-            complex (bool): Controls whether complex data is written
+            complex (bool): Controls whether complex data is written. Has no effect if
+                there is no complex data to write.
 
             start_time (datetime64): Specify a start time when defining a range
                 of data to write. When start_time is not provided, the start
@@ -899,15 +907,23 @@ class EK80(object):
             data. This can allow you to easily write subsets of data where the
             pings do not have to be contiguous.
 
-            raw_index_array (np.array): Set this to a dictionary, keyed by
+            raw_index_array (dict): Set this to a dictionary, keyed by
                 raw_data object reference, where the values are index arrays that
                 specify the pings to write for each raw_data object. If you specify
                 this keyword, the start/stop time/ping and time_order keywords will
                 be ignored.
 
-            nmea_index_array (np.array):
+            THE FOLLOWING KEYWORDS ARE NOT IMPLEMENTED YET
 
+            nmea_index_array (np.array):Set this to an index array that specifies
+                the NMEA data that will be written to the raw file. This will
+                override the default behavior of using the data start and end times
+                (including when raw_index_array is defined.)
 
+            annotation_index_array (np.array):Set this to an index array that specifies
+                the annotation data that will be written to the raw file. This will
+                override the default behavior of using the data start and end times
+                (including when raw_index_array is defined.)
 
         """
 
@@ -990,7 +1006,7 @@ class EK80(object):
         #
         # This is important to remember if you are trying to combine data from two raw
         # files into one. It is your responsibility to only combine data from files
-        # recorded using the exact same system parameters (there is some nuance here,
+        # recorded using the the same system parameters (there is some nuance here,
         # but either you'll know when you can break this rule or not.) After combining
         # data from two or more files, you need to replicate the first configuration
         # dict in each raw_data object across all pings:
@@ -1009,11 +1025,22 @@ class EK80(object):
             # and then this channel's raw_data objects
 
             for data in self.raw_data[channel]:
-                # Get the indices of data from this channel/data that fall within the
-                # time span provided.
-                this_idx = data.get_indices(start_time=start_time,
-                        end_time=end_time, start_ping=start_ping,
-                        end_ping=end_ping)
+                # Check if we've been provided with an index array
+                if raw_index_array:
+                    if data in raw_index_array:
+                        this_idx = raw_index_array[data]
+                    else:
+                        # Get the indices of data from this channel/data that fall within the
+                        # time span provided.
+                        this_idx = data.get_indices(start_time=start_time,
+                                end_time=end_time, start_ping=start_ping,
+                                end_ping=end_ping)
+                else:
+                    # Get the indices of data from this channel/data that fall within the
+                    # time span provided.
+                    this_idx = data.get_indices(start_time=start_time,
+                            end_time=end_time, start_ping=start_ping,
+                            end_ping=end_ping)
 
                 # check if we have any data from this channel/data
                 if this_idx.size > 0:
@@ -1249,7 +1276,11 @@ class EK80(object):
                     dgram['parameter']['channel_id'] = channel_id
                     dgram['parameter']['channel_mode'] = dg_objects[idx].channel_mode[dg_obj_idx[idx]]
                     dgram['parameter']['pulse_form'] = dg_objects[idx].pulse_form[dg_obj_idx[idx]]
-                    dgram['parameter']['frequency'] = dg_objects[idx].frequency[dg_obj_idx[idx]]
+                    if self.data_type == 'complex-FM':
+                        dgram['parameter']['frequency_start'] = dg_objects[idx].frequency_start[dg_obj_idx[idx]]
+                        dgram['parameter']['frequency_end'] = dg_objects[idx].frequency_end[dg_obj_idx[idx]]
+                    else:
+                        dgram['parameter']['frequency'] = dg_objects[idx].frequency[dg_obj_idx[idx]]
                     dgram['parameter']['pulse_duration'] = dg_objects[idx].pulse_duration[dg_obj_idx[idx]]
                     dgram['parameter']['sample_interval'] = dg_objects[idx].sample_interval[dg_obj_idx[idx]]
                     dgram['parameter']['transmit_power'] = dg_objects[idx].transmit_power[dg_obj_idx[idx]]
@@ -1549,7 +1580,8 @@ class raw_data(ping_data):
         #
         #   power - contains power data
         #   power/angle - contains power and angle data
-        #   complex - contains complex data
+        #   complex-CW - contains complex CW data
+        #   complex-FM - contains complex FM data
         self.data_type = ''
 
         # The file_complex_dtype is the data type the complex data are stored
@@ -1580,7 +1612,7 @@ class raw_data(ping_data):
                                   'filters',
                                   'channel_mode',
                                   'pulse_form',
-                                  'frequency',
+#                                  'frequency',
                                   'pulse_duration',
                                   'sample_interval',
                                   'slope',
@@ -1747,7 +1779,17 @@ class raw_data(ping_data):
                 n_complex = sample_datagram['complex'].shape[1]
                 self.store_power = False
                 self.store_angles = False
-                self.data_type = 'complex'
+
+                #  determine if this is an FM or CW file
+                tx_freq = tx_parms.get('frequency', None)
+                if tx_freq:
+                    # CW files will have the frequency parameter
+                    self.data_type = 'complex-CW'
+                    self._data_attributes += ['frequency']
+                else:
+                    # FM files will have the frequency_start and frequency_end parameters
+                    self.data_type = 'complex-FM'
+                    self._data_attributes += ['frequency_start', 'frequency_end']
 
                 # Set the file's complex data type
                 if sample_datagram['data_type'] & 0b1000:
@@ -1761,7 +1803,7 @@ class raw_data(ping_data):
                 self.sample_dtype = np.complex64
 
             else:
-                # This must be a power, angle, or power/angle datagram
+                # This must be "reduced" data (power, angle, or power/angle datagram)
                 # Check if either or both are provided
                 if  sample_datagram['power'] is not None:
                     create_power = True
@@ -1785,6 +1827,9 @@ class raw_data(ping_data):
 
                 # Set the "short" data type
                 self.short_data_type = sample_datagram['data_type']
+
+                # All reduced data is CW so add the frequency attribute
+                self._data_attributes += ['frequency']
 
             #  determine the initial number of samples in our arrays
             if self.max_sample_number:
@@ -1901,7 +1946,14 @@ class raw_data(ping_data):
         self.ping_time[this_ping] = sample_datagram['timestamp']
         self.channel_mode[this_ping] = tx_parms['channel_mode']
         self.pulse_form[this_ping] = tx_parms['pulse_form']
-        self.frequency[this_ping] = tx_parms['frequency']
+        tx_freq = tx_parms.get('frequency', None)
+        if tx_freq:
+            # CW files will have the freuqency parameter
+            self.frequency[this_ping] = tx_parms['frequency']
+        else:
+            # FM files will have the frequency_start and frequency_end parameters
+            self.frequency_start[this_ping] = tx_parms['frequency_start']
+            self.frequency_end[this_ping] = tx_parms['frequency_end']
         self.pulse_duration[this_ping] = tx_parms['pulse_duration']
         self.sample_interval[this_ping] = tx_parms['sample_interval']
         self.slope[this_ping] = tx_parms['slope']
@@ -2016,7 +2068,7 @@ class raw_data(ping_data):
         return cal_obj
 
 
-    def get_power(self, **kwargs):
+    def get_power(self, calibration=None, **kwargs):
         """Returns a processed data object that contains the power data.
 
         This method performs all of the required transformations to place the
@@ -2108,6 +2160,21 @@ class raw_data(ping_data):
                 False, data will be returned in the order it was read.
                 Default: True
 
+            Zer (float): Specify the WBT receiver nominal impedance in ohms.
+                The default is to use the receiver nominal impedance from the
+                raw data if available. If the data were recorded using a version
+                of EK80 that didn't store that value, 5400 ohms is used. Some
+                older WBT hardware had a nominal impedance of 1000 ohms. See
+                Demer et. al 2017 ICES Cooperative Research Report #336
+                "Evaluation of a wideband echosounder for fisheries and marine
+                ecosystem science" for details.
+
+            Zet (float): Specify the transducer nominal impedance in ohms.
+                The default is 75 ohms. See
+                Demer et. al 2017 ICES Cooperative Research Report #336
+                "Evaluation of a wideband echosounder for fisheries and marine
+                ecosystem science" for details.
+
         Returns:
             A processed_data object containing power data.
 
@@ -2115,10 +2182,47 @@ class raw_data(ping_data):
 
         # Call the _get_sample_data method requesting the appropriate sample attribute.
         if hasattr(self, 'power'):
+
+            # get power data in a processed_data object
             p_data, return_indices = self._get_sample_data('power', **kwargs)
+
         elif hasattr(self, 'complex'):
-            raise NotImplementedError('Conversion of complex data to power ' +
-                    'is not implemented at this time.')
+
+            # Get the complex sample data within a processed_data object
+            p_data, return_indices = self._get_sample_data('complex',
+                    calibration=calibration, **kwargs)
+
+            # Pulse compress
+            simrad_signal_proc.pulse_compression(p_data, self, calibration,
+                return_indices=return_indices)
+
+            # get the impedance values we need to convert to power
+            Zet = kwargs.pop('Zet', None)
+            if Zet is None:
+                # default transducer impedance (Demer et. al 2017 ICRR #336)
+                Zet = 75.0
+            Zer = kwargs.pop('Zer', None)
+            if Zer is None:
+                if calibration.impedance:
+                    Zer = calibration.impedance
+                else:
+                    # default receiver impedance (Demer et. al 2017 ICRR #336)
+                    Zer = 5400.0
+
+            # Determine the number of transducer sectors
+            n_sectors = p_data.data.shape[2]
+
+            # Compute power
+            Ur_t = np.mean(p_data.data, axis=2)
+            vrsplit = Zer / (Zer + Zet)
+            Per_t = n_sectors * (np.abs(Ur_t) / (2 * np.sqrt(2))) ** 2 * (1 / vrsplit) ** 2 * 1 / Zet
+
+            # convert to log units
+            p_data.data = 10 * np.log10(Per_t)
+
+            # and update the processed_data object's shape
+            p_data._shape()
+
         else:
             raise AttributeError('Raw data object does not contain power or ' +
                     'complex data required to return power.')
@@ -2132,7 +2236,7 @@ class raw_data(ping_data):
         return p_data
 
 
-    def _get_power(self, **kwargs):
+    def _get_power(self, calibration=None, **kwargs):
         """Returns a processed data object that contains the power data and
         an index array.
 
@@ -2148,12 +2252,55 @@ class raw_data(ping_data):
             return_indices.
         """
 
+        # Check if user provided a cal object
+        if calibration is None:
+            # No - create one populated from raw data
+            calibration = self.get_calibration()
+
         # Call the _get_sample_data method requesting the appropriate sample attribute.
         if hasattr(self, 'power'):
-            p_data, return_indices = self._get_sample_data('power', **kwargs)
+
+            # get power data in a processed_data object
+            p_data, return_indices = self._get_sample_data('power',
+                    calibration=calibration, **kwargs)
+
         elif hasattr(self, 'complex'):
-            raise NotImplementedError('Conversion of complex data to power ' +
-                    'is not implemented at this time.')
+
+            # Get the complex sample data within a processed_data object
+            p_data, return_indices = self._get_sample_data('complex',
+                    calibration=calibration, **kwargs)
+
+            # Pulse compress
+            simrad_signal_proc.pulse_compression(p_data, self, calibration,
+                return_indices=return_indices)
+
+            # get the impedance values we need to convert to power
+            Zet = kwargs.pop('Zet', None)
+            if Zet is None:
+                # default transducer impedance (Demer et. al 2017 ICRR #336)
+                Zet = 75.0
+            Zer = kwargs.pop('Zer', None)
+            if Zer is None:
+                if calibration.impedance:
+                    Zer = calibration.impedance
+                else:
+                    # default receiver impedance (Demer et. al 2017 ICRR #336)
+                    Zer = 5400.0
+
+            # Determine the number of transducer sectors
+            n_sectors = p_data.data.shape[2]
+
+            # Compute power
+            Ur_t = np.mean(p_data.data, axis=2)
+            vrsplit = Zer / (Zer + Zet)
+            Per_t = n_sectors * (np.abs(Ur_t) / (2 * np.sqrt(2)))**2 * (1 / vrsplit)**2 * 1 / Zet
+
+            # convert to log units
+            p_data.data = 10 * np.log10(Per_t)
+
+            # and update the processed_data object's shape
+            p_data._shape()
+
         else:
             raise AttributeError('Raw data object does not contain power or ' +
                     'complex data required to return power.')
@@ -2281,6 +2428,21 @@ class raw_data(ping_data):
             time_order (bool): Set to True to return data in time order. If
                 False, data will be returned in the order it was read.
                 Default: True
+
+            Zer (float): Specify the WBT receiver nominal impedance in ohms.
+                The default is to use the receiver nominal impedance from the
+                raw data if available. If the data were recorded using a version
+                of EK80 that didn't store that value, 5400 ohms is used. Some
+                older WBT hardware had a nominal impedance of 1000 ohms. See
+                Demer et. al 2017 ICES Cooperative Research Report #336
+                "Evaluation of a wideband echosounder for fisheries and marine
+                ecosystem science" for details.
+
+            Zet (float): Specify the transducer nominal impedance in ohms.
+                The default is 75 ohms. See
+                Demer et. al 2017 ICES Cooperative Research Report #336
+                "Evaluation of a wideband echosounder for fisheries and marine
+                ecosystem science" for details.
 
         Returns:
             A processed_data object containing Sv (or sv if linear is True).
@@ -2438,6 +2600,21 @@ class raw_data(ping_data):
             time_order (bool): Set to True to return data in time order. If
                 False, data will be returned in the order it was read.
                 Default: True
+
+            Zer (float): Specify the WBT receiver nominal impedance in ohms.
+                The default is to use the receiver nominal impedance from the
+                raw data if available. If the data were recorded using a version
+                of EK80 that didn't store that value, 5400 ohms is used. Some
+                older WBT hardware had a nominal impedance of 1000 ohms. See
+                Demer et. al 2017 ICES Cooperative Research Report #336
+                "Evaluation of a wideband echosounder for fisheries and marine
+                ecosystem science" for details.
+
+            Zet (float): Specify the transducer nominal impedance in ohms.
+                The default is 75 ohms. See
+                Demer et. al 2017 ICES Cooperative Research Report #336
+                "Evaluation of a wideband echosounder for fisheries and marine
+                ecosystem science" for details.
 
         Returns:
             A processed_data object containing Sp (or sp if linear is True).
@@ -2758,9 +2935,14 @@ class raw_data(ping_data):
             calibration = ek80_calibration()
 
         # Create the processed_data object we will return.
-        p_data = processed_data(self.channel_id, self.frequency[0], None)
+        if hasattr(self, 'frequency'):
+            f = self.frequency[0]
+        else:
+            f = self.frequency_start[0] + (self.frequency_end[0] -
+                self.frequency_start[0]) / 2.0
+        p_data = processed_data(self.channel_id, f, None)
 
-        # Populate it with time and ping number.
+        # Populate it with time.
         p_data.ping_time = self.ping_time[return_indices].copy()
 
         # Get a reference to the data we're operating on.
@@ -2870,12 +3052,15 @@ class raw_data(ping_data):
         p_data.sample_interval = sample_interval
 
         # Add the transducer draft attribute
-        # First check if we apply the drop keel offset
-        add_drop_keel = cal_parms['transducer_mounting'] == 'DropKeel'
-        # Zero out offset where the mounting isn't DropKeel
-        cal_parms['drop_keel_offset'][np.invert(add_drop_keel)] = 0.0
-        # Compute the draft and add the attribute
-        xdcr_draft = cal_parms['transducer_offset_z'] + cal_parms['drop_keel_offset']
+        if cal_parms['transducer_mounting'] is not None:
+            # First check if we apply the drop keel offset
+            add_drop_keel = cal_parms['transducer_mounting'] == 'DropKeel'
+            # Zero out offset where the mounting isn't DropKeel
+            cal_parms['drop_keel_offset'][np.invert(add_drop_keel)] = 0.0
+            # Compute the draft and add the attribute
+            xdcr_draft = cal_parms['transducer_offset_z'] + cal_parms['drop_keel_offset']
+        else:
+            xdcr_draft = np.full((output.shape[0]), 0.0, dtype=np.float32)
         p_data.add_data_attribute('transducer_draft', xdcr_draft)
 
         # Return the processed_data object containing the requested data.
@@ -2924,7 +3109,7 @@ class raw_data(ping_data):
         # manipulated this value. Remember that we're operating on a
         # processed_data object so all pings share the same sound speed.
         cal_parms['sound_speed'] = np.empty((return_indices.shape[0]),
-                dtype=self.sample_dtype)
+                dtype=np.float32)
         cal_parms['sound_speed'].fill(power_data.sound_velocity)
 
         # For EK60 hardware use pulse duration when computing gains
@@ -2946,7 +3131,7 @@ class raw_data(ping_data):
 
         # Get the range for TVG calculation.  The method used depends on the
         # hardware used to collect the data.
-        c_range = np.empty(power_data.shape, dtype=power_data.sample_dtype)
+        c_range = np.empty(power_data.shape[0:2], dtype=power_data.sample_dtype)
         c_range [:,:] = power_data.range.copy()
         if tvg_correction:
             if self.transceiver_type == 'GPT':
@@ -2984,7 +3169,7 @@ class raw_data(ping_data):
 
         # Check if we're returning linear or log values.
         if linear:
-            # Convert to linear units (use [:] to operate in-place).
+            # Convert to linear units.
             data[:] = 10**(data / 10.0)
 
         # Return the result.
@@ -3061,7 +3246,11 @@ class raw_data(ping_data):
         self.sample_offset = np.empty((n_pings), np.int32)
         self.channel_mode = np.empty((n_pings), np.int32)
         self.pulse_form = np.empty((n_pings), np.int32)
-        self.frequency = np.empty((n_pings), np.float32)
+        if self.data_type == 'complex-FM':
+            self.frequency_start = np.empty((n_pings), np.float32)
+            self.frequency_end = np.empty((n_pings), np.float32)
+        else:
+            self.frequency = np.empty((n_pings), np.float32)
         self.pulse_duration = np.empty((n_pings), np.float32)
         self.sample_interval = np.empty((n_pings), np.float32)
         self.slope = np.empty((n_pings), np.float32)
@@ -3211,7 +3400,7 @@ class ek80_calibration(calibration):
         #  these attributes are properties of the raw_data class
         self._raw_attributes = ['sample_offset', 'channel_mode', 'pulse_form', 'frequency',
                 'pulse_duration' ,'sample_interval' ,'slope' ,'sample_count', 'transmit_power',
-                'filters']
+                'filters', 'frequency_start', 'frequency_end']
         self._init_attributes(self._raw_attributes)
 
         #  these attributes are found in the configuration datagram

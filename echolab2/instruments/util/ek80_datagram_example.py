@@ -2,17 +2,16 @@
     Simple example showing the use of the simrad_raw_file.RawSimradFile
     class to inspect the basic format of datafiles recorded using the
     EK80 application.
-    
+
     Users will normally use the EK80 class to access these data. This
     example simply shows how to access the datagrams at a low level
     for more esoteric applications.
-    
+
 '''
-from util.simrad_raw_file import RawSimradFile
+from echolab2.instruments.util.simrad_raw_file import RawSimradFile
 
 #  full path to EK80 recorded .raw file
-#filename = 'D:/Data/EK60 on EK80/D20180205-T233434.raw'
-filename = 'D:/Data/EK80 on EK80/DY1801_EK80-D20180205-T200007.raw'
+filename = 'C:/EK80 Test Data/EK80/CW/complex/DY1802_EK80-D20180301-T185940.raw'
 
 #  open it for read
 fid =  RawSimradFile(filename, 'r')
