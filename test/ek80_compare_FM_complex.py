@@ -6,12 +6,11 @@ This is a simple script to plot up the differences between pyEcholab outputs
 and outputs created by Echoview.
 
 This test compares EK80 FM Complex data from EK80 WBTs from the Oscar Dyson with
-pulse compressed output from EV
+pulse compressed output from EV.
 
 
 """
 
-import numpy as np
 from echolab2.instruments import EK80
 import echolab2.processing.processed_data as processed_data
 from echolab2.plotting.matplotlib import echogram
@@ -73,7 +72,9 @@ for idx, sv_chan in enumerate(ev_Sv_filename):
 
     #  read in the echoview data - we can read .mat and .csv files exported
     #  from EV 7+ directly into a processed_data object
-    frequency = np.mean(raw_data.frequency_start + raw_data.frequency_end) / 2
+    f_start = raw_data.frequency_start[0]
+    f_end = raw_data.frequency_end[0]
+    frequency = (f_start + f_end) / 2
     key_name = sv_chan
     ev_filename = input_path + ev_Sv_filename[key_name]
     print('Reading the echoview file %s' % (ev_Sv_filename[key_name]))
@@ -90,32 +91,33 @@ for idx, sv_chan in enumerate(ev_Sv_filename):
 
 
     #  now plot all of this up
+    f_string = "%d - %d" % (f_start / 1000, f_end / 1000)
 
     #  show the Echolab Sv and TS echograms
     fig = plt.figure()
     eg = echogram.Echogram(fig, ek80_Sv, threshold=[-70,-34])
-    eg.axes.set_title("Echolab2 Sv " + str(frequency) + " kHz")
+    eg.axes.set_title("Echolab2 Sv " + f_string + " kHz")
     fig = plt.figure()
     eg = echogram.Echogram(fig, ek80_Ts, threshold=[-70,-34])
-    eg.axes.set_title("Echolab2 Ts " + str(frequency) + " kHz")
+    eg.axes.set_title("Echolab2 Ts " + f_string + " kHz")
 
     #  compute the difference of EV and Echolab Sv data
     diff = ek80_Sv - ev_Sv_data
     fig = plt.figure()
     eg = echogram.Echogram(fig, diff, threshold=[-0.25,0.25])
-    eg.axes.set_title("Echolog Sv - EV Sv " + str(frequency) + " kHz")
+    eg.axes.set_title("Echolog Sv - EV Sv " + f_string + " kHz")
 
     #  compute the difference of EV and Echolab TS data
     diff = ek80_Ts - ev_Ts_data
     fig = plt.figure()
     eg = echogram.Echogram(fig, diff, threshold=[-0.25,0.25])
-    eg.axes.set_title("Echolog TS - EV TS " + str(frequency) + " kHz")
+    eg.axes.set_title("Echolog TS - EV TS " + f_string + " kHz")
 
     #  compute the difference of EV and Echolab power data
     diff = ek80_power - ev_power_data
     fig = plt.figure()
     eg = echogram.Echogram(fig, diff, threshold=[-0.25,0.25])
-    eg.axes.set_title("Echolog power - EV power " + str(frequency) + " kHz")
+    eg.axes.set_title("Echolog power - EV power " + f_string + " kHz")
 
     #  plot up a single Sv ping
     fig2 = plt.figure()

@@ -624,16 +624,15 @@ class EK80(object):
                     this_raw_data = raw_obj
                     break
                 if new_datagram['data_type'] > 3:
-                    # This datagram contains complex data - check if FM or CW
-                    if self._tx_params[new_datagram['channel_id']].get('frequency', None):
-                        if raw_obj.data_type == 'complex-CW':
-                            # This raw_data object contains complex CW data and so do we
+                    # first check if the number of sectors are the same
+                    if new_datagram['n_complex'] == raw_obj.complex.shape[2]:
+                        # Then make sure the data types are the same
+                        is_fm = self._tx_params[new_datagram['channel_id']]['pulse_form'] > 0
+                        if is_fm and raw_obj.data_type == 'complex-FM':
                             this_raw_data = raw_obj
-                    else:
-                        if raw_obj.data_type == 'complex-FM':
-                            # This raw_data object contains complex FM data and so do we
+                        elif not is_fm and raw_obj.data_type == 'complex-CW':
                             this_raw_data = raw_obj
-                    break
+                        break
 
             #  check if we need to create a new raw_data object
             if this_raw_data is None:
@@ -1500,6 +1499,16 @@ class raw_data(ping_data):
     # Create a constant to convert from indexed angles to electrical angles.
     INDEX2ELEC = 180.0 / 128.0
 
+    # Specify the default transducer sector impedance in ohms. This value is
+    # provided by Simrad
+    ZTRANSDUCER = 75.0
+
+    # Specify the default transceiver impedance in ohms. This value is
+    # used when the transceiver impedance is not availabe in the data file.
+    # Older versions of the EK80 configuration header did not include this
+    # value. Early versions of the EK80 WBT had an impedance of 1000 omhs.
+    ZTRANSCEIVER = 5400
+
 
     def __init__(self, channel_id, n_pings=500, n_samples=-1,
                  rolling=False, store_power=True,
@@ -1612,7 +1621,6 @@ class raw_data(ping_data):
                                   'filters',
                                   'channel_mode',
                                   'pulse_form',
-#                                  'frequency',
                                   'pulse_duration',
                                   'sample_interval',
                                   'slope',
@@ -1749,8 +1757,8 @@ class raw_data(ping_data):
                              datagram for this channel.
             filters (dict): A dictionary containing this channels filter coefficients
                             used by the EK80 to filter the received signal.
-            start_sample (int):
-            end_sample (int):
+            start_sample (int): The starting sample to store in the object.
+            end_sample (int): The ending sample to store in the object.
         """
 
         # Set some defaults
@@ -1864,11 +1872,8 @@ class raw_data(ping_data):
             max_data_samples.append(self.complex.shape[1])
 
             # Check to ensure the number of sectors hasn't changed.
-            # I am assuming the channel ID will change because the
-            # transducer would have to change for the sectors to change.
-            # If I'm wrong, we need to track this in the EK80 object and
-            # create a new raw_data object for data with different n_complex
-            #  values.
+            # This should never happen since I am handling this in the
+            # EK80 class but we'll keep the check here anyways.
             if self.complex.shape[2] != n_complex:
                 raise ValueError("The number of complex values changed after object " +
                         "creation. Why didn't the channel ID change??")
@@ -2192,36 +2197,9 @@ class raw_data(ping_data):
             p_data, return_indices = self._get_sample_data('complex',
                     calibration=calibration, **kwargs)
 
-            # Pulse compress
-            simrad_signal_proc.pulse_compression(p_data, self, calibration,
-                return_indices=return_indices)
-
-            # get the impedance values we need to convert to power
-            Zet = kwargs.pop('Zet', None)
-            if Zet is None:
-                # default transducer impedance (Demer et. al 2017 ICRR #336)
-                Zet = 75.0
-            Zer = kwargs.pop('Zer', None)
-            if Zer is None:
-                if calibration.impedance:
-                    Zer = calibration.impedance
-                else:
-                    # default receiver impedance (Demer et. al 2017 ICRR #336)
-                    Zer = 5400.0
-
-            # Determine the number of transducer sectors
-            n_sectors = p_data.data.shape[2]
-
-            # Compute power
-            Ur_t = np.mean(p_data.data, axis=2)
-            vrsplit = Zer / (Zer + Zet)
-            Per_t = n_sectors * (np.abs(Ur_t) / (2 * np.sqrt(2))) ** 2 * (1 / vrsplit) ** 2 * 1 / Zet
-
-            # convert to log units
-            p_data.data = 10 * np.log10(Per_t)
-
-            # and update the processed_data object's shape
-            p_data._shape()
+            # Convert complex to power
+            p_data = self._complex_to_power(p_data, calibration, return_indices,
+                    **kwargs)
 
         else:
             raise AttributeError('Raw data object does not contain power or ' +
@@ -2234,6 +2212,107 @@ class raw_data(ping_data):
         p_data.is_log = True
 
         return p_data
+
+
+    def _complex_to_power(self, p_data, calibration, return_indices, return_angles=False,
+            **kwargs):
+        '''_complex_to_power converts the compex data in the processed_data
+        object p_data to power. The method below was derived from code provided
+        by Lars Nonboe Andersen (Kongsberg Maritime) and information in the USA–Norway
+        EK80 Workshop Report:
+
+        Demer, D. A., Andersen, L. N., Bassett, C., Berger, L., Chu, D., Condiotty, J., Cutter, G.
+        R., et al. 2017. 2016 USA–Norway EK80 Workshop Report: Evaluation of a wideband
+        echosounder for fisheries and marine ecosystem science. ICES Cooperative Research
+        Report No. 336. 69 pp. http://doi.org/10.17895/ices.pub.2318
+
+        '''
+
+        # Pulse compress (this funtion has no effect on CW data)
+        simrad_signal_proc.pulse_compression(p_data, self, calibration,
+            return_indices=return_indices)
+
+        # get the impedance values we need to convert to power
+        Zet = kwargs.pop('Zet', None)
+        if Zet is None:
+            # default transducer impedance (Demer et. al 2017 ICRR #336)
+            Zet = raw_data.ZTRANSDUCER
+        Zer = kwargs.pop('Zer', None)
+        if Zer is None:
+            if calibration.impedance:
+                Zer = calibration.impedance
+            else:
+                # default receiver impedance (Demer et. al 2017 ICRR #336)
+                Zer = raw_data.ZTRANSCEIVER
+
+        # Determine the number of transducer sectors
+        n_sectors = p_data.data.shape[2]
+
+        # Check if we're supposed to return angles
+        if return_angles:
+            # We're returning angles, get the cal parameters we need
+            cal_parms = {'angle_sensitivity_alongship':None,
+                         'angle_sensitivity_athwartship':None,
+                         'transducer_frequency':None,
+                         'frequency':None,
+                         'frequency_start':None,
+                         'frequency_end':None}
+
+            # populate the cal_parms dict
+            for key in cal_parms:
+                cal_parms[key] = calibration.get_parameter(self, key,
+                        return_indices)
+
+            # Set the center frequency
+            if cal_parms['frequency'] is None:
+                fc = (cal_parms['frequency_start'] + cal_parms['frequency_end']) / 2
+            else:
+                fc = cal_parms['frequency']
+
+            # Compute angles based on the number of sectors
+            if n_sectors == 4:
+                # sum up the quadrant pairs
+                yfore = np.sum(p_data[:,:,2:4], axis=2) / 2
+                yaft = np.sum(p_data[:,:,0:2], axis=2) / 2
+                ystar = (p_data[:,:,0] + p_data[:,:,3]) / 2
+                yport = np.sum(p_data[:,:,1:3], axis=2) / 2
+
+                # Create empty processed_data objects and populate with angle data
+                p_data_alongship = p_data.empty_like()
+                p_data_alongship.is_log = False
+                p_data_alongship.data[:,:] = (np.angle(yfore * np.conj(yaft)) * 180 / np.pi /
+                    (cal_parms['angle_sensitivity_alongship'] * fc / cal_parms['transducer_frequency']))
+
+                p_data_athwartship = p_data.empty_like()
+                p_data_athwartship.is_log = False
+                p_data_athwartship.data[:,:] = (np.angle(ystar * np.conj(yport)) * 180 / np.pi /
+                    (cal_parms['angle_sensitivity_alongship'] * fc / cal_parms['transducer_frequency']))
+
+            elif n_sectors == 3:
+                pass
+
+            else:
+                # We don't have enough sectors to compute angles
+                p_data_alongship = None
+                p_data_athwartship = None
+
+        # Compute power
+        Ur_t = np.mean(p_data.data, axis=2)
+        vrsplit = Zer / (Zer + Zet)
+        Per_t = (n_sectors * (np.abs(Ur_t) / (2 * np.sqrt(2)))**2 *
+                (1 / vrsplit)**2 * 1 / Zet)
+        Per_t[Per_t == 0] = np.nan
+
+        # convert to log units
+        p_data.data = 10 * np.log10(Per_t)
+
+        # and update the processed_data object's shape
+        p_data._shape()
+
+        if return_angles:
+            return (p_data, (p_data_alongship, p_data_athwartship))
+        else:
+            return p_data
 
 
     def _get_power(self, calibration=None, **kwargs):
@@ -2270,36 +2349,9 @@ class raw_data(ping_data):
             p_data, return_indices = self._get_sample_data('complex',
                     calibration=calibration, **kwargs)
 
-            # Pulse compress
-            simrad_signal_proc.pulse_compression(p_data, self, calibration,
-                return_indices=return_indices)
-
-            # get the impedance values we need to convert to power
-            Zet = kwargs.pop('Zet', None)
-            if Zet is None:
-                # default transducer impedance (Demer et. al 2017 ICRR #336)
-                Zet = 75.0
-            Zer = kwargs.pop('Zer', None)
-            if Zer is None:
-                if calibration.impedance:
-                    Zer = calibration.impedance
-                else:
-                    # default receiver impedance (Demer et. al 2017 ICRR #336)
-                    Zer = 5400.0
-
-            # Determine the number of transducer sectors
-            n_sectors = p_data.data.shape[2]
-
-            # Compute power
-            Ur_t = np.mean(p_data.data, axis=2)
-            vrsplit = Zer / (Zer + Zet)
-            Per_t = n_sectors * (np.abs(Ur_t) / (2 * np.sqrt(2)))**2 * (1 / vrsplit)**2 * 1 / Zet
-
-            # convert to log units
-            p_data.data = 10 * np.log10(Per_t)
-
-            # and update the processed_data object's shape
-            p_data._shape()
+            # Convert complex to power
+            p_data = self._complex_to_power(p_data, calibration, return_indices,
+                    **kwargs)
 
         else:
             raise AttributeError('Raw data object does not contain power or ' +
@@ -2382,8 +2434,8 @@ class raw_data(ping_data):
                 used for more advanced anipulations where start/end ping/time are
                 inadequate.
 
-            calibration (EK60.ek60_calibration): Set to an instance of
-                EK60.ek60_calibration containing the calibration parameters
+            calibration (EK80.ek80_calibration): Set to an instance of
+                EK80.ek80_calibration containing the calibration parameters
                 you want to use when transforming to Sv/sv. If no calibration
                 object is provided, the values will be extracted from the raw
                 data.
@@ -3146,7 +3198,7 @@ class raw_data(ping_data):
             #  zero out negative ranges
             c_range[c_range < 0] = 0
 
-        # Calculate time varied gain.
+        # Calculate time varied gain. Do not apply at ranges < 1 m.
         tvg = c_range.copy()
         tvg[tvg < 1] = 1
         if convert_to in ['sv','Sv']:
@@ -3313,31 +3365,45 @@ class raw_data(ping_data):
         # Print the class and address.
         msg = str(self.__class__) + " at " + str(hex(id(self))) + "\n"
 
+        # check if first ping is FM or CW
+        is_fm = raw_data.pulse_form[0] > 0
+
         # Print some more info about the EK80.raw_data instance.
         n_pings = len(self.ping_time)
         if n_pings > 0:
             msg = msg + "                   channel: " + self.channel_id + "\n"
-            msg = msg + "    frequency (first ping): " + str(
-                self.frequency[0]) + "\n"
-            msg = msg + " pulse length (first ping): " + str(
+            if is_fm:
+                msg = msg + "frequency start (first ping): " + str(
+                    self.frequency_start[0]) + "\n"
+                msg = msg + "  frequency end (first ping): " + str(
+                    self.frequency_end[0]) + "\n"
+            else:
+                msg = msg + "    frequency (first ping): " + str(
+                    self.frequency[0]) + "\n"
+            msg = msg + "   pulse length (first ping): " + str(
                 self.pulse_duration[0]) + "\n"
-            msg = msg + "           data start time: " + str(
+            msg = msg + "             data start time: " + str(
                 self.ping_time[0]) + "\n"
-            msg = msg + "             data end time: " + str(
+            msg = msg + "               data end time: " + str(
                 self.ping_time[n_pings-1]) + "\n"
-            msg = msg + "           number of pings: " + str(n_pings) + "\n"
+            msg = msg + "             number of pings: " + str(n_pings) + "\n"
             if hasattr(self, 'power'):
                 n_pings,n_samples = self.power.shape
-                msg = msg + ("    power array dimensions: (" + str(n_pings) +
+                msg = msg + ("                  data type: CW reduced\n")
+                msg = msg + ("     power array dimensions: (" + str(n_pings) +
                              "," + str(n_samples) + ")\n")
             if hasattr(self, 'angles_alongship_e'):
                 n_pings,n_samples = self.angles_alongship_e.shape
-                msg = msg + ("    angle array dimensions: (" + str(n_pings) +
+                msg = msg + ("     angle array dimensions: (" + str(n_pings) +
                              "," + str(n_samples) + ")\n")
             if hasattr(self, 'complex'):
-                n_pings,n_samples = self.complex.shape
-                msg = msg + ("  complex array dimensions: (" + str(n_pings) +
-                             "," + str(n_samples) + ")\n")
+                n_pings,n_samples,n_sectors = self.complex.shape
+                if is_fm:
+                    msg = msg + ("                  data type: FM\n")
+                else:
+                    msg = msg + ("                  data type: CW complex\n")
+                msg = msg + ("   complex array dimensions: (" + str(n_pings) +
+                             "," + str(n_samples) + "," + str(n_sectors) + ")\n")
         else:
             msg = msg + "  raw_data object contains no data\n"
 
@@ -3398,9 +3464,9 @@ class ek80_calibration(calibration):
                                            'WBT LF':93750}
 
         #  these attributes are properties of the raw_data class
-        self._raw_attributes = ['sample_offset', 'channel_mode', 'pulse_form', 'frequency',
-                'pulse_duration' ,'sample_interval' ,'slope' ,'sample_count', 'transmit_power',
-                'filters', 'frequency_start', 'frequency_end']
+        self._raw_attributes = ['frequency','frequency_start','frequency_end', 'transmit_power',
+                'pulse_duration' ,'sample_offset', 'channel_mode', 'pulse_form',
+                'sample_interval' ,'slope' ,'sample_count','filters']
         self._init_attributes(self._raw_attributes)
 
         #  these attributes are found in the configuration datagram
@@ -3524,9 +3590,12 @@ class ek80_calibration(calibration):
         #  print the class and address
         msg = str(self.__class__) + " at " + str(hex(id(self))) + "\n"
 
-        # Create a list of attributes to print out
-        attr_to_display = ['frequency','transmit_power','pulse_duration',
-                'sample_interval', 'gain', 'sa_correction']
+        # Create a list of attributes to print out - I'm just adding them
+        # all right now. Can set specific attributes if this is too much.
+        attr_to_display = []
+        attr_to_display.extend(self._raw_attributes)
+        attr_to_display.extend(self._config_attributes)
+        attr_to_display.extend(self._environment_attributes)
 
         # And assemble the string
         for param_name in attr_to_display:

@@ -3211,7 +3211,6 @@ class ek60_calibration(calibration):
         # Add "special" attributes - These are attributes that require specific handling
 
 
-
     def from_raw_data(self, raw_data, return_indices=None):
         """Populates the calibration object.
 
@@ -3258,6 +3257,7 @@ class ek60_calibration(calibration):
 
         return param_data
 
+
     def __str__(self):
         """Re-implements string method that provides some basic info about
         the ek60_calibration object
@@ -3269,12 +3269,11 @@ class ek60_calibration(calibration):
         #  print the class and address
         msg = str(self.__class__) + " at " + str(hex(id(self))) + "\n"
 
-        # Create a list of attributes to print out
-        attr_to_display = ['channel_id','frequency','transmit_power',
-                'pulse_length','sound_velocity', 'gain', 'sa_correction',
-                'equivalent_beam_angle','absorption_coefficient',
-                'angle_sensitivity_alongship', 'angle_sensitivity_athwartship',
-                'angle_offset_alongship', 'angle_offset_athwartship']
+        # Create a list of attributes to print out - I'm just adding them
+        # all right now. Can set specific attributes if this is too much.
+        attr_to_display = []
+        attr_to_display.extend(self._raw_attributes)
+        attr_to_display.extend(self._config_attributes)
 
         # And assemble the string
         for param_name in attr_to_display:

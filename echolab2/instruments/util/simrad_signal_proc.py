@@ -257,11 +257,14 @@ def pulse_compression(p_data, raw_data, calibration, return_indices=None):
         for p_idx, tx in enumerate(tx_signal):
             # create matched filter using tx signal for this ping
             tx_mf = np.flipud(np.conj(tx))
-            ltx = len(tx_mf)
+            ltx = tx_mf.shape[0]
             tx_n = np.linalg.norm(tx) ** 2
-            #compressed = np.empty(p_data.data[p_idx,:,0].shape, dtype=p_data.data.dtype)
+
+            # apply the filter to each of the transducer sectors
             for q_idx in range(p_data.data[p_idx,:,:].shape[1]):
-                compressed = np.convolve(p_data.data[p_idx,:,q_idx], tx_mf) / tx_n
-                p_data.data[p_idx,:,q_idx] = compressed[ltx-1:]
+                # apply the filter
+                filtered = np.convolve(p_data.data[p_idx,:,q_idx], tx_mf) / tx_n
+                # remove filter delay
+                p_data.data[p_idx,:,q_idx] = filtered[ltx-1:]
 
 
