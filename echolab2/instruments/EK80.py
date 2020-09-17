@@ -1275,7 +1275,7 @@ class EK80(object):
                     dgram['parameter']['channel_id'] = channel_id
                     dgram['parameter']['channel_mode'] = dg_objects[idx].channel_mode[dg_obj_idx[idx]]
                     dgram['parameter']['pulse_form'] = dg_objects[idx].pulse_form[dg_obj_idx[idx]]
-                    if self.data_type == 'complex-FM':
+                    if dg_objects[idx].data_type == 'complex-FM':
                         dgram['parameter']['frequency_start'] = dg_objects[idx].frequency_start[dg_obj_idx[idx]]
                         dgram['parameter']['frequency_end'] = dg_objects[idx].frequency_end[dg_obj_idx[idx]]
                     else:
@@ -2185,6 +2185,11 @@ class raw_data(ping_data):
 
         """
 
+        # Check if user provided a cal object
+        if calibration is None:
+            # No - get one populated from raw data
+            calibration = self.get_calibration()
+
         # Call the _get_sample_data method requesting the appropriate sample attribute.
         if hasattr(self, 'power'):
 
@@ -2501,6 +2506,11 @@ class raw_data(ping_data):
 
         """
 
+        # Check if user provided a cal object
+        if calibration is None:
+            # No - get one populated from raw data
+            calibration = self.get_calibration()
+
         # Get the power data - this step also resamples and arranges the raw data.
         p_data, return_indices = self._get_power(calibration=calibration, **kwargs)
 
@@ -2673,6 +2683,11 @@ class raw_data(ping_data):
 
         """
 
+        # Check if user provided a cal object
+        if calibration is None:
+            # No - get one populated from raw data
+            calibration = self.get_calibration()
+
         # Get the power data - this step also resamples and arranges the raw data.
         p_data, return_indices = self._get_power(calibration=calibration, **kwargs)
 
@@ -2762,8 +2777,8 @@ class raw_data(ping_data):
 
         # Check if user provided a cal object
         if calibration is None:
-            # No - create an empty one - all cal values will come from the raw data
-            calibration = ek80_calibration()
+            # No - get one populated from raw data
+            calibration = self.get_calibration()
 
         # Get the electrical angles.
         alongship, athwartship, return_indices = \
@@ -2815,6 +2830,11 @@ class raw_data(ping_data):
             Two processed data objects containing the unconverted
             angles_alongship_e and angles_athwartship_e data.
         """
+
+        # Check if user provided a cal object
+        if calibration is None:
+            # No - get one populated from raw data
+            calibration = self.get_calibration()
 
         # Call the _get_sample_data method requesting the 'angles_alongship_e'
         # sample attribute. The method will return a reference to a newly created
@@ -2981,17 +3001,11 @@ class raw_data(ping_data):
             # Get an array of index values to return.
             return_indices = self.get_indices(**kwargs)
 
-        # Check if user provided a cal object
-        if calibration is None:
-            # No - create an empty one - all cal values will come from the raw data
-            calibration = ek80_calibration()
-
         # Create the processed_data object we will return.
         if hasattr(self, 'frequency'):
             f = self.frequency[0]
         else:
-            f = self.frequency_start[0] + (self.frequency_end[0] -
-                self.frequency_start[0]) / 2.0
+            f = (self.frequency_start[0] + self.frequency_end[0]) / 2.0
         p_data = processed_data(self.channel_id, f, None)
 
         # Populate it with time.
@@ -3596,10 +3610,11 @@ class ek80_calibration(calibration):
         attr_to_display.extend(self._raw_attributes)
         attr_to_display.extend(self._config_attributes)
         attr_to_display.extend(self._environment_attributes)
+        attr_to_display.remove('filters')
 
         # And assemble the string
         for param_name in attr_to_display:
-            n_spaces = 30 - len(param_name)
+            n_spaces = 32 - len(param_name)
             msg += n_spaces * ' ' + param_name
             # Extract data from raw_data attribues
             if hasattr(self, param_name):
