@@ -6,8 +6,10 @@ This script can be used to test the writing of EK80 data to .raw files. It will
 read in one or more .raw files, write them to disk, then read the re-written
 file and compare the original to the re-written file.
 
-THIS SCRIPT WILL ONLY WORK WITH EK80 CW REDUCED DATA AT THIS TIME. I AM WORKING ON
-CW COMPLEX->POWER CONVERSION BUT IT IS NOT COMLETE.
+Similar to the EK60 write test, a successful round trip will result in data that
+differs no more than +-0.0118 dB These differences are due to the effects of
+converting from the 16 bit linear sample data to the "EK500 DB Format" as 32-bit
+float, then back to the packed 16 bit value.
 
 While significant effort was made to ensure the write_raw method creates sane files,
 pyEcholab gives you a lot of flexibility when working with raw data and you can
@@ -22,7 +24,7 @@ import matplotlib.pyplot as plt
 
 # This test script can and should be run with different files to test as many instrument
 # configurations and file combinations as possible. There are a couple of different files
-# defined below. You can change the list passed to the ek60.read_raw() method to try
+# defined below. You can change the list passed to the ek80.read_raw() method to try
 # the different files below or add your own.
 
 # Define the files that we will work with. The simplest test we can do is with a single file
@@ -33,13 +35,11 @@ one_file = ['C:/EK80 Test Data/EK80/CW/reduced/DY2000_EK80_Cal-D20200126-T062905
 
 # Spice it up with two different files. These two files were recorded 5 years apart
 # with different system settings. Further, while the hardware is the same, the transceiver
-# installation is different between the two files so the EK60 class rightly treats
-# them as different channels and the channel numbers for the second file are re-mapped
-# (you will see this when the EK60 object is printed.) This tests the EK60 class's
-# ability to identify file boundaries, group data correctly, and remap channel
-# numbers back to the original values.
+# installation is different between the two files so the EK80 class rightly treats
+# them as different channels. This tests the EK80 class's ability to identify file
+# boundaries, group data correctly.
 #
-# By default, the ER60 class will write an output file for each input file you have read.
+# By default, the EK80 class will write an output file for each input file you have read.
 # In this case we're reading two files and we will write two files.
 two_files = ['C:/EK80 Test Data/EK80/CW/reduced/DY2000_EK80_Cal-D20200126-T063644.raw',
              'C:/EK80 Test Data/EK80/CW/reduced/DY2000_EK80_Cal-D20200126-T064400.raw']
@@ -47,7 +47,7 @@ two_files = ['C:/EK80 Test Data/EK80/CW/reduced/DY2000_EK80_Cal-D20200126-T06364
 #  specify the output path AND file name header
 out_file = 'C:/Temp_EK_Test/EK-Raw-Write-Test'
 
-# Create an instance of the EK60 instrument. The EK60 class represents a
+# Create an instance of the EK80 instrument. The EK80 class represents a
 # collection of synchronous "ping" data, asynchronous data like GPS, motion,
 # and annotation datagrams, and general attributes about this data.
 ek80 = EK80.EK80()
@@ -63,7 +63,7 @@ print(ek80)
 orig_chan_data = ek80.get_channel_data()
 
 # Write the unmodified data to disk. out_file can be a string or dict. You can
-# read the docs in the ek60.write_raw method header, but for know know that if
+# read the docs in the ek80.write_raw method header, but for know know that if
 # you pass a string, it expects it to be a path + file name header which it will
 # append "-DYYYYMMDD-Thhmmss.raw". So if you pass "C:/test/EK_Test" you will get
 # files like "C:/test/EK_Test-D20200101-T120015.raw". The method returns a list
@@ -71,11 +71,11 @@ orig_chan_data = ek80.get_channel_data()
 out_files = ek80.write_raw(out_file, overwrite=True)
 
 
-# Now create a second EK60 object to contain the freshly written data
+# Now create a second EK80 object to contain the freshly written data
 ek80rewrite = EK80.EK80()
 ek80rewrite.read_raw(out_files)
 
-# get references to the raw data we just read. The ek60.get_channel_data method
+# get references to the raw data we just read. The ek80.get_channel_data method
 # allows you to get these references by frequency, channel ID, or channel number.
 # Here we don't provide any arguments so we get back a dict, keyed by channel ID.
 # containing the raw_data
@@ -86,7 +86,7 @@ for channel_id in rewrite_chan_data:
     # NOTE HERE A CHANGE IN API - Channel data is now returned as a LIST of different data types.
 
     # Simrad raw files can contain power, angle, power+angle, or complex data and the
-    # raw_data class is designed to store a single data type. We faked it with the EK60.raw_data
+    # raw_data class is designed to store a single data type. We faked it with the EK80.raw_data
     # class by making that one data type power+angle but adding EK80 support forced this
     # change. In our case here I know that we are dealing with a single data type so I
     # am going to index directly. In cases where you don't know, you would have to handle

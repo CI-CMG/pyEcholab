@@ -109,6 +109,7 @@ ek60rewrite.read_raw(out_files)
 # containing the raw_data
 rewrite_chan_data = ek60rewrite.get_channel_data()
 
+
 # We'll iterate through each of the channels
 for channel_id in rewrite_chan_data:
 

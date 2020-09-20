@@ -206,7 +206,7 @@ class EK60(object):
         #  to extract, parse, and interpolate the NMEA data.
         self.nmea_data = nmea_data()
 
-        #  motion_data is the util.simrad_motion_data object that will
+        #  motion_data is the util.motion_data object that will
         #  contain data from motion fields in the ER60 datagrams.
         #  This object has methods to extract and interpolate the motion data.
         self.motion_data = motion_data()
@@ -519,8 +519,7 @@ class EK60(object):
                     # The raw_data objects are stored in a list because with the introduction of the
                     # EK80 different types of data can be stored in a raw file and the raw_data object
                     # was designed to contain a single data type. While this is not required for EK60
-                    # data, the API was changed to match the EK80 and I suppose in rare cases will
-                    # improve memory utilization if mixing data types when reading EK60 data.
+                    # data, the API was changed to match the EK80.
                     self.raw_data[channel_id] = []
 
                     #  add the channel to our list of channel IDs
@@ -917,7 +916,8 @@ class EK60(object):
                  channel_ids=None, time_format_string='%Y-%m-%d %H:%M:%S',
                  start_sample=None, end_sample=None, progress_callback=None,
                  overwrite=False, async_window=5, raw_index_array=None,
-                 nmea_index_array=None, annotation_index_array=None):
+                 nmea_index_array=None, annotation_index_array=None,
+                 strip_padding=True):
         """Writes one or more Simrad Ex60/ES70/ME70 .raw files.
 
 
@@ -992,6 +992,14 @@ class EK60(object):
             end_sample (int): Specify ending sample number if not
                 writing to last sample.
 
+            strip_padding (bool): Set to True to remove any NaN padding at the
+                beginning and/or end of pings. Echolab stores sample data in
+                rectangular arrays. When the sample number increses within or
+                between files, these arrays are resized and pings with fewer samples
+                are padded with NaNs as appropriate. When True, these samples are
+                omitted when writing. This DOES NOT affect padded pings. Padded
+                pings are always removed before writing. The default value is True.
+
             The following keywords are for advanced indexing and writing of the
             data. This can allow you to easily write subsets of data where the
             pings do not have to be contiguous.
@@ -1030,6 +1038,39 @@ class EK60(object):
             dgram['dg_version'] = dg_version
 
             return dgram
+
+
+        def remove_sample_padding(data, sample_offset):
+            '''
+            remove_sample_padding will strip NaN padding from the beginning and
+            end of a "ping". It adjusts the sample_offset if required. It does
+            not alter data between the first and last non NaN values.
+            '''
+
+            # check for any nan data
+            if data.ndim == 1:
+                nan_idx = np.isnan(data)
+            else:
+                nan_idx = np.isnan(data[:,0])
+
+            # Check if there are any NaNs at all
+            if np.any(nan_idx):
+
+                # find the data start and data end indexes
+                start_idx = np.argmin(nan_idx)
+                end_idx = np.argmax(nan_idx)
+
+                # update the sample_offset if needed
+                if start_idx != sample_offset:
+                    sample_offset = start_idx
+
+                # get data with padding removed
+                if data.ndim == 1:
+                    data = data[start_idx:end_idx]
+                else:
+                    data = data[start_idx:end_idx,:]
+
+            return (data, sample_offset)
 
 
         #  initialize some vars to hold the current vessel attitude data
@@ -1091,7 +1132,7 @@ class EK60(object):
                              'CON':0,
                              'MRU':0}
 
-        # Because a user can load multiple .raw files into an ER60 object, and those
+        # Because a user can load multiple .raw files into an EK80 object, and those
         # .raw files can contain data from various system configurations, we need to
         # write potentially different configurations as separate files to ensure the
         # new data are interpreted correctly when read.
@@ -1104,12 +1145,12 @@ class EK60(object):
         #
         # This is important to remember if you are trying to combine data from two raw
         # files into one. It is your responsibility to only combine data from files
-        # recorded using the same system parameters (there is some nuance here,
-        # but either you'll know when you can break this rule or not.) After combining
-        # data from two or more files, you need to replicate the first configuration
-        # dict in each raw_data object across all pings:
+        # recorded using the the same system parameters. After combining data from
+        # two or more files, you need to replicate the first configuration dict in each
+        # raw_data object across all pings:
         #
-        # raw_data_38khz.configuration[:] = raw_data_38khz.configuration[0]
+        # raw_data.configuration[:] = raw_data.configuration[0]
+
 
         # The first thing we need to do is identify all of the data that meets our
         # time/ping number, channel/frequency constraints. Then we group that by input
@@ -1158,12 +1199,19 @@ class EK60(object):
                     unique_ids = []
                     conf_ids = []
                     for c in data.configuration:
-                        this_id = id(c)
-                        conf_ids.append(this_id)
-                        is_unique = True
-                        for uc in unique_configs:
-                            if uc['file_name'] == c['file_name']:
-                                is_unique = False
+                        # make sure this ping has a valid config. Padded pings will
+                        # have NaNs so we'll ignore those. They will be removed later.
+                        if isinstance(c, dict):
+                            this_id = id(c)
+                            conf_ids.append(this_id)
+                            is_unique = True
+                            for uc in unique_configs:
+                                if uc['file_name'] == c['file_name']:
+                                    is_unique = False
+                        else:
+                            is_unique = False
+                            this_id = None
+                            conf_ids.append(this_id)
 
                         if is_unique:
                             # this is a convienient place to filter by frequency...
@@ -1198,7 +1246,7 @@ class EK60(object):
                         # datagrams that we will ultimately write for this file.
                         n_datagrams = conf_idx.size
 
-                        # Store the channel ID, condif dict, reference to the
+                        # Store the channel ID, config dict, reference to the
                         # raw data, and the index to the data by filename
                         this_data = {'channel_id':channel, 'configuration':conf,
                                 'data':data, 'index':conf_idx}
@@ -1235,7 +1283,7 @@ class EK60(object):
 
             # .raw files are always written in time order. We need to create a vector
             # of timestamps from all of our data sources (raw data, NMEA data, annotations,
-            # and motion data)and use the sort indices to create a our datagram roadmap.
+            # and motion data) and use the sort indices to create a our datagram roadmap.
 
             # create the map arrays
             dg_times = np.array([], dtype='datetime64[ms]')
@@ -1246,6 +1294,9 @@ class EK60(object):
             # Add the raw data
             for channel in data_by_file[infile]:
                 for data in data_by_file[infile][channel]:
+                    # First, remove any empty pings from the index.
+                    data['index'] = data['index'][np.isfinite(data['data'].transmit_power[data['index']])]
+                    # Then extract the times and references to the data we're writing
                     times = data['data'].ping_time[data['index']]
                     dg_times = np.concatenate((dg_times, times))
                     dg_objects = np.concatenate((dg_objects, np.repeat(data['data'], times.size)))
@@ -1336,6 +1387,7 @@ class EK60(object):
 
                 #  now assemble the datagram dict based on the type
                 if dg_type[idx] == 'RAW':
+
                     #  set the raw datagram values
                     dgram_dict['channel'] = data_by_file[infile][dg_objects[idx].channel_id][0]['configuration']['channel_number']
                     dgram_dict['transducer_depth'] = dg_objects[idx].transducer_depth[dg_obj_idx[idx]]
@@ -1361,11 +1413,16 @@ class EK60(object):
                     # Extract the data and update the sample count
                     if hasattr(dg_objects[idx], 'power'):
                         power_data = dg_objects[idx].power[dg_obj_idx[idx],start_sample:end_sample]
-                        sample_count = power_data.shape[0] - start_sample
+                        if strip_padding:
+                            power_data, sample_offset = remove_sample_padding(power_data, sample_offset)
+                        sample_count = power_data.shape[0]
                     if hasattr(dg_objects[idx], 'angles_athwartship_e'):
                         angles_athwart_data = dg_objects[idx].angles_athwartship_e[dg_obj_idx[idx],start_sample:end_sample]
                         angles_along_data = dg_objects[idx].angles_alongship_e[dg_obj_idx[idx],start_sample:end_sample]
-                        sample_count = angles_athwart_data.shape[0] - start_sample
+                        if strip_padding:
+                            angles_athwart_data, sample_offset = remove_sample_padding(angles_athwart_data, sample_offset)
+                            angles_along_data, sample_offset = remove_sample_padding(angles_along_data, sample_offset)
+                        sample_count = angles_athwart_data.shape[0]
                     dgram_dict['count'] = sample_count
 
                     #  initialize the beam mode
@@ -1590,7 +1647,7 @@ class raw_data(ping_data):
         # data_type will be set to a string describing the type of sample data
         # stored. This value is an empty string until the first raw datagram
         # is added. At that point the data_type is set. A raw_data object can
-        # only store 1 type of data. The data_type are:
+        # only store 1 type of data. The data types are:
         #
         #   angle - contains angle data only
         #   power - contains power data only
@@ -1868,57 +1925,65 @@ class raw_data(ping_data):
 
         # Check if we need to store power data.
         if self.store_power:
+            if sample_datagram['power'].size > 0:
+                # Get the subset of samples we're storing.
+                power = sample_datagram['power'][start_sample:self.sample_count[this_ping]]
 
-            # Get the subset of samples we're storing.
-            power = sample_datagram['power'][start_sample:self.sample_count[this_ping]]
+                # Convert the indexed power data to power dB.
+                power = power.astype(self.sample_dtype) * self.INDEX2POWER
 
-            # Convert the indexed power data to power dB.
-            power = power.astype(self.sample_dtype) * self.INDEX2POWER
-
-            # Check if we need to pad or trim our sample data.
-            sample_pad = sample_dims - power.shape[0]
-            if sample_pad > 0:
-                # The data array has more samples than this datagram - we
-                # need to pad the datagram.
-                self.power[this_ping,:] = np.pad(power,(0,sample_pad),
-                        'constant', constant_values=np.nan)
-            elif sample_pad < 0:
-                # The data array has fewer samples than this datagram - we
-                # need to trim the datagram.
-                self.power[this_ping,:] = power[0:sample_pad]
+                # Check if we need to pad or trim our sample data.
+                sample_pad = sample_dims - power.shape[0]
+                if sample_pad > 0:
+                    # The data array has more samples than this datagram - we
+                    # need to pad the datagram.
+                    self.power[this_ping,:] = np.pad(power,(0,sample_pad),
+                            'constant', constant_values=np.nan)
+                elif sample_pad < 0:
+                    # The data array has fewer samples than this datagram - we
+                    # need to trim the datagram.
+                    self.power[this_ping,:] = power[0:sample_pad]
+                else:
+                    # The array has the same number of samples.
+                    self.power[this_ping,:] = power
             else:
-                # The array has the same number of samples.
-                self.power[this_ping,:] = power
+                # This is an empty ping
+                self.power[this_ping,:] = np.nan
 
         # Check if we need to store angle data.
         if self.store_angles:
+            if sample_datagram['angle'].size > 0:
+                # Convert from indexed to electrical angles.
+                alongship_e = sample_datagram['angle'] \
+                    [start_sample:self.sample_count[this_ping], 1] \
+                    .astype(self.sample_dtype) * self.INDEX2ELEC
+                athwartship_e = sample_datagram['angle'] \
+                    [start_sample:self.sample_count[this_ping], 0] \
+                    .astype(self.sample_dtype) * self.INDEX2ELEC
 
-            # Convert from indexed to electrical angles.
-            alongship_e = sample_datagram['angle'] \
-                [start_sample:self.sample_count[this_ping], 1] \
-                .astype(self.sample_dtype) * self.INDEX2ELEC
-            athwartship_e = sample_datagram['angle'] \
-                [start_sample:self.sample_count[this_ping], 0] \
-                .astype(self.sample_dtype) * self.INDEX2ELEC
+                # Check if we need to pad or trim our sample data.
+                sample_pad = sample_dims - athwartship_e.shape[0]
+                if sample_pad > 0:
+                    # The data array has more samples than this datagram - we
+                    # need to pad the datagram
+                    self.angles_alongship_e[this_ping,:] = np.pad(alongship_e,
+                            (0,sample_pad), 'constant', constant_values=np.nan)
+                    self.angles_athwartship_e[this_ping,:] = np.pad(
+                        athwartship_e,(0,sample_pad), 'constant', constant_values=np.nan)
+                elif sample_pad < 0:
+                    # The data array has fewer samples than this datagram - we
+                    # need to trim the datagram.
+                    self.angles_alongship_e[this_ping,:] = alongship_e[0:sample_pad]
+                    self.angles_athwartship_e[this_ping,:] = athwartship_e[0:sample_pad]
+                else:
+                    # The array has the same number of samples.
+                    self.angles_alongship_e[this_ping,:] = alongship_e
+                    self.angles_athwartship_e[this_ping,:] = athwartship_e
 
-            # Check if we need to pad or trim our sample data.
-            sample_pad = sample_dims - athwartship_e.shape[0]
-            if sample_pad > 0:
-                # The data array has more samples than this datagram - we
-                # need to pad the datagram
-                self.angles_alongship_e[this_ping,:] = np.pad(alongship_e,
-                        (0,sample_pad), 'constant', constant_values=np.nan)
-                self.angles_athwartship_e[this_ping,:] = np.pad(
-                    athwartship_e,(0,sample_pad), 'constant', constant_values=np.nan)
-            elif sample_pad < 0:
-                # The data array has fewer samples than this datagram - we
-                # need to trim the datagram.
-                self.angles_alongship_e[this_ping,:] = alongship_e[0:sample_pad]
-                self.angles_athwartship_e[this_ping,:] = athwartship_e[0:sample_pad]
             else:
-                # The array has the same number of samples.
-                self.angles_alongship_e[this_ping,:] = alongship_e
-                self.angles_athwartship_e[this_ping,:] = athwartship_e
+                # This is an empty ping
+                self.angles_alongship_e[this_ping,:] = np.nan
+                self.angles_athwartship_e[this_ping,:] = np.nan
 
 
     def get_calibration(self, **kwargs):
@@ -1950,7 +2015,7 @@ class raw_data(ping_data):
         return cal_obj
 
 
-    def get_power(self, **kwargs):
+    def get_power(self, calibration=None, **kwargs):
         """Returns a processed data object that contains the power data.
 
         This method performs all of the required transformations to place the
@@ -2047,9 +2112,15 @@ class raw_data(ping_data):
 
         """
 
+        # Check if user provided a cal object
+        if calibration is None:
+            # No - get one populated from raw data
+            calibration = self.get_calibration()
+
         # Call the _get_sample_data method requesting the appropriate sample attribute.
         if hasattr(self, 'power'):
-            p_data, return_indices = self._get_sample_data('power', **kwargs)
+            p_data, return_indices = self._get_sample_data('power', calibration=calibration,
+                    **kwargs)
         else:
             raise AttributeError('raw_data object does not contain power ' +
                     'data required to return, er, power.')
@@ -2063,7 +2134,7 @@ class raw_data(ping_data):
         return p_data
 
 
-    def _get_power(self, **kwargs):
+    def _get_power(self, calibration=None, **kwargs):
         """Returns a processed data object that contains the power data and
         an index array.
 
@@ -2072,9 +2143,15 @@ class raw_data(ping_data):
         same pings in the "this" object. This is used internally.
         """
 
+        # Check if user provided a cal object
+        if calibration is None:
+            # No - get one populated from raw data
+            calibration = self.get_calibration()
+
         # Call the _get_sample_data method requesting the appropriate sample attribute.
         if hasattr(self, 'power'):
-            p_data, return_indices = self._get_sample_data('power', **kwargs)
+            p_data, return_indices = self._get_sample_data('power', calibration=calibration,
+                    **kwargs)
         else:
             raise AttributeError('Raw data object does not contain power ' +
                     'data required to return, er, power.')
@@ -2088,7 +2165,7 @@ class raw_data(ping_data):
         return p_data, return_indices
 
 
-    def get_sv(self, **kwargs):
+    def get_sv(self, calibration=None, **kwargs):
         """Gets sv data.
 
         This is a convenience method which simply calls get_Sv and forces
@@ -2102,11 +2179,16 @@ class raw_data(ping_data):
 
         """
 
+        # Check if user provided a cal object
+        if calibration is None:
+            # No - get one populated from raw data
+            calibration = self.get_calibration()
+
         # Remove the linear keyword.
         kwargs.pop('linear', None)
 
         # Call get_Sp forcing linear to True.
-        return self.get_Sv(linear=True, **kwargs)
+        return self.get_Sv(linear=True, calibration=calibration, **kwargs)
 
 
     def get_Sv(self, calibration=None, linear=False, tvg_correction=True,
@@ -2367,9 +2449,10 @@ class raw_data(ping_data):
             A processed_data object containing Sp (or sp if linear is True).
 
         """
-        # If we're not given a cal object, create an empty one
+        # Check if user provided a cal object
         if calibration is None:
-            calibration = ek60_calibration()
+            # No - get one populated from raw data
+            calibration = self.get_calibration()
 
         # Get the power data - this step also resamples and arranges the raw data.
         p_data, return_indices = self._get_power(calibration=calibration, **kwargs)
@@ -2572,9 +2655,10 @@ class raw_data(ping_data):
         Returns:
             Two rocessed_data objects with alongship and athwartship angle data.
         """
-        # If we're not given a cal object, create an empty one
+        # Check if user provided a cal object
         if calibration is None:
-            calibration = ek60_calibration()
+            # No - get one populated from raw data
+            calibration = self.get_calibration()
 
         # Get the electrical angles.
         alongship, athwartship, return_indices = \
@@ -2626,10 +2710,10 @@ class raw_data(ping_data):
             Two processed data objects containing the unconverted
             angles_alongship_e and angles_athwartship_e data.
         """
-        # If we're not given a cal object, create an empty one
+        # Check if user provided a cal object
         if calibration is None:
-            calibration = ek60_calibration()
-
+            # No - get one populated from raw data
+            calibration = self.get_calibration()
 
         # Call the _get_sample_data method requesting the 'angles_alongship_e'
         # sample attribute. The method will return a reference to a newly created
@@ -2696,8 +2780,8 @@ class raw_data(ping_data):
         """
         # Check if user provided a cal object
         if calibration is None:
-            # No - create an empty one - all cal values will come from the raw data
-            calibration = ek60_calibration()
+            # No - get one populated from raw data
+            calibration = self.get_calibration()
 
         # Call the _get_sample_data method requesting the 'angles_alongship_e'
         # sample attribute. The method will return a reference to a newly created
@@ -2813,11 +2897,6 @@ class raw_data(ping_data):
         else:
             # Get an array of index values to return.
             return_indices = self.get_indices(**kwargs)
-
-        # Check if user provided a cal object
-        if calibration is None:
-            # No - create an empty one - all cal values will come from the raw data
-            calibration = ek60_calibration()
 
         # Create the processed_data object we will return.
         p_data = processed_data(self.channel_id, self.frequency[0], None)
@@ -2962,11 +3041,6 @@ class raw_data(ping_data):
         Returns:
             An array with the converted data.
         """
-        # Check if user provided a cal object
-        if calibration is None:
-            # No - create an empty one - all cal values will come from the raw data
-            calibration = ek60_calibration()
-
 
         # Populate the calibration parameters required for this method.
         # First, create a dictionary with key names that match the attribute

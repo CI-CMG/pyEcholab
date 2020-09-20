@@ -448,7 +448,7 @@ class calibration(object):
                     #this_val = first_val
                     if np.issubdtype(dtype, np.inexact):
                         this_val = np.nan
-                    elif np.issubdtype(dtype, np.exact):
+                    elif np.issubdtype(dtype, np.integer):
                         this_val = 0
                     else:
                         this_val = ''

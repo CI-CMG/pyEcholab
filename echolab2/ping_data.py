@@ -417,9 +417,9 @@ class ping_data(object):
         Args:
             start_ping (int): The starting ping of the range of pings to delete.
             end_ping (int): The ending ping of the range of pings to delete.
-            start_time (datetime): The starting time of the range of pings to
+            start_time (datetime64): The starting time of the range of pings to
                 delete.
-            end_time (datetime): The ending time of the range of pings to
+            end_time (datetime64): The ending time of the range of pings to
                 delete.
 
                 You should set only one start and end point.
@@ -439,7 +439,7 @@ class ping_data(object):
             # We haven't been provided an explicit array, so create one based
             # on provided ranges.
             del_idx = self.get_indices(start_time=start_time, end_time=end_time,
-                                       start_ping=start_ping, end_ping=end_ping)
+                    start_ping=start_ping, end_ping=end_ping)
         else:
             # Explicit array provided.
             del_idx = index_array
@@ -472,8 +472,12 @@ class ping_data(object):
                         attr[del_idx, :, :] = np.nan
             else:
                 if remove:
-                    # Copy the data we're keeping into a contiguous block.
-                    attr[0:new_n_pings] = attr[keep_idx]
+                    try:
+                        # Copy the data we're keeping into a contiguous block.
+                        attr[0:new_n_pings] = attr[keep_idx]
+                    except:
+                        # Range/Depth will fail and that's OK
+                        pass
                 else:
                     # Set the data to NaN or appropriate value.
                     if np.issubdtype(attr.dtype, np.integer):
@@ -1217,7 +1221,7 @@ class ping_data(object):
         """Copies attributes.
 
         This is an internal helper method that is called by child "copy"
-        methods to copy the ping_data attributes as well as the data_attributes.
+        methods to copy the data and object attributes.
 
         Args:
             obj (ping_data): The object to copy attributes to.
@@ -1294,7 +1298,7 @@ class ping_data(object):
         Args:
             obj (ping_data): An empty object to copy attributes to.
             n_pings (int): Number of pings (horizontal axis)
-            value (int): A specified value to fill the array with.
+            value (int,float): A scalar value to fill the array with.
             empty_times (bool): Controls whether ping_time data is copied
                 over to the new object (TRUE) or if it will be filled with NaT
                 values (FALSE).

@@ -24,10 +24,10 @@ chan_data['impedance']=12345
 '''
 
 # EK80 CW Complex
-in_files = ['C:/EK80 Test Data/Saildrone/SD_alaska_2019-Phase0-D20190516-T030157-0.raw']
+#in_files = ['C:/EK80 Test Data/Saildrone/SD_alaska_2019-Phase0-D20190516-T030157-0.raw']
 
 # EK80 FM
-#in_files = ['C:/EK80 Test Data/EK80/FM/FM_-_70_KHZ_2MS_CAL-Phase0-D20190531-T194722-0.raw']
+in_files = ['C:/EK80 Test Data/EK80/FM/FM_-_70_KHZ_2MS_CAL-Phase0-D20190531-T194722-0.raw']
 
 
 
@@ -47,11 +47,12 @@ print(ek80)
 
 channels = list(ek80.raw_data.keys())
 raw_data = ek80.raw_data[channels[0]][0]
+raw_data.resize(raw_data.n_pings, raw_data.n_samples + 50)
 
 power = raw_data.get_power()
 
-out_files = ek80.write_raw(out_file, overwrite=True)
+out_files = ek80.write_raw(out_file, overwrite=True, strip_padding=False)
 
-
+print(out_files)
 
 print()

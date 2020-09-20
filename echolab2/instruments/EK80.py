@@ -34,12 +34,6 @@
 $Id$
 '''
 
-"""
-
-https://www.idtools.com.au/gpu-accelerated-fft-compatible-numpy/
-"""
-
-
 import os
 import datetime
 import numpy as np
@@ -333,6 +327,12 @@ class EK80(object):
                 reading from first sample.
             end_sample (int): Specify ending sample number if not
                 reading to last sample.
+            progress_callback (function reference): Pass a reference to a
+                function that accepts three arguments:
+                    (filename, cumulative_pct, cumulative_bytes)
+                This function will be periodicaly called, passing the
+                current file name that is being read, the percent read,
+                and the bytes read.
         """
 
         # Update the reader state variables.
@@ -494,7 +494,7 @@ class EK80(object):
                     #  and an empty dict to store this channel's filters
                     self._filters[channel_id] = {}
 
-        #  return the configuration datagram dict
+        # Return the configuration datagram dict
         return config_datagram
 
 
@@ -819,7 +819,7 @@ class EK80(object):
                  start_sample=None, end_sample=None, progress_callback=None,
                  overwrite=False, async_window=5, reduce_complex_precision=False,
                  raw_index_array=None, nmea_index_array=None,
-                 annotation_index_array=None):
+                 annotation_index_array=None, strip_padding=True):
         """Writes one or more Simrad EK80 .raw files.
 
 
@@ -902,6 +902,14 @@ class EK80(object):
                 recorded as 16-bit values but can reduce the file sizes of files
                 where complex data is stored as 32-bit values.
 
+            strip_padding (bool): Set to True to remove any NaN padding at the
+                beginning and/or end of pings. Echolab stores sample data in
+                rectangular arrays. When the sample number increses within or
+                between files, these arrays are resized and pings with fewer samples
+                are padded with NaNs as appropriate. When True, these samples are
+                omitted when writing. This DOES NOT affect padded pings. Padded
+                pings are always removed before writing. The default value is True.
+
             The following keywords are for advanced indexing and writing of the
             data. This can allow you to easily write subsets of data where the
             pings do not have to be contiguous.
@@ -941,6 +949,39 @@ class EK80(object):
             dgram['dg_version'] = dg_version
 
             return dgram
+
+
+        def remove_sample_padding(data, sample_offset):
+            '''
+            remove_sample_padding will strip NaN padding from the beginning and
+            end of a "ping". It adjusts the sample_offset if required. It does
+            not alter data between the first and last non NaN values.
+            '''
+
+            # check for any nan data
+            if data.ndim == 1:
+                nan_idx = np.isnan(data)
+            else:
+                nan_idx = np.isnan(data[:,0])
+
+            # Check if there are any NaNs at all
+            if np.any(nan_idx):
+
+                # find the data start and data end indexes
+                start_idx = np.argmin(nan_idx)
+                end_idx = np.argmax(nan_idx)
+
+                # update the sample_offset if needed
+                if start_idx != sample_offset:
+                    sample_offset = start_idx
+
+                # get data with padding removed
+                if data.ndim == 1:
+                    data = data[start_idx:end_idx]
+                else:
+                    data = data[start_idx:end_idx,:]
+
+            return (data, sample_offset)
 
 
         # Initialize a list to hold the filenames of the files we write
@@ -1005,12 +1046,12 @@ class EK80(object):
         #
         # This is important to remember if you are trying to combine data from two raw
         # files into one. It is your responsibility to only combine data from files
-        # recorded using the the same system parameters (there is some nuance here,
-        # but either you'll know when you can break this rule or not.) After combining
-        # data from two or more files, you need to replicate the first configuration
-        # dict in each raw_data object across all pings:
+        # recorded using the the same system parameters. After combining data from
+        # two or more files, you need to replicate the first configuration dict in each
+        # raw_data object across all pings:
         #
-        # raw_data_38khz.configuration[:] = raw_data_38khz.configuration[0]
+        # raw_data.configuration[:] = raw_data.configuration[0]
+
 
         # The first thing we need to do is identify all of the data that meets our
         # time/ping number, channel/frequency constraints. Then we group that by input
@@ -1059,12 +1100,19 @@ class EK80(object):
                     unique_ids = []
                     conf_ids = []
                     for c in data.configuration:
-                        this_id = id(c)
-                        conf_ids.append(this_id)
-                        is_unique = True
-                        for uc in unique_configs:
-                            if uc['file_name'] == c['file_name']:
-                                is_unique = False
+                        # make sure this ping has a valid config. Padded pings will
+                        # have NaNs so we'll ignore those. They will be removed later.
+                        if isinstance(c, dict):
+                            this_id = id(c)
+                            conf_ids.append(this_id)
+                            is_unique = True
+                            for uc in unique_configs:
+                                if uc['file_name'] == c['file_name']:
+                                    is_unique = False
+                        else:
+                            is_unique = False
+                            this_id = None
+                            conf_ids.append(this_id)
 
                         if is_unique:
                             # this is a convienient place to filter by frequency...
@@ -1098,7 +1146,8 @@ class EK80(object):
                         # To track progress, we'll total up the number of raw
                         # datagrams that we will ultimately write for this file.
                         n_datagrams = conf_idx.size
-                        # Store the channel ID, condif dict, reference to the
+
+                        # Store the channel ID, config dict, reference to the
                         # raw data, and the index to the data by filename
                         this_data = {'channel_id':channel, 'configuration':conf,
                                 'data':data, 'index':conf_idx}
@@ -1135,7 +1184,7 @@ class EK80(object):
 
             # .raw files are always written in time order. We need to create a vector
             # of timestamps from all of our data sources (raw data, NMEA data, annotations,
-            # and motion data)and use the sort indices to create a our datagram roadmap.
+            # and motion data) and use the sort indices to create a our datagram roadmap.
 
             # create the map arrays
             dg_times = np.array([], dtype='datetime64[ms]')
@@ -1146,6 +1195,9 @@ class EK80(object):
             # Add the raw data
             for channel in data_by_file[infile]:
                 for data in data_by_file[infile][channel]:
+                    # First, remove any empty pings from the index.
+                    data['index'] = data['index'][np.isfinite(data['data'].channel_mode[data['index']])]
+                    # Then extract the times and references to the data we're writing
                     times = data['data'].ping_time[data['index']]
                     dg_times = np.concatenate((dg_times, times))
                     dg_objects = np.concatenate((dg_objects, np.repeat(data['data'], times.size)))
@@ -1263,6 +1315,7 @@ class EK80(object):
 
                 #  now assemble the datagram dict based on the type
                 if dg_type[idx] == 'RAW':
+
                     #  get the channel ID
                     channel_id = data_by_file[infile][dg_objects[idx].channel_id][0]['configuration']['channel_id']
 
@@ -1296,20 +1349,29 @@ class EK80(object):
 
                     # adjust the sample offset if we're creating an additional offset during writing
                     sample_offset = start_sample + dg_objects[idx].sample_offset[dg_obj_idx[idx]]
-                    dgram['offset'] = sample_offset
 
-                    # Extract the data and update the sample count
+                    # Extract the data, strip padding, and update the sample count
                     if hasattr(dg_objects[idx], 'power'):
                         power_data = dg_objects[idx].power[dg_obj_idx[idx],start_sample:end_sample]
-                        sample_count = power_data.shape[0] - start_sample
+                        if strip_padding:
+                            power_data, sample_offset = remove_sample_padding(power_data, sample_offset)
+                        sample_count = power_data.shape[0]
                     if hasattr(dg_objects[idx], 'angles_athwartship_e'):
                         angles_athwart_data = dg_objects[idx].angles_athwartship_e[dg_obj_idx[idx],start_sample:end_sample]
                         angles_along_data = dg_objects[idx].angles_alongship_e[dg_obj_idx[idx],start_sample:end_sample]
-                        sample_count = angles_athwart_data.shape[0] - start_sample
+                        if strip_padding:
+                            angles_athwart_data, sample_offset = remove_sample_padding(angles_athwart_data, sample_offset)
+                            angles_along_data, sample_offset = remove_sample_padding(angles_along_data, sample_offset)
+                        sample_count = angles_athwart_data.shape[0]
                     if hasattr(dg_objects[idx], 'complex'):
                         complex_data = dg_objects[idx].complex[dg_obj_idx[idx],start_sample:end_sample,:]
-                        sample_count = complex_data.shape[0] - start_sample
+                        if strip_padding:
+                            complex_data, sample_offset = remove_sample_padding(complex_data, sample_offset)
+                        sample_count = complex_data.shape[0]
+
+                    # update the sample count and offset
                     dgram['count'] = sample_count
+                    dgram['offset'] = sample_offset
 
                     #  initialize the datatype
                     datatype = 0
@@ -1585,8 +1647,9 @@ class raw_data(ping_data):
         # data_type will be set to a string describing the type of sample data
         # stored. This value is an empty string until the first raw datagram
         # is added. At that point the data_type is set. A raw_data object can
-        # only store 1 type of data. Thedata_type are:
+        # only store 1 type of data. The data typse are:
         #
+        #   angle - contains angle data only
         #   power - contains power data
         #   power/angle - contains power and angle data
         #   complex-CW - contains complex CW data
