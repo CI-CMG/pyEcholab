@@ -224,7 +224,7 @@ class processed_data(ping_data):
         obj_to_insert.interpolate(this_vaxis)
 
         # We are now coexisting in harmony - call parent's insert.
-        super(processed_data, self).replace( obj_to_insert, ping_number=None,
+        super(processed_data, self).replace(obj_to_insert, ping_number=None,
                 ping_time=None, insert_after=True, index_array=None)
 
 
@@ -301,7 +301,7 @@ class processed_data(ping_data):
 
 
     def empty_like(self, n_pings=None, empty_times=False, channel_id=None,
-            data_type=None, is_log=False):
+            data_type=None, is_log=False, no_data=False):
         """Returns an object filled with NaNs.
 
         This method returns a processed_data object with the same general
@@ -326,6 +326,12 @@ class processed_data(ping_data):
                 can be used to identify derived or synthetic data types.
             is_log: Set this to True if the new processed_data object will
                 contain data in log form. Set it to False if not.
+            no_data (bool): When True, the sample data array will not be
+                created and the data attribute will be set to None. This
+                saves allocating the sample array here if you are planning
+                on replacing it in your own code. This is primarily used
+                internally in echolab but may be useful to others. The
+                default value is False.
 
         Returns:
             An empty processed_data object.
@@ -345,7 +351,8 @@ class processed_data(ping_data):
         empty_obj = processed_data(channel_id, self.frequency, data_type)
 
         # Call the parent _like helper method
-        self._like(empty_obj, n_pings, np.nan, empty_times=empty_times)
+        self._like(empty_obj, n_pings, np.nan, empty_times=empty_times,
+                no_data=no_data)
         empty_obj.data_type = data_type
         empty_obj.is_log = is_log
 
@@ -1673,6 +1680,33 @@ class processed_data(ping_data):
         return op_result
 
 
+    def match_pings(self, other_data, match_to='cs'):
+        """Matches the ping times in this object to the ping times in the
+        processed_data object provided. It does this by matching times, inserting
+        and/or deleting pings as needed. It does not interpolate. Ping times in
+        the other object that aren't in this object are inserted. Ping times in
+        this object that aren't in the other object are deleted. If the time axes
+        do not intersect at all, all of the data in this object will be deleted and
+        replaced with empty pings for the ping times in the other object.
+
+
+        Args:
+            other_data (ping_data): A ping_data type object that this object
+            will be matched to.
+
+            match_to (str): Set to a string defining the precision of the match.
+
+                cs : Match to a 100th of a second
+                ds : Match to a 10th of a second
+                s  : Match to the second
+        Returns:
+            A dictionary with the keys 'inserted' and 'removed' containing the
+            indices of the pings inserted and removed.
+
+        """
+        super(processed_data, self).match_pings(other_data, match_to='cs')
+
+
     def __str__(self):
         """Re-implements string method that provides some basic info about
         the processed_data object
@@ -1834,6 +1868,8 @@ def read_ev_csv(channel_id, frequency, ev_csv_filename, data_type='Ts',
 
     #  create the data arrays
     data = np.empty((n_pings, max_samples), dtype=sample_dtype)
+    if data_type == 'angles':
+        athwart = np.empty((n_pings, max_samples), dtype=sample_dtype)
     p_data.add_data_attribute('data', data)
     ping_time = np.empty((n_pings), dtype='datetime64[ms]')
     p_data.add_data_attribute('ping_time', ping_time)
@@ -1869,17 +1905,32 @@ def read_ev_csv(channel_id, frequency, ev_csv_filename, data_type='Ts',
                 range = range * p_data.sample_thickness
                 p_data.add_data_attribute('range', range)
 
-                if data_type == 'Ts':
-                    p_data.is_log = True
-
             p_data.trip_distance_nmi[idx] = convert_float(row[2])
             p_data.latitude[idx] = convert_float(row[6])
             p_data.longitude[idx] = convert_float(row[7])
             this_time = row[3].strip() + ' ' + row[4].strip() + '.' + '%3.3i' % int(float(row[5]))
             this_time = np.datetime64(datetime.strptime(this_time, "%Y-%m-%d %H:%M:%S.%f"))
             p_data.ping_time[idx] = this_time
-            p_data.data[idx,:] = row[13:int(row[12]) + 13]
+            if data_type == 'angles':
+                this_samples = int(row[12])
+                p_data.data[idx,:] = row[13:this_samples*2 + 13:2]
+                athwart[idx,:] = row[14:this_samples * 2 + 14:2]
+            else:
+                p_data.data[idx,:] = row[13:int(row[12]) + 13]
             idx += 1
     p_data.data[p_data.data < -9.9000003e+36] = np.nan
 
-    return p_data
+    if data_type in ['Ts', 'Sp', 'Sv']:
+        p_data.is_log = True
+
+    if data_type == 'angles':
+        p_data_athwart = p_data.empty_like()
+        p_data_athwart.data = athwart
+        p_data_athwart.data_type = 'angles_athwartship'
+
+        p_data.data_type = 'angles_alongship'
+        return p_data, p_data_athwart
+
+    else:
+
+        return p_data

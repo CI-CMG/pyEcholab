@@ -722,6 +722,10 @@ class ping_data(object):
                 ds : Match to a 10th of a second
                 s  : Match to the second
 
+        Returns:
+            A dictionary with the keys 'inserted' and 'removed' containing the
+            indices of the pings inserted and removed.
+
         """
         # Create a dict to store info on which pings were inserted/removed
         results = {'inserted':[], 'removed':[]}
@@ -1274,7 +1278,7 @@ class ping_data(object):
         return shape
 
 
-    def _like(self, obj, n_pings, value, empty_times=False):
+    def _like(self, obj, n_pings, value, empty_times=False, no_data=False):
         """Copies ping_data attributes and creates data arrays filled with the
         specified value.
 
@@ -1302,6 +1306,11 @@ class ping_data(object):
             empty_times (bool): Controls whether ping_time data is copied
                 over to the new object (TRUE) or if it will be filled with NaT
                 values (FALSE).
+            no_data (bool): Set to True to to set 2d and 3d data attributes
+                to None, rather than creating numpy arrays. When False,
+                numpy arrays are created. This allows you to avoid allocating
+                the data arrays if you are planning on replacing them.
+                This is primarily used internally. Default: False
 
         Returns:
             The object copy, obj.
@@ -1370,15 +1379,22 @@ class ping_data(object):
                         data[:] = 0
                     else:
                         data[:] = value
-                elif attr.ndim == 2:
-                    # Create the 2d array(s).
-                    data = np.empty((n_pings, self.n_samples), dtype=attr.dtype)
-                    data[:, :] = value
-                elif attr.ndim == 3:
-                    #  must be a 3d attribute
-                    data = np.empty((n_pings, self.n_samples, self.n_complex),
-                        dtype=attr.dtype)
-                    data[:, :, :] = value
+                else:
+                    # Check if we're supposed to create the sample data arrays
+                    if no_data:
+                        # No - we'll set them to None assuming the user will set them
+                        data = None
+                    else:
+                        # Yes, create the data arrays
+                        if attr.ndim == 2:
+                            # Create the 2d array(s).
+                            data = np.empty((n_pings, self.n_samples), dtype=attr.dtype)
+                            data[:, :] = value
+                        elif attr.ndim == 3:
+                            #  must be a 3d attribute
+                            data = np.empty((n_pings, self.n_samples, self.n_complex),
+                                dtype=attr.dtype)
+                            data[:, :, :] = value
 
             # Add the attribute to our empty object.  We can skip using
             # add_data_attribute here because we shouldn't need to check

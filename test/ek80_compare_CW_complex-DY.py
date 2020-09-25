@@ -47,6 +47,13 @@ ev_power_filename['Echoview power - 70 kHz'] = 'DY2000_EK80_Cal-D20200126-T06072
 ev_power_filename['Echoview power - 120 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-120kHz.power.csv'
 ev_power_filename['Echoview power - 200 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-200kHz.power.csv'
 
+ev_angles_filename = {}
+ev_power_filename['Echoview power - 18 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-18kHz.angles.csv'
+ev_power_filename['Echoview power - 38 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-38kHz.angles.csv'
+ev_power_filename['Echoview power - 70 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-70kHz.angles.csv'
+ev_power_filename['Echoview power - 120 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-120kHz.angles.csv'
+ev_power_filename['Echoview power - 200 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-200kHz.angles.csv'
+
 
 #  read in the .raw data file
 print()

@@ -21,7 +21,7 @@
                 systems
 
 
-| Developed by:  Zac Berkowitz <zac.berkowitz@gmail.com> under contract for
+| Developed by:  Rick Towler   <rick.towler@noaa.gov>
 | National Oceanic and Atmospheric Administration (NOAA)
 | Alaska Fisheries Science Center (AFSC)
 | Midwater Assesment and Conservation Engineering Group (MACE)
@@ -1688,7 +1688,7 @@ class raw_data(ping_data):
                                 'transceiver_type']
 
 
-    def empty_like(self, n_pings, empty_times=True):
+    def empty_like(self, n_pings, empty_times=True, no_data=False):
         """Returns raw_data object with data arrays filled with NaNs.
 
         The raw_data object has the same general characteristics of "this"
@@ -1711,7 +1711,8 @@ class raw_data(ping_data):
 
         empty_obj.data_type = self.data_type
 
-        return self._like(empty_obj, n_pings, np.nan, empty_times=empty_times)
+        return self._like(empty_obj, n_pings, np.nan, empty_times=empty_times,
+                no_data=no_data)
 
 
     def copy(self):
@@ -2756,6 +2757,33 @@ class raw_data(ping_data):
         self.n_pings = self.ping_time.shape[0]
 
 
+    def match_pings(self, other_data, match_to='cs'):
+        """Matches the ping times in this object to the ping times in the EK60.raw_data
+        object provided. It does this by matching times, inserting and/or deleting
+        pings as needed. It does not interpolate. Ping times in the other object
+        that aren't in this object are inserted. Ping times in this object that
+        aren't in the other object are deleted. If the time axes do not intersect
+        at all, all of the data in this object will be deleted and replaced with
+        empty pings for the ping times in the other object.
+
+
+        Args:
+            other_data (ping_data): A ping_data type object that this object
+            will be matched to.
+
+            match_to (str): Set to a string defining the precision of the match.
+
+                cs : Match to a 100th of a second
+                ds : Match to a 10th of a second
+                s  : Match to the second
+
+        Returns:
+            A dictionary with the keys 'inserted' and 'removed' containing the
+            indices of the pings inserted and removed.
+        """
+        super(raw_data, self).match_pings(other_data, match_to='cs')
+
+
     def _get_electrical_angles(self, return_depth=False, calibration=None,
             **kwargs):
         """Retrieves unconverted angles_alongship_e and angles_athwartship_e
@@ -3351,7 +3379,7 @@ class ek60_calibration(calibration):
 
         # And assemble the string
         for param_name in attr_to_display:
-            n_spaces = 30 - len(param_name)
+            n_spaces = 32 - len(param_name)
             msg += n_spaces * ' ' + param_name
             # Extract data from raw_data attribues
             if hasattr(self, param_name):

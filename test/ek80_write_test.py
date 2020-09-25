@@ -6,8 +6,6 @@ This script can be used to test the writing of EK80 data to .raw files. It will
 read in one or more .raw files, write them to disk, then read the re-written
 file and compare the original to the re-written file.
 
-A successful round trip will result in data that differs no more than...
-
 While significant effort was made to ensure the write_raw method creates sane files,
 pyEcholab gives you a lot of flexibility when working with raw data and you can
 quickly run into issues when combining data from different sources or modifying
