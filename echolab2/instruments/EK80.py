@@ -3485,7 +3485,7 @@ class raw_data(ping_data):
         msg = str(self.__class__) + " at " + str(hex(id(self))) + "\n"
 
         # check if first ping is FM or CW
-        is_fm = raw_data.pulse_form[0] > 0
+        is_fm = self.pulse_form[0] > 0
 
         # Print some more info about the EK80.raw_data instance.
         n_pings = len(self.ping_time)
