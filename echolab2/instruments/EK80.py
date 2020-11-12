@@ -3669,7 +3669,8 @@ class ek80_calibration(calibration):
                 else:
                     # no - this data is older. Get the value from the
                     # default_sampling_frequency dict using the transceiver type as key
-                    t_type = raw_data.configuration[idx]['transceiver_type']
+                    # ensure to capitalize the key to avoid a KeyError exception
+                    t_type = raw_data.configuration[idx]['transceiver_type'].upper()
                     param_data[ret_idx] = self.default_sampling_frequency[t_type]
                 ret_idx += 1
 
