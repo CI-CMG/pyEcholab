@@ -3,48 +3,64 @@
 @author: rick.towler
 
 This is a simple script to plot up the differences between pyEcholab outputs
-and outputs created by Echoview. This one includes TS.
+and outputs created by Echoview.
+
+This test compares EK80 CW complex data from EK80 WBTs from the Oscar Dyson.
+The Oscar Dyson has 6 WBTs each driving 4 sector transducers.
+
 
 """
 
-from echolab2.instruments import EK80
+from echolab2 import echosounder
 import echolab2.processing.processed_data as processed_data
 from echolab2.plotting.matplotlib import echogram
 import matplotlib.pyplot as plt
 
 
-input_path = './data/EK80/CW/reduced/'
+#  specify the index of the single ping to plot
+plot_ping = 0;
 
-#  define the paths to the reference data files
-raw_filename = 'DY2000_EK80_Cal-D20200126-T061004.raw'
+# Set the path to the test data
+input_path = 'C:/EK80 Test Data/EK80/CW/complex/'
+
+#  define the various data files
+raw_filename = 'DY2000_EK80_Cal-D20200126-T060729.raw'
 
 ev_Sv_filename = {}
-ev_Sv_filename['Echoview Sv - 18 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-18kHz-Sv.mat'
-ev_Sv_filename['Echoview Sv - 38 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-38kHz-Sv.mat'
-ev_Sv_filename['Echoview Sv - 70 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-70kHz-Sv.mat'
-ev_Sv_filename['Echoview Sv - 120 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-120kHz-Sv.mat'
-ev_Sv_filename['Echoview Sv - 200 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-200kHz-Sv.mat'
+ev_Sv_filename['Echoview Sv - 18 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-18kHz.Sv.mat'
+ev_Sv_filename['Echoview Sv - 38 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-38kHz.Sv.mat'
+ev_Sv_filename['Echoview Sv - 70 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-70kHz.Sv.mat'
+ev_Sv_filename['Echoview Sv - 120 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-120kHz.Sv.mat'
+ev_Sv_filename['Echoview Sv - 200 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-200kHz.Sv.mat'
 
 ev_Ts_filename = {}
-ev_Ts_filename['Echoview TS - 18 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-18kHz-Ts.ts.csv'
-ev_Ts_filename['Echoview TS - 38 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-38kHz-Ts.ts.csv'
-ev_Ts_filename['Echoview TS - 70 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-70kHz-Ts.ts.csv'
-ev_Ts_filename['Echoview TS - 120 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-120kHz-Ts.ts.csv'
-ev_Ts_filename['Echoview TS - 200 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-200kHz-Ts.ts.csv'
+ev_Ts_filename['Echoview TS - 18 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-18kHz.ts.csv'
+ev_Ts_filename['Echoview TS - 38 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-38kHz.ts.csv'
+ev_Ts_filename['Echoview TS - 70 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-70kHz.ts.csv'
+ev_Ts_filename['Echoview TS - 120 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-120kHz.ts.csv'
+ev_Ts_filename['Echoview TS - 200 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-200kHz.ts.csv'
 
 ev_power_filename = {}
-ev_power_filename['Echoview power - 18 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-18kHz-Power.power.csv'
-ev_power_filename['Echoview power - 38 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-38kHz-Power.power.csv'
-ev_power_filename['Echoview power - 70 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-70kHz-Power.power.csv'
-ev_power_filename['Echoview power - 120 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-120kHz-Power.power.csv'
-ev_power_filename['Echoview power - 200 kHz'] = 'DY2000_EK80_Cal-D20200126-T061004-200kHz-Power.power.csv'
+ev_power_filename['Echoview power - 18 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-18kHz.power.csv'
+ev_power_filename['Echoview power - 38 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-38kHz.power.csv'
+ev_power_filename['Echoview power - 70 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-70kHz.power.csv'
+ev_power_filename['Echoview power - 120 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-120kHz.power.csv'
+ev_power_filename['Echoview power - 200 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-200kHz.power.csv'
 
+ev_angles_filename = {}
+ev_power_filename['Echoview power - 18 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-18kHz.angles.csv'
+ev_power_filename['Echoview power - 38 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-38kHz.angles.csv'
+ev_power_filename['Echoview power - 70 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-70kHz.angles.csv'
+ev_power_filename['Echoview power - 120 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-120kHz.angles.csv'
+ev_power_filename['Echoview power - 200 kHz'] = 'DY2000_EK80_Cal-D20200126-T060729-200kHz.angles.csv'
 
 
 #  read in the .raw data file
+print()
 print('Reading the raw file %s' % (raw_filename))
 ek80 = EK80.EK80()
 ek80.read_raw(input_path + raw_filename)
+
 
 #  now iterate through the reference files and display results
 for idx, sv_chan in enumerate(ev_Sv_filename):
@@ -94,6 +110,7 @@ for idx, sv_chan in enumerate(ev_Sv_filename):
     ev_power_data = processed_data.read_ev_csv(key_name, frequency, ev_filename,
             data_type='Power')
 
+
     #  now plot all of this up
 
     #  show the Echolab Sv and TS echograms
@@ -116,22 +133,23 @@ for idx, sv_chan in enumerate(ev_Sv_filename):
     eg = echogram.Echogram(fig, diff, threshold=[-0.25,0.25])
     eg.axes.set_title("Echolog TS - EV TS " + str(frequency) + " kHz")
 
-    #  compute the difference of EV and Echolab TS data
+    #  compute the difference of EV and Echolab power data
     diff = ek80_power - ev_power_data
     fig = plt.figure()
     eg = echogram.Echogram(fig, diff, threshold=[-0.25,0.25])
     eg.axes.set_title("Echolog power - EV power " + str(frequency) + " kHz")
 
-    #  plot up a single Sv ping
+    #  plot up a single power ping
     fig2 = plt.figure()
-    plt.plot(ev_Sv_data[-1], ev_Sv_data.range, label='Echoview', color='blue', linewidth=1.5)
-    plt.plot( ek80_Sv[-1], ek80_Sv.range, label='Echolab', color='red', linewidth=1)
+    plt.plot(ev_power_data[plot_ping], ev_power_data.range, label='Echoview', color='blue', linewidth=1.5)
+    plt.plot(ek80_power[plot_ping], ek80_power.range, label='Echolab', color='red', linewidth=1)
     plt.gca().invert_yaxis()
-    fig2.suptitle("Ping " + str(ev_Sv_data.n_pings) + " comparison EV vs Echolab")
-    plt.xlabel("Sv (dB)")
+    fig2.suptitle("Ping " + str(plot_ping) + " comparison EV vs Echolab")
+    plt.xlabel("power (dB)")
     plt.ylabel("Range (m)")
     plt.legend()
 
     # Show our figures.
     plt.show()
 
+    print()

@@ -36,6 +36,7 @@ $Id$
 import os
 import datetime
 import numpy as np
+from scipy.interpolate import interp1d
 from pytz import timezone
 from .util.simrad_calibration import calibration
 from .util.simrad_raw_file import RawSimradFile, SimradEOF
@@ -904,12 +905,14 @@ class EK80(object):
                 where complex data is stored as 32-bit values.
 
             strip_padding (bool): Set to True to remove any NaN padding at the
-                beginning and/or end of pings. Echolab stores sample data in
-                rectangular arrays. When the sample number increses within or
+                beginning and/or end of the sample data. Echolab stores sample data in
+                rectangular arrays. When the sample number increases within or
                 between files, these arrays are resized and pings with fewer samples
                 are padded with NaNs as appropriate. When True, these samples are
-                omitted when writing. This DOES NOT affect padded pings. Padded
-                pings are always removed before writing. The default value is True.
+                omitted when writing. This DOES NOT affect padded pings (entire pings
+                that contain no data.) Padded pings are always removed before writing
+                because they lack not only sample data, but all synchronous ping
+                attributes. The default value is True.
 
             The following keywords are for advanced indexing and writing of the
             data. This can allow you to easily write subsets of data where the
@@ -1053,7 +1056,6 @@ class EK80(object):
         #
         # raw_data.configuration[:] = raw_data.configuration[0]
 
-
         # The first thing we need to do is identify all of the data that meets our
         # time/ping number, channel/frequency constraints. Then we group that by input
         # file name and again by channel. The result is a dict, keyed by file name,
@@ -1067,18 +1069,17 @@ class EK80(object):
 
             for data in self.raw_data[channel]:
                 # Check if we've been provided with an index array
-                if raw_index_array:
-                    if data in raw_index_array:
+                if raw_index_array is not None:
+                    if isinstance(raw_index_array, dict) and data in raw_index_array:
+                        # this is a dict mapping the index to theraw_data objects
                         this_idx = raw_index_array[data]
                     else:
-                        # Get the indices of data from this channel/data that fall within the
-                        # time span provided.
-                        this_idx = data.get_indices(start_time=start_time,
-                                end_time=end_time, start_ping=start_ping,
-                                end_ping=end_ping)
+                        # Assume that if we're not passed a dict, that this must be
+                        # an index array that will be applied to all channels
+                        this_idx = raw_index_array
                 else:
-                    # Get the indices of data from this channel/data that fall within the
-                    # time span provided.
+                    # No index array provided. Get the indices of data from this
+                    # channel/data that fall within the time span provided.
                     this_idx = data.get_indices(start_time=start_time,
                             end_time=end_time, start_ping=start_ping,
                             end_ping=end_ping)
@@ -1536,7 +1537,7 @@ class EK80(object):
 class raw_data(ping_data):
     """
     the raw_data class contains a single channel's data extracted from a
-    Kongsberg EK80 raw.
+    Kongsberg EK80 raw data file.
     """
 
     # Define some instrument specific constants.
@@ -1668,12 +1669,12 @@ class raw_data(ping_data):
         #
         #   GPT - Ex60 General Purpose Transceiver
         #   WBT - Ex80 Wide Band Transceiver
-        #   WBT MINI -
-        #   WBT TUBE -
+        #   WBT MINI - A WBT meets Dr. Shrinker
+        #   WBT TUBE - A WBT in a tube
         #   WBT HP -
         #   WBT LF -
         #   WBAT - Wide Band Autonomous Transceiver
-        #   SBT
+        #   SBT -
         self.transceiver_type = None
 
         # Data_attributes is an internal list that contains the names of all
@@ -1702,7 +1703,6 @@ class raw_data(ping_data):
                                 'data_type',
                                 'transceiver_type',
                                 'file_complex_dtype']
-
 
 
     def empty_like(self, n_pings, no_data=False):
@@ -2175,9 +2175,16 @@ class raw_data(ping_data):
                 interval present in the data. If set to 1, it will be resampled
                 to the longest interval present in the data.
 
+                With GPTs, the sampling intervals were all multiples of 2 and
+                data can be resampled by replicating or averaging samples.
+                The sampling intervals in WBT hardware do not follow this
+                pattern so data must be interpolated. Interpolating will cause
+                aliasing which can be significant when downsampling data.
+                Use with care.
+
                 The following constants are defined in the class:
 
-                    RESAMPLE_SHORTEST = 0
+                    RESAMPLE_SHORTEST = 0 (upsample data to shortest sample interval)
                     RESAMPLE_16   = 0.000016
                     RESAMPLE_32  = 0.000032
                     RESAMPLE_64  = 0.000064
@@ -2186,7 +2193,7 @@ class raw_data(ping_data):
                     RESAMPLE_512 = 0.000512
                     RESAMPLE_1024 = 0.001024
                     RESAMPLE_2048 = 0.002048
-                    RESAMPLE_LONGEST = 1
+                    RESAMPLE_LONGEST = 1 (downsample data to longest sample interval)
 
                 Default: RESAMPLE_SHORTEST
 
@@ -2256,8 +2263,7 @@ class raw_data(ping_data):
         return p_data
 
 
-    def _complex_to_power(self, p_data, calibration, return_indices, return_angles=False,
-            **kwargs):
+    def _complex_to_power(self, calibration, return_indices, return_angles=False, **kwargs):
         '''_complex_to_power converts the compex data in the processed_data
         object p_data to power. It will optionally compute and return electrical andgle
         data.
@@ -2273,7 +2279,7 @@ class raw_data(ping_data):
         '''
 
         # Pulse compress (this funtion has no effect on CW data)
-        simrad_signal_proc.pulse_compression(p_data, self, calibration,
+        p_data = simrad_signal_proc.pulse_compression(self, calibration,
             return_indices=return_indices)
 
         # get the impedance values we need to convert to power
@@ -2290,7 +2296,7 @@ class raw_data(ping_data):
                 Zer = raw_data.ZTRANSCEIVER
 
         # Determine the number of transducer sectors
-        n_sectors = p_data.data.shape[2]
+        n_sectors = p_data.shape[2]
 
         # Check if we're supposed to return angles
         if return_angles:
@@ -2306,7 +2312,7 @@ class raw_data(ping_data):
                 p_data_athwartship.is_log = False
 
                 if n_sectors == 4:
-                    # average up the quadrant pairs
+                    # average the quadrant pairs
                     yfore = np.sum(p_data[:,:,2:4], axis=2) / 2
                     yaft = np.sum(p_data[:,:,0:2], axis=2) / 2
                     ystar = (p_data[:,:,0] + p_data[:,:,3]) / 2
@@ -2317,7 +2323,6 @@ class raw_data(ping_data):
                     athwartship_data = np.angle(ystar * np.conj(yport), deg=True)
 
                 elif n_sectors == 3:
-
                     # no averaging with 3 sector transducers
                     yfore = p_data[:,:,2]
                     ystar = p_data[:,:,0]
@@ -2339,17 +2344,14 @@ class raw_data(ping_data):
                 p_data_athwartship = None
 
         # Compute power
-        Ur_t = np.mean(p_data.data, axis=2)
+        Ur_t = np.mean(p_data, axis=2)
         vrsplit = Zer / (Zer + Zet)
         Per_t = (n_sectors * (np.abs(Ur_t) / (2 * np.sqrt(2)))**2 *
                 (1 / vrsplit)**2 * 1 / Zet)
         Per_t[Per_t == 0] = np.nan
 
         # convert to log units
-        p_data.data = 10 * np.log10(Per_t)
-
-        # and update the processed_data object's shape
-        p_data._shape()
+        p_data = 10 * np.log10(Per_t)
 
         if return_angles:
             return (p_data, (p_data_alongship, p_data_athwartship))
@@ -2379,21 +2381,11 @@ class raw_data(ping_data):
             calibration = self.get_calibration()
 
         # Call the _get_sample_data method requesting the appropriate sample attribute.
-        if hasattr(self, 'power'):
+        if hasattr(self, 'power') or hasattr(self, 'complex'):
 
             # get power data in a processed_data object
             p_data, return_indices = self._get_sample_data('power',
                     calibration=calibration, **kwargs)
-
-        elif hasattr(self, 'complex'):
-
-            # Get the complex sample data within a processed_data object
-            p_data, return_indices = self._get_sample_data('complex',
-                    calibration=calibration, **kwargs)
-
-            # Convert complex to power
-            p_data = self._complex_to_power(p_data, calibration, return_indices,
-                    **kwargs)
 
         else:
             raise AttributeError('Raw data object does not contain power or ' +
@@ -2456,9 +2448,16 @@ class raw_data(ping_data):
                 interval present in the data. If set to 1, it will be resampled
                 to the longest interval present in the data.
 
+                With GPTs, the sampling intervals were all multiples of 2 and
+                data can be resampled by replicating or averaging samples.
+                The sampling intervals in WBT hardware do not follow this
+                pattern so data must be interpolated. Interpolating will cause
+                aliasing which can be significant when downsampling data.
+                Use with care.
+
                 The following constants are defined in the class:
 
-                    RESAMPLE_SHORTEST = 0
+                    RESAMPLE_SHORTEST = 0 (upsample data to shortest sample interval)
                     RESAMPLE_16   = 0.000016
                     RESAMPLE_32  = 0.000032
                     RESAMPLE_64  = 0.000064
@@ -2467,7 +2466,7 @@ class raw_data(ping_data):
                     RESAMPLE_512 = 0.000512
                     RESAMPLE_1024 = 0.001024
                     RESAMPLE_2048 = 0.002048
-                    RESAMPLE_LONGEST = 1
+                    RESAMPLE_LONGEST = 1 (downsample data to longest sample interval)
 
                 Default: RESAMPLE_SHORTEST
 
@@ -2625,9 +2624,16 @@ class raw_data(ping_data):
                 interval present in the data. If set to 1, it will be resampled
                 to the longest interval present in the data.
 
+                With GPTs, the sampling intervals were all multiples of 2 and
+                data can be resampled by replicating or averaging samples.
+                The sampling intervals in WBT hardware do not follow this
+                pattern so data must be interpolated. Interpolating will cause
+                aliasing which can be significant when downsampling data.
+                Use with care.
+
                 The following constants are defined in the class:
 
-                    RESAMPLE_SHORTEST = 0
+                    RESAMPLE_SHORTEST = 0 (upsample data to shortest sample interval)
                     RESAMPLE_16   = 0.000016
                     RESAMPLE_32  = 0.000032
                     RESAMPLE_64  = 0.000064
@@ -2636,7 +2642,7 @@ class raw_data(ping_data):
                     RESAMPLE_512 = 0.000512
                     RESAMPLE_1024 = 0.001024
                     RESAMPLE_2048 = 0.002048
-                    RESAMPLE_LONGEST = 1
+                    RESAMPLE_LONGEST = 1 (downsample data to longest sample interval)
 
                 Default: RESAMPLE_SHORTEST
 
@@ -2825,7 +2831,7 @@ class raw_data(ping_data):
 
         # Get the electrical angles.
         alongship, athwartship, return_indices = \
-                self._get_electrical_angles(calibration=calibration, **kwargs)
+                self.get_electrical_angles(calibration=calibration, **kwargs)
 
         # Get the calibration params required for angle conversion.
         cal_parms = {'angle_sensitivity_alongship':None,
@@ -2934,26 +2940,6 @@ class raw_data(ping_data):
             electrical angle data and an index array mapping pings to this object.
         """
 
-        # This method is identical to _get_electrical_angles except that we don't
-        # return the indices data.
-        alongship, athwartship, _ = self._get_electrical_angles(return_depth=return_depth,
-                calibration=calibration, **kwargs)
-
-        return alongship, athwartship
-
-
-    def _get_electrical_angles(self, return_depth=False, calibration=None,
-            **kwargs):
-        """Returns electrical angle data if available.
-
-        _get_electrical_angles is identical to get_electrical_angles except
-        that it also returns an index array that maps the pings in the
-        processed_data object to the same pings in the "this" object. This is
-        used internally.
-
-        See get_electrical_angles for more detail.
-        """
-
         # Check if user provided a cal object
         if calibration is None:
             # No - get one populated from raw data
@@ -2962,31 +2948,16 @@ class raw_data(ping_data):
         # Call the _get_sample_data method requesting the 'angles_alongship_e'
         # sample attribute. The method will return a reference to a newly created
         # processed_data object.
-        if hasattr(self, 'angles_alongship_e') and hasattr(self, 'angles_athwartship_e'):
-            # get the alongship angles
-            alongship, return_indices = self._get_sample_data('angles_alongship_e',
+        if (hasattr(self, 'angles_alongship_e') and hasattr(self,
+                'angles_athwartship_e')) or hasattr(self, 'complex'):
+
+            # Get the angle data
+            alongship, athwartship, return_indices = self._get_sample_data('angles_e',
                     calibration=calibration, **kwargs)
-
-            # use the already computed return_indices from the first call to
-            # _get_sample_data to get the athwartship data
-            kwargs.pop('return_indices', None)
-            athwartship, _ = self._get_sample_data('angles_athwartship_e',
-                    calibration=calibration, return_indices=return_indices, **kwargs)
-
-        elif hasattr(self, 'complex'):
-
-            # Get the complex sample data within a processed_data object
-            p_data, return_indices = self._get_sample_data('complex',
-                    calibration=calibration, **kwargs)
-
-            # Convert complex to power and set return_angles to get the angle data
-            _, (alongship, athwartship) = self._complex_to_power(p_data, calibration,
-                    return_indices, return_angles=True, **kwargs)
-
         else:
             # We don't have complex nor electrical angle data required so
             # we can't do anything.
-            raise AttributeError('Raw data object does not contain the data ' +
+            raise AttributeError('raw_data object does not contain the sample ' +
                         'data required to return angle data.')
 
         # Set the data type.
@@ -3004,19 +2975,19 @@ class raw_data(ping_data):
     def _get_sample_data(self, property_name, calibration=None,
             resample_interval=RESAMPLE_SHORTEST, return_indices=None,
             **kwargs):
-        """Retrieves sample data.
+        """Internal method to get the specified sample data.
 
         This method returns a processed data object that contains the
         sample data from the property name provided. It performs all of the
-        required transformations to place the raw data into a rectangular
+        required transformations to place the data into a rectangular
         array where all samples in all pings share the same thickness and are
         correctly arranged relative to each other.
 
         This process happens in 3 steps:
 
-                Data are resampled so all samples have the same thickness.
+                Data are resampled so all samples have the same sampling interval.
                 Data are shifted vertically to account for the sample offsets.
-                Data are then regridded to a fixed time, range grid.
+                Data are then interpolated to a common sound velocity
 
         Each step is performed only when required. Calls to this method will
         return much faster if the raw data share the same sample thickness,
@@ -3028,19 +2999,29 @@ class raw_data(ping_data):
         parameters are not set in the calibration object or if no object is
         provided, this method will extract these parameters from the raw data.
 
+        Note that with the introduction of support for EK80 complex data, this
+        method was changed to handle complex->power and complex->angles
+        conversions. The interface changed such that the property_name value
+        is not a literal attrbute name, but a metatype specifying the type
+        of data to return. The method will figure out what attributes to use
+        to return the data.
+
         Args:
-            property_name (str): The attribute name of the sample data
-                to be returned. For the EK80 the sample data attributes
-                are 'complex', 'power', 'angles_alongship_e', and
-                'angles_athwartship_e' and the available attributes will
-                depend on how the data were collected and stored.
+            property_name (str): The name of the data type to return. Valid
+                values are:
+
+                'power' - return power data.
+                'angles_e' - return electrical angle data
+
+                The available data will depend on how the data were collected
+                and stored.
 
             calibration (EK80.calibration object): The calibration object where
                 calibration data will be retrieved. If this is set to None,
                 calibration data will be directly extracted from the raw
 
             resample_interval (float): The echosounder sampling interval used to
-                define the vertical position of the samples. If data was collected
+                define the sample thickness and range. If data was collected
                 with a different sampling interval it will be resampled to
                 the specified interval. The default behavior is to resample
                 to the shortest sampling interval in the data. This value has
@@ -3087,12 +3068,39 @@ class raw_data(ping_data):
         # Populate it with time.
         p_data.ping_time = self.ping_time[return_indices].copy()
 
-        # Get a reference to the data we're operating on.
-        if hasattr(self, property_name):
-            data = getattr(self, property_name)
+        # Get references to the data we're operating on. With the
+        # introduction of complex data where power and angle data are combined
+        # in one data attribute, this method was modified to return a data
+        # "metatype" since the power, angles_alongship_e, and angles_athwartship_e
+        # attributes don't exist with EK80 complex data. We'll handle the
+        # conversion of complex to power or angles as needed here and downstream
+        # mthods can more or less remain the same.
+
+        # Here we determine what data to operate on given the type requested
+        # and the data attributes we have.
+        data_refs = []
+        if hasattr(self, 'complex'):
+            if property_name == 'power':
+                # transform complex data to power
+                raw_power = self._complex_to_power(calibration, return_indices, **kwargs)
+                data_refs.append(raw_power)
+            elif property_name == 'angles_e':
+                # transform complex data to angles
+                _, raw_along_e, raw_athwart_e = self._complex_to_power(calibration, return_indices,
+                        return_angles=True, **kwargs)
+                data_refs.append(raw_along_e)
+                data_refs.append(raw_athwart_e)
         else:
-            raise AttributeError("The attribute name " + property_name +
-                    " does not exist.")
+            # No complex data - this is reduced data
+            if property_name == 'power' and hasattr(self, 'power'):
+                data_refs.append(getattr(self, property_name))
+            elif (property_name == 'angles_e' and hasattr(self, 'angles_alongship_e') and
+                hasattr(self, 'angles_athwartship_e')):
+                    data_refs.append(getattr(self, 'angles_alongship_e'))
+                    data_refs.append(getattr(self, 'angles_athwartship_e'))
+            else:
+                raise AttributeError("Unable to convert raw sample data. The attribute name " +
+                        property_name + " does not exist.")
 
         # Populate the calibration parameters required for this method.
         # First, create a dict with key names that match the attributes names
@@ -3119,96 +3127,114 @@ class raw_data(ping_data):
         # Check if we need to resample our sample data.
         unique_sample_interval = np.unique(
             cal_parms['sample_interval'][~np.isnan(cal_parms['sample_interval'])])
-        if unique_sample_interval.shape[0] > 1:
-            # There are at least 2 different sample intervals in the data.  We
-            # must resample the data.  We'll deal with adjusting sample offsets
-            # here too.
-            (output, sample_interval) = self._vertical_resample(data[return_indices],
-                    cal_parms['sample_interval'], unique_sample_interval, resample_interval,
-                    cal_parms['sample_offset'], min_sample_offset,
-                    is_power=property_name == 'power')
-        else:
-            # We don't have to resample, but check if we need to shift any
-            # samples based on their sample offsets.
-            if unique_sample_offsets.shape[0] > 1:
-                # We have multiple sample offsets so we need to shift some of
-                # the samples.
-                output = self._vertical_shift(data[return_indices],
-                        cal_parms['sample_offset'], unique_sample_offsets,
-                        min_sample_offset)
+
+        # Iterate through our data types, processing each one. When requesting power,
+        # there is only one reference. When requestig angle data, there will be two.
+        # This is not an optimal solution, but a reasonable hack to handle complex data.
+        for idx, data in enumerate(data_refs):
+            if unique_sample_interval.shape[0] > 1:
+                # There are at least 2 different sample intervals in the data.  We
+                # must resample the data. We'll deal with adjusting sample offsets
+                # here too.
+                (output, sample_interval) = self._vertical_resample(data[return_indices],
+                        cal_parms['sample_interval'], unique_sample_interval, resample_interval,
+                        cal_parms['sample_offset'], min_sample_offset,
+                        is_power = property_name == 'power')
             else:
-                # The data all have the same sample intervals and sample
-                # offsets.  Simply copy the data as is.
-                output = data[return_indices].copy()
+                # We don't have to resample, but check if we need to shift any
+                # samples based on their sample offsets.
+                if unique_sample_offsets.shape[0] > 1:
+                    # We have multiple sample offsets so we need to shift some of
+                    # the samples.
+                    output = self._vertical_shift(data[return_indices], cal_parms['sample_offset'],
+                            unique_sample_offsets, min_sample_offset)
+                else:
+                    # The data all have the same sample intervals and sample
+                    # offsets.  Simply copy the data as is.
+                    output = data[return_indices].copy()
 
-            # Get the sample interval value to use for range conversion below.
-            sample_interval = unique_sample_interval[0]
+                # Get the sample interval value to use for range conversion below.
+                sample_interval = unique_sample_interval[0]
 
-        # Check if we have a fixed sound speed.
-        unique_sound_velocity = np.unique(cal_parms['sound_speed'])
-        if unique_sound_velocity.shape[0] > 1:
-            # There are at least 2 different sound speeds in the data or
-            # provided calibration data.  Interpolate all data to the most
-            # common range (which is the most common sound speed).
-            sound_velocity = None
-            n = 0
-            for speed in unique_sound_velocity:
-                # Determine the sound speed with the most pings.
-                if np.count_nonzero(cal_parms['sound_speed'] == speed) > n:
-                   sound_velocity = speed
+            # Check if we have a fixed sound speed.
+            unique_sound_velocity = np.unique(cal_parms['sound_speed'])
+            if unique_sound_velocity.shape[0] > 1:
+                # There are at least 2 different sound speeds in the data or
+                # provided calibration data.  Interpolate all data to the most
+                # common range (which is the most common sound speed).
+                sound_velocity = None
+                n = 0
+                for speed in unique_sound_velocity:
+                    # Determine the sound speed with the most pings.
+                    if np.count_nonzero(cal_parms['sound_speed'] == speed) > n:
+                       sound_velocity = speed
 
-            # Calculate the target range.
-            range = get_range_vector(output.shape[1], sample_interval,
-                    sound_velocity, min_sample_offset)
+                # Calculate the target range.
+                range = get_range_vector(output.shape[1], sample_interval,
+                        sound_velocity, min_sample_offset)
 
-            # Get an array of indexes in the output array to interpolate.
-            pings_to_interp = np.where(cal_parms['sound_speed'] != sound_velocity)[0]
+                # Now interpolate the samples for pings with different sound speeds
+                for speed in unique_sound_velocity:
+                    # Only interpolate the "other" speeds
+                    if speed != sound_velocity:
 
-            # Iterate through this list of pings to change.  Interpolating each
-            # ping.
-            for ping in pings_to_interp:
-                # Resample using the provided sound speed.
-                resample_range = get_range_vector(output.shape[1], sample_interval,
-                        cal_parms['sound_speed'][ping], min_sample_offset)
-                output[ping,:] = np.interp(range, resample_range, output[ping, :])
+                        # Get an array of indexes in the output array to interpolate.
+                        pings_to_interp = np.where(cal_parms['sound_speed'] == speed)[0]
 
-        else:
-            # We have a fixed sound speed and only need to calculate a single
-            # range vector.
-            sound_velocity = unique_sound_velocity[0]
-            range = get_range_vector(output.shape[1], sample_interval,
-                    sound_velocity, min_sample_offset)
+                        # Compute this data's range
+                        resample_range = get_range_vector(output.shape[1], sample_interval,
+                            cal_parms['sound_speed'][pings_to_interp[0]], min_sample_offset)
 
-        # Assign the results to the "data" processed_data object.
-        p_data.add_data_attribute('data', output)
-        if property_name == 'complex':
-            p_data.n_complex = p_data.data.shape[2]
+                        # Interpolate samples to target range
+                        interp_f = interp1d(resample_range, output[pings_to_interp,:], axis=1,
+                                bounds_error=False, fill_value=np.nan, assume_sorted=True)
+                        output[pings_to_interp,:] = interp_f(resample_range)
 
-        # Calculate the sample thickness.
-        sample_thickness = sample_interval * sound_velocity / 2.0
+#                for ping in pings_to_interp:
+#                    # Resample using the provided sound speed.
+#                    resample_range = get_range_vector(output.shape[1], sample_interval,
+#                            cal_parms['sound_speed'][ping], min_sample_offset)
+#                    output[ping,:] = np.interp(range, resample_range, output[ping, :])
 
-        # Now assign range, sound_velocity, sample thickness and offset to
-        # the processed_data object.
-        p_data.add_data_attribute('range', range)
-        p_data.sound_velocity = sound_velocity
-        p_data.sample_thickness = sample_thickness
-        p_data.sample_offset = min_sample_offset
-        p_data.sample_interval = sample_interval
+            else:
+                # We have a fixed sound speed and only need to calculate a single
+                # range vector.
+                sound_velocity = unique_sound_velocity[0]
+                range = get_range_vector(output.shape[1], sample_interval,
+                        sound_velocity, min_sample_offset)
 
-        # Add the transducer draft attribute
-        if cal_parms['transducer_mounting'] is not None:
-            # First check if we apply the drop keel offset
-            add_drop_keel = cal_parms['transducer_mounting'] == 'DropKeel'
-            # Zero out offset where the mounting isn't DropKeel
-            cal_parms['drop_keel_offset'][np.invert(add_drop_keel)] = 0.0
-            # Compute the draft and add the attribute
-            xdcr_draft = cal_parms['transducer_offset_z'] + cal_parms['drop_keel_offset']
-        else:
-            xdcr_draft = np.full((output.shape[0]), 0.0, dtype=np.float32)
-        p_data.add_data_attribute('transducer_draft', xdcr_draft)
+            # Assign the results to the "data" processed_data object.
+            p_data.add_data_attribute('data', output)
+
+            # Calculate the sample thickness.
+            sample_thickness = sample_interval * sound_velocity / 2.0
+
+            # Now assign range, sound_velocity, sample thickness and offset to
+            # the processed_data object.
+            p_data.add_data_attribute('range', range)
+            p_data.sound_velocity = sound_velocity
+            p_data.sample_thickness = sample_thickness
+            p_data.sample_offset = min_sample_offset
+            p_data.sample_interval = sample_interval
+
+            # Add the transducer draft attribute
+            if cal_parms['transducer_mounting'] is not None:
+                # First check if we apply the drop keel offset
+                add_drop_keel = cal_parms['transducer_mounting'] == 'DropKeel'
+                # Zero out offset where the mounting isn't DropKeel
+                cal_parms['drop_keel_offset'][np.invert(add_drop_keel)] = 0.0
+                # Compute the draft and add the attribute
+                xdcr_draft = cal_parms['transducer_offset_z'] + cal_parms['drop_keel_offset']
+            else:
+                xdcr_draft = np.full((output.shape[0]), 0.0, dtype=np.float32)
+            p_data.add_data_attribute('transducer_draft', xdcr_draft)
+
+            #data = p_data
+            data_refs[idx] = p_data
 
         # Return the processed_data object containing the requested data.
-        return p_data, return_indices
+        data_refs.append(return_indices)
+        return data_refs
 
 
     def _convert_power(
@@ -3485,7 +3511,7 @@ class raw_data(ping_data):
         msg = str(self.__class__) + " at " + str(hex(id(self))) + "\n"
 
         # check if first ping is FM or CW
-        is_fm = raw_data.pulse_form[0] > 0
+        is_fm = self.pulse_form[0] > 0
 
         # Print some more info about the EK80.raw_data instance.
         n_pings = len(self.ping_time)
@@ -3669,7 +3695,7 @@ class ek80_calibration(calibration):
                 else:
                     # no - this data is older. Get the value from the
                     # default_sampling_frequency dict using the transceiver type as key
-                    t_type = raw_data.configuration[idx]['transceiver_type']
+                    t_type = raw_data.configuration[idx]['transceiver_type'].upper()
                     param_data[ret_idx] = self.default_sampling_frequency[t_type]
                 ret_idx += 1
 
@@ -3720,7 +3746,7 @@ class ek80_calibration(calibration):
 
         # And assemble the string
         for param_name in attr_to_display:
-            n_spaces = 32 - len(param_name)
+            n_spaces = 34 - len(param_name)
             msg += n_spaces * ' ' + param_name
             # Extract data from raw_data attribues
             if hasattr(self, param_name):
@@ -3728,7 +3754,7 @@ class ek80_calibration(calibration):
                 if isinstance(attr, np.ndarray):
                     msg += ' :: array ' + str(attr.size) + ' :: First value: ' + str(attr[0]) + '\n'
                 else:
-                    if attr:
+                    if attr is not None:
                             msg += ' :: scalar :: Value: ' + str(attr) + '\n'
                     else:
                         msg += ' :: No value set\n'

@@ -32,6 +32,7 @@
 
 import copy
 import numpy as np
+from scipy.interpolate import interp1d
 
 class ping_data(object):
     """echolab2.ping_data is the base class for all classes that store time
@@ -867,10 +868,20 @@ class ping_data(object):
             """
             # Create a new array.
             new_array = np.empty((ping_dim, sample_dim), dtype=self.sample_dtype)
-            # Fill it with NaNs.
-            new_array.fill(np.nan)
+
+            if data.shape[0] > ping_dim:
+                n_pings = ping_dim
+            else:
+                n_pings = data.shape[0]
+                new_array.fill(np.nan)
+            if data.shape[1] > sample_dim:
+                n_samps = sample_dim
+            else:
+                n_samps = data.shape[1]
+                new_array.fill(np.nan)
+
             # Copy the data into our new array and return it.
-            new_array[0:data.shape[0], 0:data.shape[1]] = data
+            new_array[0:n_pings, 0:n_samps] = data[0:n_pings, 0:n_samps]
             return new_array
 
 
@@ -1013,7 +1024,15 @@ class ping_data(object):
     def _vertical_resample(self, data, sample_intervals,
                            unique_sample_intervals, resample_interval,
                            sample_offsets, min_sample_offset, is_power=True):
-        """Vertically resamples sample data given a target sample interval.
+        """Internal method that vertically resamples sample data given a target
+        sample interval.
+
+        If the resampling factor is a whole number, samples will be replicated
+        when expanding vertically and averaged when reduced. If the resampling
+        factor is a fractional number, the samples will be interpolated.
+        Interpolation will result in aliasing. Aliasing while upsampling is
+        relatively minor, but it can be significant when downsampling. Care
+        should be taken when downsampling. The default behavior is to upsample.
 
         This method also shifts samples vertically based on their sample
         offset so they are positioned correctly relative to each other. The
@@ -1033,6 +1052,9 @@ class ping_data(object):
             The resampled data and the sampling interval used.
         """
 
+        def isclose(a, b, rel_tol=1e-9, abs_tol=0.0):
+            return abs(a - b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
+
         # Determine the number of pings in the new array.
         n_pings = data.shape[0]
 
@@ -1047,13 +1069,17 @@ class ping_data(object):
         # Generate a vector of sample counts.  The generalized method works
         # with both raw_data and processed_data classes and finds the first
         # non-NaN value searching from the "bottom up".
-        sample_counts = data.shape[1] - np.argmax(~np.isnan(np.fliplr(data)), axis=1)
+        if data.ndim == 3:
+            # just use the 1st element for complex data types
+            sample_counts = data.shape[1] - np.argmax(~np.isnan(np.fliplr(data[:,:,0])), axis=1)
+        else:
+            sample_counts = data.shape[1] - np.argmax(~np.isnan(np.fliplr(data)), axis=1)
 
         # Create a couple of dictionaries to store resampling parameters by
         # sample interval.  They will be used when we fill the output array
         # with the resampled data.
         resample_factor = {}
-        rows_this_interval = {}
+        pings_this_interval = {}
         sample_offsets_this_interval = {}
 
         # Determine the number of samples in the output array.  To do this,
@@ -1064,110 +1090,135 @@ class ping_data(object):
         # sample interval.
         new_sample_dims = 0
         for sample_interval in unique_sample_intervals:
-            # Determine the resampling factor.
-            if resample_interval > sample_interval:
-                # We're reducing resolution.  Determine the number of samples
-                # to average.
-                resample_factor[sample_interval] = \
-                    resample_interval / sample_interval
-            else:
-                # We're increasing the resolution.  Determine the number of
-                # samples to expand.
-                resample_factor[sample_interval] = \
-                    sample_interval / resample_interval
+            # Set the resampling factor for pings with this sample interval
+            resample_factor[sample_interval] = sample_interval / resample_interval
 
             # Determine the rows in this subset with this sample interval.
-            rows_this_interval[sample_interval] = np.where(
-                sample_intervals == sample_interval)[0]
+            pings_this_interval[sample_interval] = np.where(sample_intervals == sample_interval)[0]
 
-            # Determine the net vertical shift for the samples with this
-            # sample interval.
+            # Determine the net vertical shift for the samples with this sample interval.
             sample_offsets_this_interval[sample_interval] = \
-                sample_offsets[rows_this_interval[sample_interval]] - \
-                min_sample_offset
+                    sample_offsets[pings_this_interval[sample_interval]] - min_sample_offset
 
-            # Also, determine the maximum number of samples for this sample
-            # interval.  This has to be done on a row-by-row basis since
-            # sample number can change on the fly. We include the sample
-            # offset to ensure we have room to shift our samples vertically
-            # by the offset.
-            max_samples_this_sample_int = max(
-                sample_counts[rows_this_interval[sample_interval]] +
+            # Also, determine the maximum number of samples for this sample interval.  This
+            # has to be done on a row-by-row basis since sample number can change between
+            # pings. We include the sample offset to ensure we have room to shift our
+            # samples vertically by the offset.
+            max_samples_this_sample_int = max(sample_counts[pings_this_interval[sample_interval]] +
                 sample_offsets_this_interval[sample_interval])
-            max_dim_this_sample_int = int(round(
-                max_samples_this_sample_int * resample_factor[sample_interval]))
+
+            # Now compute the number of samples for this sample interval and
+            # store the largest value over all of the intervals.
+            max_dim_this_sample_int = int(round(max_samples_this_sample_int *
+                    resample_factor[sample_interval]))
             if max_dim_this_sample_int > new_sample_dims:
                 new_sample_dims = max_dim_this_sample_int
 
-        # Now that we know the dimensions of the output array, create it and
-        # fill with NaNs.
-        resampled_data = np.empty(
-            (n_pings, new_sample_dims),dtype=self.sample_dtype, order='C')
+        # Now that we know the dimensions of the output array, create it and fill with NaNs.
+        if data.ndim == 3:
+            resampled_data = np.empty((n_pings, new_sample_dims, data.shape[2]), order='C')
+        else:
+            resampled_data = np.empty((n_pings, new_sample_dims),order='C')
         resampled_data.fill(np.nan)
 
-        # Now fill the array with data.  We loop through the sample intervals
-        # and within an interval, extract slices of data that share the same
-        # number of samples (to reduce looping).  We then determine if we're
-        # expanding or shrinking the number of samples.  If expanding we
-        # simply replicate existing sample data to fill out the expanded
-        # array. If reducing, we take the mean of the samples.  Power data is
-        # converted to linear units before the mean is computed and then
-        # transformed back.
+        # Now fill the array with data. We loop through the sample intervals  and within an
+        # interval, extract slices of data that share the same number of samples. We then
+        # determine if we're expanding or shrinking the number of samples and if the resample
+        # factor is a whole number or float.  If it is a whole number and we are expanding
+        # we replicate existing sample data to fill out the expanded array. If reducing, we
+        # take the mean of the samples. If the resample factor is not a whole number we interpolate.
         for sample_interval in unique_sample_intervals:
+            # get an index of the pings with this sample interval
+            pings = pings_this_interval[sample_interval]
+
             # Determine the unique sample_counts for this sample interval.
-            unique_sample_counts = np.unique(
-                sample_counts[rows_this_interval[sample_interval]])
+            unique_sample_counts = np.unique(sample_counts[pings])
+
+            # check if the resample factor is an whole number. When it is a whole nummber, we
+            # can reduce or expand the array, if it is a float we have to interpolate.
+            if isclose(resample_factor[sample_interval], round(resample_factor[sample_interval])):
+                # it is, we will replicate samples when expanding and take the mean when reducing
+                use_interp = False
+            else:
+                # the resample factor is a float - we need to interpolate
+                use_interp = True
+
             for count in unique_sample_counts:
-                # Determine if we're reducing, expanding, or keeping the same
-                # number of samples.
+                # get an index into the pings with this sample count
+                p_n_samples = sample_counts[pings] == count
+
+                # Combine the index array for this sample interval/sample count chunk of data.
+                pings_this_interval_count = pings[p_n_samples]
+
+                # Determine if we're reducing, expanding, or keeping the same number of samples.
                 if resample_interval > sample_interval:
                     # We're reducing the number of samples.
 
                     # If we're resampling power, convert power to linear units.
                     if is_power:
-                        this_data = np.power(
-                            data[rows_this_interval[sample_interval]][
-                                sample_counts[rows_this_interval[
-                                    sample_interval]] == count] / 20.0, 10.0)
+                        this_data = 10.0 ** (data[pings_this_interval_count] / 10.0)
+                    else:
+                        this_data = data[pings_this_interval_count]
 
-                    # Reduce the number of samples by taking the mean.
-                    this_data = np.mean(this_data.reshape(
-                        -1, int(resample_factor[sample_interval])), axis=1)
+                    if use_interp:
+                        # We can't reduce by averaging a whole number of samples so we have to interpolate.
+                        xp = sample_interval * np.arange(count)
+                        rsf = int(count * resample_factor[sample_interval])
+                        yp = resample_interval * np.arange(rsf)
+                        interp_f = interp1d(xp, this_data[:,0:count], kind='previous', axis=1,
+                                bounds_error=False, fill_value=np.nan, assume_sorted=True)
+                        this_data = interp_f(yp)
+                    else:
+                        # Reduce the number of samples by taking the mean.
+                        n_mean = int(resample_factor[sample_interval])
+                        this_data = np.mean(this_data.reshape(-1, n_mean), axis=1)
 
                     if is_power:
                         # Convert power back to log units.
-                        this_data = 20.0 * np.log10(this_data)
+                        this_data = 10.0 * np.log10(this_data)
 
                 elif resample_interval < sample_interval:
                     # We're increasing the number of samples.
 
-                    # Replicate the values to fill out the higher resolution
-                    # array.
-                    this_data = np.repeat(
-                        data[rows_this_interval[sample_interval]]
-                        [sample_counts[rows_this_interval[
-                            sample_interval]] == count][:, 0:count],
-                        int(resample_factor[sample_interval]), axis=1)
+                    if use_interp:
+                        # If we're resampling power, convert power to linear units.
+                        if is_power:
+                            this_data = 10.0 ** (data[pings_this_interval_count] / 10.0)
+                        else:
+                            this_data = data[pings_this_interval_count]
+
+                        # We can't expand by replicating a whole number of samples so we have to interpolate.
+                        xp = sample_interval * np.arange(count)
+                        rsf = int(count * resample_factor[sample_interval])
+                        yp = resample_interval * np.arange(rsf)
+                        interp_f = interp1d(xp, this_data[:,0:count], kind='previous', axis=1,
+                                bounds_error=False, fill_value=np.nan, assume_sorted=True)
+                        this_data = interp_f(yp)
+
+                        if is_power:
+                            # Convert power back to log units.
+                            this_data = 10.0 * np.log10(this_data)
+
+                    else:
+                        # Replicate the values to fill out the higher resolution array.
+                        n_repeat = int(resample_factor[sample_interval])
+                        this_data = data[pings_this_interval_count]
+                        if data.ndim == 3:
+                            this_data = np.repeat(this_data[:, 0:count,:], n_repeat, axis=1)
+                        else:
+                            this_data = np.repeat(this_data[:, 0:count], n_repeat, axis=1)
 
                 else:
-                    # No change in resolution for this sample interval.
-                    this_data = data[rows_this_interval[sample_interval]] \
-                    [sample_counts[rows_this_interval[sample_interval]]
-                        == count]
+                    # The data exists on the resample_interval grid - no change
+                    this_data = data[pings_this_interval_count, 0:count]
 
-                # Generate the index array for this sample interval/sample
-                # count chunk of data.
-                rows_this_interval_count = rows_this_interval[
-                    sample_interval][sample_counts[
-                        rows_this_interval[sample_interval]] == count]
-
-                # Assign new values to output array.  At the same time,
-                # we will shift the data by sample offset.
-                unique_sample_offsets = np.unique(
-                    sample_offsets_this_interval[sample_interval]).astype('int')
+                # Assign new values to output array.  At the same time, we will shift the data by sample offset.
+                unique_sample_offsets = np.unique(sample_offsets_this_interval[sample_interval]).astype('int')
                 for offset in unique_sample_offsets:
-                    resampled_data[rows_this_interval_count,
-                    offset:offset + this_data.shape[1]] = this_data
+                    if this_data.ndim == 3:
+                        resampled_data[pings_this_interval_count, offset:offset + this_data.shape[1],:] = this_data
+                    else:
+                        resampled_data[pings_this_interval_count, offset:offset + this_data.shape[1]] = this_data
 
         # Return the resampled data and the sampling interval used.
         return resampled_data, resample_interval

@@ -55,6 +55,7 @@ def create_ek80_tx(raw_data, calibration, return_indices=None):
                  'frequency':None,
                  'impedance':None,
                  'rx_sample_frequency':None,
+                 'sample_interval':None,
                  'filters':None}
 
     #  now create a dict that will track these params
@@ -66,86 +67,72 @@ def create_ek80_tx(raw_data, calibration, return_indices=None):
                  'frequency':None,
                  'impedance':None,
                  'rx_sample_frequency':None,
+                 'sample_interval':None,
                  'filters':None}
 
-    # create the return array
+    # create the return arrays
     tx_data = np.empty(return_indices.shape[0], dtype=np.ndarray)
+    tau_eff = np.empty(return_indices.shape[0], dtype=np.float32)
 
-    # Iterate thru the return indices - We're
+    # Get the cal params we need
+    for key in cal_parms:
+        cal_parms[key] = calibration.get_parameter(raw_data, key, return_indices)
+
+    # if this is CW data, we will not have the start/end params so we
+    # set them to cal_parms['frequency']
+    if cal_parms['frequency_start'] is None:
+        cal_parms['frequency_start'] = cal_parms['frequency']
+        cal_parms['frequency_end'] = cal_parms['frequency']
+
+    # Iterate thru the return indices - We'll only generate a tx signal if required
     for idx, ping_index in enumerate(return_indices):
-
-        # Get the cal params we need for this ping
-        for key in cal_parms:
-            cal_parms[key] = calibration.get_parameter(raw_data, key, ping_index)
-
-        # if this is CW data, we will not have the start/end params so we
-        # set them to cal_parms['frequency']
-        if cal_parms['frequency_start'] is None:
-            cal_parms['frequency_start'] = cal_parms['frequency']
-            cal_parms['frequency_end'] = cal_parms['frequency']
 
         # Check if this ping's Tx is the same as the last pings
         if last_parms['slope'] == None:
             #  this is the first ping, populate the initial values in last_parms
-            for key in last_parms:
-                last_parms[key] = cal_parms[key]
-            compute_tx = True
+            for key in cal_parms:
+                if cal_parms[key] is not None:
+                    last_parms[key] = cal_parms[key][idx]
+            no_compute_tx = False
         else:
             #  check if all params are the same
             #  assume they are and set compute_tx to False
-            compute_tx = False
+            no_compute_tx = True
             #  now compare the params
             for key in last_parms:
-                # if one of the params is different - compute_tx will be True
-                compute_tx &= last_parms[key] != cal_parms[key]
-                # after checking we update
-                last_parms[key] = cal_parms[key]
+                if last_parms[key] is not None:
+                    # if one of the params is different - compute_tx will be True
+                    no_compute_tx &= last_parms[key] == cal_parms[key][idx]
+                    # after checking we update
+                    last_parms[key] = cal_parms[key][idx]
 
         #  only generate, filter and decimate the new signal if needed
-        if compute_tx:
+        if not no_compute_tx:
             #  get the theoretical tx signal
-            t, y = ek80_chirp(cal_parms['transmit_power'], cal_parms['frequency_start'],
-                    cal_parms['frequency_end'], cal_parms['slope'],
-                    cal_parms['pulse_duration'], cal_parms['impedance'],
-                    cal_parms['rx_sample_frequency'])
+            t, y = ek80_chirp(cal_parms['transmit_power'][idx], cal_parms['frequency_start'][idx],
+                    cal_parms['frequency_end'][idx], cal_parms['slope'][idx],
+                    cal_parms['pulse_duration'][idx], cal_parms['impedance'][idx],
+                    cal_parms['rx_sample_frequency'][idx])
 
             #  apply the stage 1 and stage 2 filters
-            y = filter_and_decimate(y, cal_parms['filters'][0], [1, 2])
+            y = filter_and_decimate(y, cal_parms['filters'][idx], [1, 2])
+
+            #  compute effective pulse duration
+            fs_dec = 1 / cal_parms['sample_interval'][idx]
+            ptxa = np.abs(y) ** 2
+            teff =  np.sum(ptxa) / (np.max(ptxa) * fs_dec)
 
         #  store this ping's tx signal
         tx_data[idx] = y
+        tau_eff[idx] =  teff
 
-    return tx_data
+    return tx_data, tau_eff
 
 
 def compute_effective_pulse_duration(raw_data, calibration, return_indices=None):
 
-    #  get the ideal transmit pulse
-    tx_data = create_ek80_tx(raw_data, calibration, return_indices=return_indices)
-
-    #  create the return array
-    tau_eff = np.empty(tx_data.shape[0], dtype=np.float32)
-
-    #  create some state variables
-    last_tx = None
-    last_tau_eff = None
-    last_interval = None
-
-    #  iterate thru the tx signals
-    for idx, y in enumerate(tx_data):
-
-        # check if this tx signal is the same as the last and
-        if last_tx is not None:
-            if np.array_equal(last_tx, y) and raw_data.sample_interval[idx] == last_interval:
-                tau_eff[idx] = last_tau_eff
-                last_interval = raw_data.sample_interval[idx]
-        else:
-            fs_dec = 1/ raw_data.sample_interval[idx]
-            ptxa = np.abs(y) ** 2
-            tau_eff[idx] =  np.sum(ptxa) / (np.max(ptxa) *fs_dec)
-            last_interval = raw_data.sample_interval[idx]
-            last_tau_eff = tau_eff[idx]
-            last_tx = y
+    #  get the ideal transmit pulse which also returns effective pulse duration
+    _, tau_eff = create_ek80_tx(raw_data, calibration, return_indices=return_indices)
 
     return tau_eff
 
@@ -231,11 +218,11 @@ def ek80_chirp(txpower, fstart, fstop, slope, tau, z, rx_freq):
     return t, y
 
 
-def pulse_compression(p_data, raw_data, calibration, return_indices=None):
+def pulse_compression(raw_data, calibration, return_indices=None):
     '''pulse_compression applies a matched filter to the received signal using
     the simulated Tx signal as the filter template. This method will only apply
-    the filter to FM pings. It does nothing to CW pings. The p_data object is
-    modified in-place.
+    the filter to FM pings. It does nothing to CW pings.
+
     '''
 
     # If we're not given specific indices, grab everything.
@@ -250,8 +237,12 @@ def pulse_compression(p_data, raw_data, calibration, return_indices=None):
     if np.any(is_fm):
         # we do have fm pings - get the indices for those fm pings
         fm_pings = return_indices[is_fm]
+
         # get the simulated tx signal for these pings
-        tx_signal = create_ek80_tx(raw_data, calibration, return_indices=fm_pings)
+        tx_signal, _ = create_ek80_tx(raw_data, calibration, return_indices=fm_pings)
+
+        # create a copy of the data to operate on and return
+        p_data = raw_data.complex.copy()
 
         # apply match filter to these pings
         for p_idx, tx in enumerate(tx_signal):
@@ -261,10 +252,14 @@ def pulse_compression(p_data, raw_data, calibration, return_indices=None):
             tx_n = np.linalg.norm(tx) ** 2
 
             # apply the filter to each of the transducer sectors
-            for q_idx in range(p_data.data[p_idx,:,:].shape[1]):
+            for q_idx in range(p_data[p_idx,:,:].shape[1]):
                 # apply the filter
-                filtered = np.convolve(p_data.data[p_idx,:,q_idx], tx_mf) / tx_n
+                filtered = np.convolve(p_data[p_idx,:,q_idx], tx_mf) / tx_n
                 # remove filter delay
-                p_data.data[p_idx,:,q_idx] = filtered[ltx-1:]
+                p_data[p_idx,:,q_idx] = filtered[ltx-1:]
 
+    else:
+        # don't copy if we're not modifying the data
+        p_data = raw_data.complex
 
+    return p_data

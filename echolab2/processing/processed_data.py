@@ -1755,7 +1755,7 @@ class processed_data(ping_data):
 
 
 def read_ev_mat(channel_id, frequency, ev_mat_filename, data_type='Sv',
-        sample_dtype=np.float32):
+        sample_dtype=np.float32, pad_n_samples=0):
     '''read_ev_mat will read a .mat file exported by Echoview v7 or newer and
     return a processed data object containing the data.
     '''
@@ -1773,12 +1773,13 @@ def read_ev_mat(channel_id, frequency, ev_mat_filename, data_type='Sv',
     n_pings = len(ev_data['PingNames'])
     max_samples = -1
     for p in ev_data['PingNames']:
-        if ev_data[p].Sample_count > max_samples:
-            max_samples = ev_data[p].Sample_count
+        this_samples = ev_data[p].Sample_count + pad_n_samples
+        if this_samples > max_samples:
+            max_samples = this_samples
 
     #  create an empty processed_data object
     p_data = processed_data(channel_id, frequency, data_type)
-    p_data.is_log = True
+
 
     #  create the data arrays
     data = np.empty((n_pings, max_samples), dtype=sample_dtype)
@@ -1805,12 +1806,15 @@ def read_ev_mat(channel_id, frequency, ev_mat_filename, data_type='Sv',
 
     #  create the range attribute - this is built on our sample
     #  thickness assumptions above.
-    range = np.arange(0, ev_data['P0'].Sample_count, dtype=sample_dtype)
+    range = np.arange(0, max_samples, dtype=sample_dtype)
     range = range * p_data.sample_thickness
     p_data.add_data_attribute('range', range)
 
-    if data_type == 'Sv':
+    if data_type in ['Sv', 'Sp', 'TS']:
         p_data.is_log = True
+#    else:
+
+    p_data.is_log = True
 
     #  extract the data
     for idx, ping in enumerate(ev_data['PingNames']):
@@ -1821,7 +1825,7 @@ def read_ev_mat(channel_id, frequency, ev_mat_filename, data_type='Sv',
                 '%3.3i' % ev_data[ping].Ping_milliseconds
         this_time = np.datetime64(datetime.strptime(this_time, "%m-%d-%Y %H:%M:%S.%f"))
         p_data.ping_time[idx] = this_time
-        p_data.data[idx,:] = ev_data[ping].Data_values[:]
+        p_data.data[idx,pad_n_samples:] = ev_data[ping].Data_values[:]
 
     return p_data
 

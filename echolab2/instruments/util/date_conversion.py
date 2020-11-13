@@ -71,7 +71,7 @@ def dt64_to_datetime(dt64):
 
     '''
 
-    ts = (dt64 - np.datetime64('1970-01-01T00:00:00Z')) / np.timedelta64(1, 's')
+    ts = (dt64 - np.datetime64('1970-01-01T00:00:00')) / np.timedelta64(1, 's')
 
     return datetime.datetime.fromtimestamp(ts, tz=pytz_utc)
 
@@ -85,7 +85,7 @@ def dt64_to_nt(dt64):
 
     '''
 
-    ts = (dt64 - np.datetime64('1970-01-01T00:00:00Z')) / np.timedelta64(1, 's')
+    ts = (dt64 - np.datetime64('1970-01-01T00:00:00')) / np.timedelta64(1, 's')
     unix_datetime = datetime.datetime.fromtimestamp(ts, tz=pytz_utc)
     sec_past_nt_epoch = (unix_datetime - UTC_NT_EPOCH).total_seconds()
 

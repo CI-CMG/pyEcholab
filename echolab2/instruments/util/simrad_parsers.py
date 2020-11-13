@@ -36,7 +36,6 @@ import numpy as np
 import logging
 import struct
 import re
-import sys
 from collections import OrderedDict
 from lxml import etree as ET
 from .date_conversion import nt_to_unix
@@ -95,8 +94,7 @@ class _SimradDatagramParser(object):
     def from_string(self, raw_string, bytes_read):
 
         header = raw_string[:4]
-        if (sys.version_info.major > 2):
-            header = header.decode()
+        header = header.decode()
         id_, version = self.validate_data_header(header)
         return self._unpack_contents(raw_string, bytes_read, version=version)
 
@@ -165,6 +163,7 @@ class SimradDepthParser(_SimradDatagramParser):
                 data[field] = data[field].decode()
 
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
+        data['timestamp'] = data['timestamp'].replace(tzinfo=None)
         data['bytes_read'] = bytes_read
 
         if version == 0:
@@ -259,6 +258,7 @@ class SimradBottomParser(_SimradDatagramParser):
                 data[field] = data[field].decode()
 
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
+        data['timestamp'] = data['timestamp'].replace(tzinfo=None)
         data['bytes_read'] = bytes_read
 
         if version == 0:
@@ -337,13 +337,11 @@ class SimradAnnotationParser(_SimradDatagramParser):
                 data[field] = data[field].decode()
 
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
+        data['timestamp'] = data['timestamp'].replace(tzinfo=None)
         data['bytes_read'] = bytes_read
 
         if version == 0:
-            if (sys.version_info.major > 2):
-                data['text'] = str(raw_string[self.header_size(version):].strip(b'\x00'), 'ascii', errors='replace')
-            else:
-                data['text'] = unicode(raw_string[self.header_size(version):].strip('\x00'), 'ascii', errors='replace')
+            data['text'] = str(raw_string[self.header_size(version):].strip(b'\x00'), 'ascii', errors='replace')
 
         return data
 
@@ -355,7 +353,7 @@ class SimradAnnotationParser(_SimradDatagramParser):
         if version == 0:
 
             for field in self.header_fields(version):
-                if (sys.version_info.major > 2) and isinstance(data[field], str):
+                if isinstance(data[field], str):
                     data[field] = data[field].encode('latin_1')
                 datagram_contents.append(data[field])
 
@@ -369,8 +367,7 @@ class SimradAnnotationParser(_SimradDatagramParser):
                 tmp_string += '\x00' * (4 - (len(tmp_string) % 4))
 
             #  handle Python 3 strings
-            if (sys.version_info.major > 2):
-                tmp_string = tmp_string.encode('latin_1')
+            tmp_string = tmp_string.encode('latin_1')
 
             datagram_fmt += '%ds' % (len(tmp_string))
             datagram_contents.append(tmp_string)
@@ -432,13 +429,12 @@ class SimradNMEAParser(_SimradDatagramParser):
                 data[field] = data[field].decode()
 
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
+        data['timestamp'] = data['timestamp'].replace(tzinfo=None)
         data['bytes_read'] = bytes_read
 
         if version == 0:
-            if (sys.version_info.major > 2):
-                data['nmea_string'] = str(raw_string[self.header_size(version):].strip(b'\x00'), 'ascii', errors='replace')
-            else:
-                data['nmea_string'] = unicode(raw_string[self.header_size(version):].strip('\x00'), 'ascii', errors='replace')
+
+            data['nmea_string'] = str(raw_string[self.header_size(version):].strip(b'\x00'), 'ascii', errors='replace')
 
             if self.nmea_head_re.match(data['nmea_string'][:7]) is not None:
                 data['nmea_talker'] = data['nmea_string'][1:3]
@@ -457,7 +453,7 @@ class SimradNMEAParser(_SimradDatagramParser):
         if version == 0:
 
             for field in self.header_fields(version):
-                if (sys.version_info.major > 2) and isinstance(data[field], str):
+                if isinstance(data[field], str):
                     data[field] = data[field].encode('latin_1')
                 datagram_contents.append(data[field])
 
@@ -538,6 +534,7 @@ class SimradMRUParser(_SimradDatagramParser):
                 data[field] = data[field].decode()
 
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
+        data['timestamp'] = data['timestamp'].replace(tzinfo=None)
         data['bytes_read'] = bytes_read
 
         return data
@@ -550,7 +547,7 @@ class SimradMRUParser(_SimradDatagramParser):
         if version == 0:
 
             for field in self.header_fields(version):
-                if (sys.version_info.major > 2) and isinstance(data[field], str):
+                if isinstance(data[field], str):
                     data[field] = data[field].encode('latin_1')
                 datagram_contents.append(data[field])
 
@@ -768,14 +765,12 @@ class SimradXMLParser(_SimradDatagramParser):
 
         #  add the unix timestanp and bytes read
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
+        data['timestamp'] = data['timestamp'].replace(tzinfo=None)
         data['bytes_read'] = bytes_read
 
         #  parse the datagram based on the version
         if version == 0:
-            if (sys.version_info.major > 2):
-                xml_string = raw_string[self.header_size(version):].strip(b'\x00')
-            else:
-                xml_string = unicode(raw_string[self.header_size(version):].strip('\x00'), 'ascii', errors='replace')
+            xml_string = raw_string[self.header_size(version):].strip(b'\x00')
 
             #  get the ElementTree element
             root_node = ET.fromstring(xml_string)
@@ -903,7 +898,7 @@ class SimradXMLParser(_SimradDatagramParser):
 
         # Insert the datagram header fields
         for field in self.header_fields(version):
-            if (sys.version_info.major > 2) and isinstance(data[field], str):
+            if isinstance(data[field], str):
                 data[field] = data[field].encode('latin_1')
             datagram_contents.append(data[field])
 
@@ -1033,10 +1028,11 @@ class SimradFILParser(_SimradDatagramParser):
             data[field] = header_values[indx]
 
             #  handle Python 3 strings
-            if (sys.version_info.major > 2) and isinstance(data[field], bytes):
+            if isinstance(data[field], bytes):
                 data[field] = data[field].decode('latin_1')
 
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
+        data['timestamp'] = data['timestamp'].replace(tzinfo=None)
         data['bytes_read'] = bytes_read
 
         if version == 1:
@@ -1046,7 +1042,8 @@ class SimradFILParser(_SimradDatagramParser):
             #  unpack the coefficients
             indx = self.header_size(version)
             block_size = data['n_coefficients'] * 8
-            data['coefficients'] = np.fromstring(raw_string[indx:indx + block_size], dtype='complex64')
+            #data['coefficients'] = np.fromstring(raw_string[indx:indx + block_size], dtype='complex64')
+            data['coefficients'] = np.frombuffer(raw_string[indx:indx + block_size], dtype='complex64')
 
         return data
 
@@ -1064,7 +1061,7 @@ class SimradFILParser(_SimradDatagramParser):
 
             # Append the datagram values
             for field in self.header_fields(version):
-                if (sys.version_info.major > 2) and isinstance(data[field], str):
+                if isinstance(data[field], str):
                     data[field] = data[field].encode('latin_1')
                 datagram_contents.append(data[field])
 
@@ -1301,13 +1298,14 @@ class SimradConfigParser(_SimradDatagramParser):
             header_data[field] = header_values[indx]
 
             #  handle Python 3 strings
-            if (sys.version_info.major > 2) and isinstance(header_data[field], bytes):
+            if isinstance(header_data[field], bytes):
                 header_data[field] = header_data[field].decode('latin_1')
 
         #  add the common fields to the return dict
         data['low_date'] = header_data['low_date']
         data['high_date'] = header_data['high_date']
         data['timestamp'] = nt_to_unix((header_data['low_date'], header_data['high_date']))
+        data['timestamp'] = data['timestamp'].replace(tzinfo=None)
         data['type'] = header_data['type']
         data['subtype'] = 'configuration'
         data['configuration'] = {}
@@ -1424,7 +1422,7 @@ class SimradConfigParser(_SimradDatagramParser):
             data['spare0'] = first_conf['spare0'].encode('latin_1')
 
             for field in self.header_fields(version):
-                if (sys.version_info.major > 2) and isinstance(data[field], str):
+                if isinstance(data[field], str):
                     data[field] = data[field].encode('latin_1')
                 datagram_contents.append(data[field])
 
@@ -1444,7 +1442,7 @@ class SimradConfigParser(_SimradDatagramParser):
                 if _sounder_name_used in ['ER60', 'ES60']:
                     for field in txcvr_header_fields[:17]:
                         #  Python 3 convert str to bytes
-                        if (sys.version_info.major > 2) and isinstance(txcvr[field], str):
+                        if isinstance(txcvr[field], str):
                             txcvr[field] = txcvr[field].encode('latin_1')
                         txcvr_contents.append(txcvr[field])
 
@@ -1571,6 +1569,7 @@ class SimradRawParser(_SimradDatagramParser):
                 data[field] = data[field].decode()
 
         data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
+        data['timestamp'] = data['timestamp'].replace(tzinfo=None)
         data['bytes_read'] = bytes_read
 
         if version == 0:
@@ -1641,8 +1640,10 @@ class SimradRawParser(_SimradDatagramParser):
                     block_size = 2 * data['count'] * data['n_complex'] * type_bytes
 
                     #  convert and reshape the raw string data
-                    data['complex'] = np.fromstring(raw_string[indx:indx + block_size],
-                        dtype=data['complex_dtype'])
+                    data['complex'] = np.frombuffer(raw_string[indx:indx + block_size],
+                            dtype=data['complex_dtype'])
+                    #data['complex'] = np.fromstring(raw_string[indx:indx + block_size],
+                    #        dtype=data['complex_dtype'])
                     data['complex'].shape = (data['count'], 2 * data['n_complex'])
                     data['complex'].dtype = np.complex64
                 else:
@@ -1667,7 +1668,7 @@ class SimradRawParser(_SimradDatagramParser):
                     data['count'] = 0
 
             for field in self.header_fields(version):
-                if (sys.version_info.major > 2) and isinstance(data[field], str):
+                if isinstance(data[field], str):
                     data[field] = data[field].encode('latin_1')
                 datagram_contents.append(data[field])
 
@@ -1692,7 +1693,7 @@ class SimradRawParser(_SimradDatagramParser):
             # work through the parameter dict and append data values to the
             # packed datagram list.
             for field in self.header_fields(version):
-                if (sys.version_info.major > 2) and isinstance(data[field], str):
+                if isinstance(data[field], str):
                     data[field] = data[field].encode('latin_1')
                 datagram_contents.append(data[field])
 

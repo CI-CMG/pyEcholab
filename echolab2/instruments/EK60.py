@@ -38,6 +38,7 @@ $Id$
 import os
 import datetime
 import numpy as np
+from scipy.interpolate import interp1d
 from pytz import timezone
 from .util.simrad_calibration import calibration
 from .util.simrad_raw_file import RawSimradFile, SimradEOF
@@ -993,12 +994,14 @@ class EK60(object):
                 writing to last sample.
 
             strip_padding (bool): Set to True to remove any NaN padding at the
-                beginning and/or end of pings. Echolab stores sample data in
-                rectangular arrays. When the sample number increses within or
+                beginning and/or end of the sample data. Echolab stores sample data in
+                rectangular arrays. When the sample number increases within or
                 between files, these arrays are resized and pings with fewer samples
                 are padded with NaNs as appropriate. When True, these samples are
-                omitted when writing. This DOES NOT affect padded pings. Padded
-                pings are always removed before writing. The default value is True.
+                omitted when writing. This DOES NOT affect padded pings (entire pings
+                that contain no data.) Padded pings are always removed before writing
+                because they lack not only sample data, but all synchronous ping
+                attributes. The default value is True.
 
             The following keywords are for advanced indexing and writing of the
             data. This can allow you to easily write subsets of data where the
@@ -1165,18 +1168,17 @@ class EK60(object):
 
             for data in self.raw_data[channel]:
                 # Check if we've been provided with an index array
-                if raw_index_array:
-                    if data in raw_index_array:
+                if raw_index_array is not None:
+                    if isinstance(raw_index_array, dict) and data in raw_index_array:
+                        # this is a dict mapping the index to theraw_data objects
                         this_idx = raw_index_array[data]
                     else:
-                        # Get the indices of data from this channel/data that fall within the
-                        # time span provided.
-                        this_idx = data.get_indices(start_time=start_time,
-                                end_time=end_time, start_ping=start_ping,
-                                end_ping=end_ping)
+                        # Assume that if we're not passed a dict, that this must be
+                        # an index array that will be applied to all channels
+                        this_idx = raw_index_array
                 else:
-                    # Get the indices of data from this channel/data that fall within the
-                    # time span provided.
+                    # No index array provided. Get the indices of data from this
+                    # channel/data that fall within the time span provided.
                     this_idx = data.get_indices(start_time=start_time,
                             end_time=end_time, start_ping=start_ping,
                             end_ping=end_ping)
@@ -2720,11 +2722,11 @@ class raw_data(ping_data):
         # sample attribute. The method will return a reference to a newly created
         # processed_data object.
         alongship, return_indices = self._get_sample_data('angles_alongship_e',
-                **kwargs)
+                calibration=calibration, **kwargs)
 
         # Repeat for the athwartship data.
         athwartship, return_indices = self._get_sample_data('angles_athwartship_e',
-                **kwargs)
+                calibration=calibration, **kwargs)
 
         # Set the data type.
         alongship.data_type = 'angles_alongship_e'
@@ -2817,7 +2819,7 @@ class raw_data(ping_data):
         if hasattr(self, 'angles_alongship_e') or hasattr(self, 'angles_athwartship_e'):
             if hasattr(self, 'angles_alongship_e'):
                 alongship, return_indices = self._get_sample_data('angles_alongship_e',
-                        **kwargs)
+                        calibration=calibration, **kwargs)
             else:
                 raise AttributeError('Raw data object does not contain the ' +
                         'angles_alongship_e attribute required to return angle data.')
@@ -2827,7 +2829,7 @@ class raw_data(ping_data):
             if hasattr(self, 'angles_athwartship_e'):
                 kwargs.pop('return_indices', None)
                 athwartship, ri = self._get_sample_data('angles_athwartship_e',
-                        return_indices=return_indices, **kwargs)
+                        return_indices=return_indices, calibration=calibration, **kwargs)
             else:
                 raise AttributeError('Raw data object does not contain the ' +
                         'angles_athwartship_e attribute required to return angle data.')
@@ -2857,15 +2859,15 @@ class raw_data(ping_data):
 
         This method returns a processed data object that contains the
         sample data from the property name provided. It performs all of the
-        required transformations to place the raw data into a rectangular
+        required transformations to place the data into a rectangular
         array where all samples in all pings share the same thickness and are
-        correctly arranged relative to each other (i.e. gridded)
+        correctly arranged relative to each other.
 
         This process happens in 3 steps:
 
-                Data are resampled so all samples have the same thickness.
+                Data are resampled so all samples have the same sampling interval.
                 Data are shifted vertically to account for the sample offsets.
-                Data are then regridded to a common time, range grid.
+                Data are then interpolated to a common sound velocity
 
         Each step is performed only when required. Calls to this method will
         return much faster if the raw data share the same sample thickness,
@@ -3004,16 +3006,33 @@ class raw_data(ping_data):
             range = get_range_vector(output.shape[1], sample_interval,
                     sound_velocity, min_sample_offset)
 
-            # Get an array of indexes in the output array to interpolate.
-            pings_to_interp = np.where(cal_parms['sound_velocity'] != sound_velocity)[0]
+            # Now interpolate the samples for pings with different sound speeds
+            for speed in unique_sound_velocity:
+                # Only interpolate the "other" speeds
+                if speed != sound_velocity:
 
-            # Iterate through this list of pings to change.  Interpolating each
-            # ping.
-            for ping in pings_to_interp:
-                # Resample using the provided sound speed.
-                resample_range = get_range_vector(output.shape[1], sample_interval,
-                        cal_parms['sound_velocity'][ping], min_sample_offset)
-                output[ping,:] = np.interp(range, resample_range, output[ping, :])
+                    # Get an array of indexes in the output array to interpolate.
+                    pings_to_interp = np.where(cal_parms['sound_speed'] == speed)[0]
+
+                    # Compute this data's range
+                    resample_range = get_range_vector(output.shape[1], sample_interval,
+                        cal_parms['sound_speed'][pings_to_interp[0]], min_sample_offset)
+
+                    # Interpolate samples to target range
+                    interp_f = interp1d(resample_range, output[pings_to_interp,:], axis=1,
+                            bounds_error=False, fill_value=np.nan, assume_sorted=True)
+                    output[pings_to_interp,:] = interp_f(resample_range)
+
+#            # Get an array of indexes in the output array to interpolate.
+#            pings_to_interp = np.where(cal_parms['sound_velocity'] != sound_velocity)[0]
+#
+#            # Iterate through this list of pings to change.  Interpolating each
+#            # ping.
+#            for ping in pings_to_interp:
+#                # Resample using the provided sound speed.
+#                resample_range = get_range_vector(output.shape[1], sample_interval,
+#                        cal_parms['sound_velocity'][ping], min_sample_offset)
+#                output[ping,:] = np.interp(range, resample_range, output[ping, :])
 
         else:
             # We have a fixed sound speed and only need to calculate a single
