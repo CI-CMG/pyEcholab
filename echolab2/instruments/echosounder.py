@@ -35,7 +35,6 @@ $Id$
 '''
 
 import os
-import struct
 from echolab2.instruments import EK80
 from echolab2.instruments import EK60
 
@@ -93,12 +92,12 @@ def check_filetype(filename):
     fh.close()
 
     # Return the file type based on the header
-    if struct.unpack("l4s", header)[1] == b'CON0':
-        # This is a simrad EK60 style raw file
+    if header[4:8]==b'CON0':
+        # Simrad EK60 style raw files start with P <BS> <NUL> <NUL> C O N 0
         return SIMRAD_EK60
 
-    elif struct.unpack("l4s", header)[1] == b'XML0':
-        # This is a simrad EK80 style raw file
+    elif header[4:8]==b'XML0':
+        # Simrad EK80 style raw files start with <DLE> p <NUL> <NUL> X M L 0
         return SIMRAD_EK80
 
     else:
