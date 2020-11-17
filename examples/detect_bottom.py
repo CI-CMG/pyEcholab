@@ -68,9 +68,7 @@ raw_data_120 = raw_data[120000][0]
 
 # Get calibration objects
 cal_obj_38 = raw_data_38.get_calibration()
-print(cal_obj_38)
 cal_obj_120 = raw_data_120.get_calibration()
-print(cal_obj_120)
 
 
 # Get Sv data.

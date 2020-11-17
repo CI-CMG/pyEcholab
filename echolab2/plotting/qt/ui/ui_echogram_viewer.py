@@ -44,4 +44,4 @@ class Ui_echogram_viewer(object):
         self.actionLoad.setText(_translate("echogram_viewer", "Load Deployment..."))
         self.actionExit.setText(_translate("echogram_viewer", "Exit"))
         self.actionSet_EK60_Raw_data_path.setText(_translate("echogram_viewer", "Set Echogram properties"))
-from QImageViewer.QEchogramViewer import QEchogramViewer
+from ..QImageViewer.QEchogramViewer import QEchogramViewer

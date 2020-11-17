@@ -1704,7 +1704,7 @@ class processed_data(ping_data):
             indices of the pings inserted and removed.
 
         """
-        super(processed_data, self).match_pings(other_data, match_to='cs')
+        return super(processed_data, self).match_pings(other_data, match_to='cs')
 
 
     def __str__(self):

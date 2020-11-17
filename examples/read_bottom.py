@@ -71,9 +71,7 @@ raw_data_120 = raw_data[120000][0]
 # populated from the raw_data object. You are free to change
 # any or all of the calibration parameters as required.
 cal_38 = raw_data_38.get_calibration()
-print(cal_38)
 cal_120 = raw_data_120.get_calibration()
-print(cal_120)
 
 # For fun, we'll provide our own sound speed. You can either provide
 # calibration parameters as a scalar, in which case the value will

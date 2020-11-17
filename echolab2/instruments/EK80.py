@@ -3157,7 +3157,7 @@ class raw_data(ping_data):
                 sample_interval = unique_sample_interval[0]
 
             # Check if we have a fixed sound speed.
-            unique_sound_velocity = np.unique(cal_parms['sound_speed'])
+            unique_sound_velocity = np.unique(cal_parms['sound_speed'][~np.isnan(cal_parms['sound_speed'])])
             if unique_sound_velocity.shape[0] > 1:
                 # There are at least 2 different sound speeds in the data or
                 # provided calibration data.  Interpolate all data to the most
@@ -3498,7 +3498,7 @@ class raw_data(ping_data):
             A dictionary with the keys 'inserted' and 'removed' containing the
             indices of the pings inserted and removed.
         """
-        super(processed_data, self).match_pings(other_data, match_to='cs')
+        return super(processed_data, self).match_pings(other_data, match_to='cs')
 
 
     def __str__(self):

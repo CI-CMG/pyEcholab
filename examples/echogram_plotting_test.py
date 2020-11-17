@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """echogram_plotting_test.py demonstrates plotting echograms using fake data.
 
-It is primarily intended to test the processed_data and echogram classes.
+It is primarily intended to test the processed_data and echogram classes and
+as of now it shows a slight vertical shift in the samples. The matplotlib
+echogram is close, but has some issues. It needs help.
 
 """
 

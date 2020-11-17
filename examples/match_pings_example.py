@@ -5,7 +5,28 @@ This script demonstrates the match_ping method of the ping_data class
 which can be used to insert missing pings between channels that have
 been recorded on the same system.
 
-This script is primarily meant to test the match_pings method.
+For this example, assume that we want to compute the frequency difference
+between some channels in our data file. Unfortunately our sounder system
+was not installed by a certified Kongsberg technician and the various
+channels drop a lot of pings. When you read these files into pyEcholab
+the axes of the various channels do not match so you cannot subtract them
+to get your difference.
+
+To overcome this, the match_pings method alters the ping time axes
+in your data object with that of the "other" object. Ping times in the
+other object that aren't in your object are inserted. Ping times in your
+object that aren't in the other object are deleted.
+
+In reality, Kongsberg systems are known for their legendary reliability
+so you probably don't have a file on hand that is actually missing any pings.
+To overcome this, we'll randomly remove pings from each channel.
+
+We're going to use the first channel as our "match" channel. This means
+that the other channels will be modified (if requried) to share the same
+time axis as the first channel by adding pings the first channel has
+that the other channels lack, or removing pings the other channels have
+but the first channel lacks.
+
 """
 
 import numpy as np
@@ -21,7 +42,7 @@ from echolab2.plotting.matplotlib import echogram
 min_pings_to_remove = 1
 
 # Set the maximum number of pings to remove from a channel
-max_pings_to_remove = 10
+max_pings_to_remove = 5
 
 # Set this to True to remove pings from the "match" channel
 # If set to False, the match channel will always have >= pings
@@ -145,7 +166,7 @@ for channel_id in raw_data:
     Sv_matched = data.get_Sv()
 
     # Now plot up the match data and the matched data
-    label_text = 'Match Data:' + str(match_freq) + ' kHz '
+    label_text = '(raw_data) Match Data:' + str(match_freq) + ' kHz '
     ax_1 = fig.add_subplot(2, 1, 1)
     eg_1 = echogram.Echogram(ax_1, match_data_Sv, threshold=[-70,-34])
     ax_1.set_title(label_text)
@@ -154,6 +175,7 @@ for channel_id in raw_data:
     label_text = ('Matched Data:' + str(freq) + ' kHz :: removed pings ' +
         str(match_results['removed']) + ' :: inserted pings ' +
         str(match_results['inserted']))
+    print(label_text)
     ax_2 = fig.add_subplot(2, 1, 2)
     eg_2 = echogram.Echogram(ax_2, Sv_matched, threshold=[-70,-34])
     ax_2.set_title(label_text)
@@ -172,7 +194,7 @@ for channel_id in raw_data:
     match_results = Sv_original.match_pings(match_data_Sv)
 
     # Now plot up the match data and the matched data
-    label_text = 'Match Data:' + str(match_freq) + ' kHz '
+    label_text = '(processed_data) Match Data:' + str(match_freq) + ' kHz '
     ax_1 = fig.add_subplot(2, 1, 1)
     eg_1 = echogram.Echogram(ax_1, match_data_Sv, threshold=[-70,-34])
     ax_1.set_title(label_text)

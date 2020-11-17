@@ -6,6 +6,9 @@ This example shows how to use the advanced indexing option for raw data
 when calling ek60.write_raw() to create a raw file that contains a
 subset of data contained in the original files.
 
+It also demonstrates using match_pings to plot the subsampled data on
+the same time axis as the original data.
+
 """
 import numpy as np
 from echolab2.instruments import EK60
