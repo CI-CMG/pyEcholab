@@ -44,7 +44,6 @@ SIMRAD_EK60 = 0
 SIMRAD_EK80 = 1
 
 
-
 def read(files, **kwargs):
 
     # if we're given a string, wrapt it in a list

@@ -1740,7 +1740,7 @@ class raw_data(ping_data):
 
 
     def insert(self, obj_to_insert, ping_number=None, ping_time=None,
-               insert_after=True, index_array=None):
+               insert_after=True, index_array=None, force=False):
         """Inserts data from one raw_data object into another. Pings within the
         obj_to_insert can be inserted as a block, or they can be inserted
         individually.

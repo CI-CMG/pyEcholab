@@ -57,18 +57,18 @@ def create_ek80_tx(raw_data, calibration, return_indices=None):
                  'rx_sample_frequency':None,
                  'sample_interval':None,
                  'filters':None}
-
-    #  now create a dict that will track these params
-    last_parms = {'slope':None,
-                 'transmit_power':None,
-                 'pulse_duration':None,
-                 'frequency_start':None,
-                 'frequency_end':None,
-                 'frequency':None,
-                 'impedance':None,
-                 'rx_sample_frequency':None,
-                 'sample_interval':None,
-                 'filters':None}
+#
+#    #  now create a dict that will track these params
+#    last_parms = {'slope':None,
+#                 'transmit_power':None,
+#                 'pulse_duration':None,
+#                 'frequency_start':None,
+#                 'frequency_end':None,
+#                 'frequency':None,
+#                 'impedance':None,
+#                 'rx_sample_frequency':None,
+#                 'sample_interval':None,
+#                 'filters':None}
 
     # create the return arrays
     tx_data = np.empty(return_indices.shape[0], dtype=np.ndarray)
@@ -87,40 +87,43 @@ def create_ek80_tx(raw_data, calibration, return_indices=None):
     # Iterate thru the return indices - We'll only generate a tx signal if required
     for idx, ping_index in enumerate(return_indices):
 
-        # Check if this ping's Tx is the same as the last pings
-        if last_parms['slope'] == None:
-            #  this is the first ping, populate the initial values in last_parms
-            for key in cal_parms:
-                if cal_parms[key] is not None:
-                    last_parms[key] = cal_parms[key][idx]
-            no_compute_tx = False
-        else:
-            #  check if all params are the same
-            #  assume they are and set compute_tx to False
-            no_compute_tx = True
-            #  now compare the params
-            for key in last_parms:
-                if last_parms[key] is not None:
-                    # if one of the params is different - compute_tx will be True
-                    no_compute_tx &= last_parms[key] == cal_parms[key][idx]
-                    # after checking we update
-                    last_parms[key] = cal_parms[key][idx]
+#        # Check if this ping's Tx is the same as the last pings
+#        if last_parms['slope'] == None:
+#            #  this is the first ping, populate the initial values in last_parms
+#            for key in cal_parms:
+#                if cal_parms[key] is not None:
+#                    last_parms[key] = cal_parms[key][idx]
+#            no_compute_tx = False
+#        else:
+#            #  check if all params are the same - assume they are and set no_compute_tx to True
+#            no_compute_tx = True
+#            #  now compare the params
+#            for key in last_parms:
+#                if last_parms[key] is not None:
+#                    # if one of the params is different - no_compute_tx will be False
+#                    if key == 'filters':
+#                        # NEED TO IMPLEMENT A CHECK TO ENSURE THE FILTER PARAMS HAVEN' CHANGED
+#                        pass
+#                    else:
+#                        no_compute_tx &= last_parms[key] == cal_parms[key][idx]
+#                    # after checking we update
+#                    last_parms[key] = cal_parms[key][idx]
 
         #  only generate, filter and decimate the new signal if needed
-        if not no_compute_tx:
-            #  get the theoretical tx signal
-            t, y = ek80_chirp(cal_parms['transmit_power'][idx], cal_parms['frequency_start'][idx],
-                    cal_parms['frequency_end'][idx], cal_parms['slope'][idx],
-                    cal_parms['pulse_duration'][idx], cal_parms['impedance'][idx],
-                    cal_parms['rx_sample_frequency'][idx])
+        #if not no_compute_tx:
+        #  get the theoretical tx signal
+        t, y = ek80_chirp(cal_parms['transmit_power'][idx], cal_parms['frequency_start'][idx],
+                cal_parms['frequency_end'][idx], cal_parms['slope'][idx],
+                cal_parms['pulse_duration'][idx], cal_parms['impedance'][idx],
+                cal_parms['rx_sample_frequency'][idx])
 
-            #  apply the stage 1 and stage 2 filters
-            y = filter_and_decimate(y, cal_parms['filters'][idx], [1, 2])
+        #  apply the stage 1 and stage 2 filters
+        y = filter_and_decimate(y, cal_parms['filters'][idx], [1, 2])
 
-            #  compute effective pulse duration
-            fs_dec = 1 / cal_parms['sample_interval'][idx]
-            ptxa = np.abs(y) ** 2
-            teff =  np.sum(ptxa) / (np.max(ptxa) * fs_dec)
+        #  compute effective pulse duration
+        fs_dec = 1 / cal_parms['sample_interval'][idx]
+        ptxa = np.abs(y) ** 2
+        teff =  np.sum(ptxa) / (np.max(ptxa) * fs_dec)
 
         #  store this ping's tx signal
         tx_data[idx] = y

@@ -502,7 +502,7 @@ class ping_data(object):
         """
 
         # Simply inserts a data object at the end of our internal array.
-        self.insert(obj_to_append, ping_number=self.n_pings, force=force)
+        self.insert(obj_to_append, ping_number=self.n_pings, force=False)
 
 
     def insert(self, obj_to_insert, ping_number=None, ping_time=None,
@@ -551,24 +551,47 @@ class ping_data(object):
             raise TypeError('The object you are inserting/appending must ' +
                             'be an instance of ' + str(self.__class__))
 
-        # Make sure that the frequencies match.  Don't allow
-        # inserting/appending of different frequencies.  We allow NaNs because
-        # we allow empty data to be inserted.
+        # Make sure the two objects contain the same data type
+        if self.data_type != obj_to_insert.data_type:
+            raise TypeError('The object you are inserting/appending contains a different ' +
+                            'data type than this object. You cannot insert objects containing ' +
+                            'different data types.')
+
+        # Make sure that the frequencies match.  This isn't perfect and there are
+        # a lot of ways this can go bad. It is up to the user to ensure they insert
+        # responsibly. We allow NaNs because we allow empty data to be inserted.
         if not force:
             freq_match = False
-            if isinstance(self.frequency, np.ndarray):
-                # We get lazy with vectors of frequency since there isn't a
-                # simple solution.
-                if np.isnan(obj_to_insert.frequency[0]):
-                    freq_match = True
+            # Need to handle FM and reduced data differently
+            if self.data_type == 'complex-FM':
+                if isinstance(self.frequency_start, np.ndarray):
+                    # We get lazy with vectors of frequency since there isn't a simple solution.
+                    # We will just check the first values.
+                    if np.isnan(obj_to_insert.frequency_start[0]):
+                        freq_match = True
+                    else:
+                        freq_match = self.frequency_start[0] == obj_to_insert.frequency_start[0]
+                        freq_match &= self.frequency_end[0] == obj_to_insert.frequency_end[0]
                 else:
-                    freq_match = self.frequency[0] == obj_to_insert.frequency[0]
+                    # we must have been passed a single value
+                    if obj_to_insert.frequency_start == np.nan or obj_to_insert.frequency_start == 0:
+                        freq_match = True
+                    else:
+                        freq_match = self.frequency_start == obj_to_insert.frequency_start
+                        freq_match &= self.frequency_end == obj_to_insert.frequency_end
             else:
-                # we must have been passed a single value
-                if obj_to_insert.frequency == np.nan or obj_to_insert.frequency == 0:
-                    freq_match = True
+                if isinstance(self.frequency, np.ndarray):
+                    # Same deal here. We're lazy. Just check the first values
+                    if np.isnan(obj_to_insert.frequency[0]):
+                        freq_match = True
+                    else:
+                        freq_match = self.frequency[0] == obj_to_insert.frequency[0]
                 else:
-                    freq_match = self.frequency == obj_to_insert.frequency
+                    # we must have been passed a single value
+                    if obj_to_insert.frequency == np.nan or obj_to_insert.frequency == 0:
+                        freq_match = True
+                    else:
+                        freq_match = self.frequency == obj_to_insert.frequency
 
             if not freq_match:
                 raise TypeError('The frequency of the object you are inserting' +
