@@ -177,9 +177,12 @@ class RawSimradFile(BufferedReader):
 
         buf = self._read_bytes(8)
         if len(buf) != 8:
-            self._seek_bytes(-len(buf), SEEK_CUR)
-            raise DatagramReadError('Short read while getting timestamp',
-                (8, len(buf)), file_pos=(self._tell_bytes(), self.tell()))
+            if self.at_eof():
+                raise SimradEOF()
+            else:
+                self._seek_bytes(-len(buf), SEEK_CUR)
+                raise DatagramReadError('Short read while getting timestamp',
+                    (8, len(buf)), file_pos=(self._tell_bytes(), self.tell()))
 
         else:
             lowDateField, highDateField = struct.unpack('=2L', buf)
@@ -219,7 +222,7 @@ class RawSimradFile(BufferedReader):
                     file_pos=(self._tell_bytes(), self.tell()))
         else:
             dgram_type = buf
-        dgram_type = dgram_type.decode()
+        dgram_type = dgram_type.decode('iso-8859-1')
 
         #  11/26/19 - RHT
         #  As part of the rewrite of read to remove the reverse seeking,
@@ -352,7 +355,7 @@ class RawSimradFile(BufferedReader):
         #  11/26/19 - RHT - Modified this method to pass through the number of
         #  bytes read so we can bubble that up to the user.
 
-        dgram_type = raw_datagram_string[:3].decode()
+        dgram_type = raw_datagram_string[:3].decode('iso-8859-1')
         try:
             parser = self.DGRAM_TYPE_KEY[dgram_type]
         except KeyError:
