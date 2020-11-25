@@ -1780,9 +1780,9 @@ def read_ev_mat(channel_id, frequency, ev_mat_filename, data_type='Sv',
     #  create an empty processed_data object
     p_data = processed_data(channel_id, frequency, data_type)
 
-
     #  create the data arrays
     data = np.empty((n_pings, max_samples), dtype=sample_dtype)
+    data.fill(np.nan)
     p_data.add_data_attribute('data', data)
     ping_time = np.empty((n_pings), dtype='datetime64[ms]')
     p_data.add_data_attribute('ping_time', ping_time)
@@ -1810,11 +1810,10 @@ def read_ev_mat(channel_id, frequency, ev_mat_filename, data_type='Sv',
     range = range * p_data.sample_thickness
     p_data.add_data_attribute('range', range)
 
-    if data_type in ['Sv', 'Sp', 'TS']:
+    if data_type in ['Sv', 'Sp', 'TS', 'power','Power']:
         p_data.is_log = True
-#    else:
-
-    p_data.is_log = True
+    else:
+        p_data.is_log = False
 
     #  extract the data
     for idx, ping in enumerate(ev_data['PingNames']):
@@ -1825,7 +1824,8 @@ def read_ev_mat(channel_id, frequency, ev_mat_filename, data_type='Sv',
                 '%3.3i' % ev_data[ping].Ping_milliseconds
         this_time = np.datetime64(datetime.strptime(this_time, "%m-%d-%Y %H:%M:%S.%f"))
         p_data.ping_time[idx] = this_time
-        p_data.data[idx,pad_n_samples:] = ev_data[ping].Data_values[:]
+        this_n_samps = ev_data[ping].Data_values[:].size
+        p_data.data[idx,pad_n_samples:this_n_samps+pad_n_samples] = ev_data[ping].Data_values[:]
 
     return p_data
 
@@ -1868,7 +1868,6 @@ def read_ev_csv(channel_id, frequency, ev_csv_filename, data_type='Ts',
 
     #  create an empty processed_data object
     p_data = processed_data(channel_id, frequency, data_type)
-    p_data.is_log = True
 
     #  create the data arrays
     data = np.empty((n_pings, max_samples), dtype=sample_dtype)
@@ -1905,7 +1904,7 @@ def read_ev_csv(channel_id, frequency, ev_csv_filename, data_type='Ts',
 
                 #  create the range attribute - this is built on our sample
                 #  thickness assumptions above.
-                range = np.arange(0, int(row[12]), dtype=sample_dtype)
+                range = np.arange(0, max_samples, dtype=sample_dtype)
                 range = range * p_data.sample_thickness
                 p_data.add_data_attribute('range', range)
 
@@ -1915,19 +1914,21 @@ def read_ev_csv(channel_id, frequency, ev_csv_filename, data_type='Ts',
             this_time = row[3].strip() + ' ' + row[4].strip() + '.' + '%3.3i' % int(float(row[5]))
             this_time = np.datetime64(datetime.strptime(this_time, "%Y-%m-%d %H:%M:%S.%f"))
             p_data.ping_time[idx] = this_time
+            this_samples = int(row[12])
             if data_type == 'angles':
-                this_samples = int(row[12])
-                p_data.data[idx,:] = row[13:this_samples*2 + 13:2]
-                athwart[idx,:] = row[14:this_samples * 2 + 14:2]
+                p_data.data[idx,0:this_samples] = row[13:this_samples*2 + 13:2]
+                athwart[idx,0:this_samples] = row[14:this_samples * 2 + 14:2]
             else:
-                p_data.data[idx,:] = row[13:int(row[12]) + 13]
+                p_data.data[idx,0:this_samples] = row[13:int(row[12]) + 13]
             idx += 1
     p_data.data[p_data.data < -9.9000003e+36] = np.nan
 
-    if data_type in ['Ts', 'Sp', 'Sv']:
+    if data_type in ['Ts', 'Sp', 'Sv', 'power', 'Power']:
         p_data.is_log = True
+    else:
+        p_data.is_log = False
 
-    if data_type == 'angles':
+    if data_type in ['angles', 'Angles']:
         p_data_athwart = p_data.empty_like()
         p_data_athwart.data = athwart
         p_data_athwart.data_type = 'angles_athwartship'

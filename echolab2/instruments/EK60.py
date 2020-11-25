@@ -569,8 +569,14 @@ class EK60(object):
             return result
 
         # Convert the timestamp to a datetime64 object.
-        new_datagram['timestamp'] = \
-                np.datetime64(new_datagram['timestamp'], '[ms]')
+        # Check for NULL DG date which is returned as datetime.datetime(1601, 1, 1, 0, 0)
+        if new_datagram['timestamp'].year < 1900:
+            # This datagram has NULL date/time values
+            new_datagram['timestamp'] = np.datetime64("NaT")
+        else:
+            # We have a plausible date/time value
+            new_datagram['timestamp'] = \
+                    np.datetime64(new_datagram['timestamp'], '[ms]')
 
         #  update the return dict properties
         result['timestamp'] = new_datagram['timestamp']

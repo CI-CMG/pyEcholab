@@ -272,12 +272,6 @@ class RawSimradFile(BufferedReader):
             e.message = 'Short read while getting raw file datagram header'
             raise e
 
-        #  check for invalid time data
-        if (header['low_date'], header['high_date']) == (0, 0):
-            log.warning('Skipping %s datagram w/ timestamp of (0, 0) at %sL:%d', header['type'], str(self._tell_bytes()), self.tell())
-            self.skip()
-            return self._read_next_dgram()
-
         #  basic sanity check on size
         if header['size'] < 16:
             #  size can't be smaller than the header size
