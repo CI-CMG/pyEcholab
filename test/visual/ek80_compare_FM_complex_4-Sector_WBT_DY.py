@@ -19,20 +19,31 @@ import matplotlib.pyplot as plt
 
 plot_ping = 0;
 
-input_path = 'C:/EK80 Test Data/EK80/FM/'
+input_path = 'C:/EK80 Test Data/EK80/'
 
 #  define the paths to the reference data files
-raw_filename = 'FM_-_70_KHZ_2MS_CAL-Phase0-D20190531-T194722-0.raw'
+raw_filename = 'FM_Passive_DY1803_EK80-D20180322-T020144.raw'
 
 ev_Sv_filename = {}
-ev_Sv_filename['Echoview Sv - 70 kHz'] = 'FM_-_70_KHZ_2MS_CAL-Phase0-D20190531-T194722-0-70kHz-compressed.Sv.mat'
+ev_Sv_filename['Echoview Sv - 18 kHz'] = 'DY1803_EK80-D20180322-T020144-Passive-CW-18kHz.mat'
+ev_Sv_filename['Echoview Sv - 38 kHz'] = 'DY1803_EK80-D20180322-T020144-Passive-CW-38kHz.mat'
+ev_Sv_filename['Echoview Sv - 70 kHz'] = 'DY1803_EK80-D20180322-T020144-Passive-FM-70kHz.mat'
+ev_Sv_filename['Echoview Sv - 120 kHz'] = 'DY1803_EK80-D20180322-T020144-Passive-FM-120kHz.mat'
+ev_Sv_filename['Echoview Sv - 200 kHz'] = 'DY1803_EK80-D20180322-T020144-Passive-FM-200kHz.mat'
 
 ev_Ts_filename = {}
-ev_Ts_filename['Echoview TS - 18 kHz'] = 'FM_-_70_KHZ_2MS_CAL-Phase0-D20190531-T194722-0-70kHz-compressed.ts.csv'
+ev_Ts_filename['Echoview TS - 18 kHz'] = 'DY1803_EK80-D20180322-T020144-Passive-CW-18kHz.ts.csv'
+ev_Ts_filename['Echoview TS - 38 kHz'] = 'DY1803_EK80-D20180322-T020144-Passive-CW-38kHz.ts.csv'
+ev_Ts_filename['Echoview TS - 70 kHz'] = 'DY1803_EK80-D20180322-T020144-Passive-FM-70kHz.ts.csv'
+ev_Ts_filename['Echoview TS - 120 kHz'] = 'DY1803_EK80-D20180322-T020144-Passive-FM-120kHz.ts.csv'
+ev_Ts_filename['Echoview TS - 200 kHz'] = 'DY1803_EK80-D20180322-T020144-Passive-FM-200kHz.ts.csv'
 
 ev_power_filename = {}
-ev_power_filename['Echoview power - 70 kHz'] = 'FM_-_70_KHZ_2MS_CAL-Phase0-D20190531-T194722-0-70kHz-compressed.power.csv'
-
+ev_power_filename['Echoview power - 18 kHz'] = 'DY1803_EK80-D20180322-T020144-Passive-CW-18kHz.power.csv'
+ev_power_filename['Echoview power - 38 kHz'] = 'DY1803_EK80-D20180322-T020144-Passive-CW-38kHz.power.csv'
+ev_power_filename['Echoview power - 70 kHz'] = 'DY1803_EK80-D20180322-T020144-Passive-FM-70kHz.power.csv'
+ev_power_filename['Echoview power - 120 kHz'] = 'DY1803_EK80-D20180322-T020144-Passive-FM-120kHz.power.csv'
+ev_power_filename['Echoview power - 200 kHz'] = 'DY1803_EK80-D20180322-T020144-Passive-FM-200kHz.power.csv'
 
 #  read in the .raw data file
 print('Reading the raw file %s' % (raw_filename))
@@ -69,29 +80,35 @@ for idx, sv_chan in enumerate(ev_Sv_filename):
     #  and convert to Ts
     ek80_Ts = raw_data.get_Sp(calibration=calibration)
 
+    # Get the frequency info
+    if raw_data.is_fm():
+        f_start = raw_data.frequency_start[0]
+        f_end = raw_data.frequency_end[0]
+        freq_center = (f_start + f_end) /2
+        f_string = "FM %d - %d" % (f_start / 1000, f_end / 1000)
+    else:
+        freq_center = raw_data.frequency[0]
+        f_string = "CW %d " % (freq_center / 1000)
 
     #  read in the echoview data - we can read .mat and .csv files exported
     #  from EV 7+ directly into a processed_data object
-    f_start = raw_data.frequency_start[0]
-    f_end = raw_data.frequency_end[0]
-    frequency = (f_start + f_end) / 2
+    freq_info = raw_data.get_frequency()
     key_name = sv_chan
     ev_filename = input_path + ev_Sv_filename[key_name]
     print('Reading the echoview file %s' % (ev_Sv_filename[key_name]))
-    ev_Sv_data = processed_data.read_ev_mat(key_name, frequency, ev_filename)
+    ev_Sv_data = processed_data.read_ev_mat(key_name, freq_center, ev_filename)
     key_name = list(ev_Ts_filename.keys())[idx]
     ev_filename = input_path + ev_Ts_filename[key_name]
     print('Reading the echoview file %s' % (ev_Ts_filename[key_name]))
-    ev_Ts_data = processed_data.read_ev_csv(key_name, frequency, ev_filename)
+    ev_Ts_data = processed_data.read_ev_csv(key_name, freq_center, ev_filename)
     key_name = list(ev_power_filename.keys())[idx]
     ev_filename = input_path + ev_power_filename[key_name]
     print('Reading the echoview file %s' % (ev_power_filename[key_name]))
-    ev_power_data = processed_data.read_ev_csv(key_name, frequency, ev_filename,
+    ev_power_data = processed_data.read_ev_csv(key_name, freq_center, ev_filename,
             data_type='Power')
 
 
     #  now plot all of this up
-    f_string = "%d - %d" % (f_start / 1000, f_end / 1000)
 
     #  show the Echolab Sv and TS echograms
     fig = plt.figure()

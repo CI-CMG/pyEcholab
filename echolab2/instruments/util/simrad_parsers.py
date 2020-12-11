@@ -589,7 +589,7 @@ class SimradXMLParser(_SimradDatagramParser):
     #  of float values parsed from a string that uses ';' to separate values. If the parse
     #  char is empty, the field is not parsed.
     #
-    #  The switch to OrderedDict we required to ensure that when writing files, the generated
+    #  The switch to OrderedDict was required to ensure that when writing files, the generated
     #  XML follows the original XML parameter ordering.
 
     # These parameters are the known parameters for the transceiver XML tag
@@ -682,6 +682,17 @@ class SimradXMLParser(_SimradDatagramParser):
             'SampleInterval':[float,'sample_interval',''],
             'TransmitPower':[float,'transmit_power',''],
             'Slope':[float,'slope','']})
+
+    freq_param_xml_map = OrderedDict({
+            'Frequency':[float,'frequency',''],
+            'Gain':[float,'gain',';'],
+            'Impedance':[float,'impedance',''],
+            'Phase':[float,'phase',''],
+            'BeamWidthAlongship':[float,'beam_width_alongship',''],
+            'BeamWidthAthwartship':[float,'beam_width_athwartship',''],
+            'AngleOffsetAlongship':[float,'angle_offset_alongship',''],
+            'AngleOffsetAthwartship':[float,'angle_offset_athwartship','']})
+
 
 
     def __init__(self):
@@ -826,6 +837,18 @@ class SimradXMLParser(_SimradDatagramParser):
                         #  add the channel transducer attributes
                         dict_to_dict(transducer_attributes, data['configuration'][channel_id],
                                      self.channel_xdcr_xml_map)
+
+                        # parse any wideband transducer calibration parameters.
+                        wb_transducer_parm_nodes = transducer_node.findall('./FrequencyPar')
+                        xdcr_params_wideband = {}
+                        this_params = {}
+                        for node in wb_transducer_parm_nodes:
+                            dict_to_dict(node.attrib, this_params, self.freq_param_xml_map)
+                            freq = this_params['frequency']
+                            this_params.pop('frequency', None)
+                            xdcr_params_wideband[freq] = this_params
+                        if len(xdcr_params_wideband):
+                            data['configuration'][channel_id]['transducer_params_wideband'] = xdcr_params_wideband
 
                         # Now add the matching transducer from the transducers section
                         # we parsed above.

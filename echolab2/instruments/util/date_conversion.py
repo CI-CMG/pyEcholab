@@ -78,20 +78,26 @@ def dt64_to_datetime(dt64):
 
 def dt64_to_nt(dt64):
     '''
-    :param dt64: Numpy datetime64 object to convert to datetime
+    :param dt64: Numpy datetime64 object to convert to NT time
     :type dt64: datetime64
 
-    Returns a tuple containing the NT time
+    Returns a tuple containing the NT time.
 
     '''
 
-    ts = (dt64 - np.datetime64('1970-01-01T00:00:00')) / np.timedelta64(1, 's')
-    unix_datetime = datetime.datetime.fromtimestamp(ts, tz=pytz_utc)
-    sec_past_nt_epoch = (unix_datetime - UTC_NT_EPOCH).total_seconds()
+    if np.isnat(dt64):
+        # NaT values are assumed to be NULL times
+        lowDateTime = 0
+        highDateTime = 0
+    else:
+        # Not NaT so we convert to NT time
+        ts = (dt64 - np.datetime64('1970-01-01T00:00:00')) / np.timedelta64(1, 's')
+        unix_datetime = datetime.datetime.fromtimestamp(ts, tz=pytz_utc)
+        sec_past_nt_epoch = (unix_datetime - UTC_NT_EPOCH).total_seconds()
 
-    onehundred_ns_intervals = int(sec_past_nt_epoch * 1e7)
-    lowDateTime = onehundred_ns_intervals & 0xFFFFFFFF
-    highDateTime = onehundred_ns_intervals >> 32
+        onehundred_ns_intervals = int(sec_past_nt_epoch * 1e7)
+        lowDateTime = onehundred_ns_intervals & 0xFFFFFFFF
+        highDateTime = onehundred_ns_intervals >> 32
 
     return lowDateTime, highDateTime
 

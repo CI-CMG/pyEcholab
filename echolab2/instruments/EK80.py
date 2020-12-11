@@ -34,10 +34,8 @@ $Id$
 '''
 
 import os
-import datetime
 import numpy as np
 from scipy.interpolate import interp1d
-from pytz import timezone
 from .util.simrad_calibration import calibration
 from .util.simrad_raw_file import RawSimradFile, SimradEOF
 from .util.nmea_data import nmea_data
@@ -92,9 +90,9 @@ class EK80(object):
             to read. This property can be used to limit the number of samples
             read (and memory used) when your data of interest is less than
             the total number of samples contained in the EK80 files.
-        read_start_time: Datetime object containing timestamp of the first
+        read_start_time: Datetime64 object containing timestamp of the first
             ping to read if not reading all pings based on time.
-        read_end_time: Datetime object containing timestamp of last ping to
+        read_end_time: Datetime64 object containing timestamp of last ping to
             read if not reading all ping based on time.
         read_start_ping: Integer ping number of first ping to read if not
             reading all pings based on ping number.
@@ -257,12 +255,10 @@ class EK80(object):
             max_sample_count (int): Specify the max sample count to read
                 if your data of interest is less than the total number of
                 samples contained in the instrument files.
-            start_time (str): Specify a start time if you do not want to read
-                from the first ping. The format of the time string must
-                match the format specified in time_format_string.
-            end_time (str): Specify an end time if you do not want to read
-                to the last ping. The format of the time string must
-                match the format specified in time_format_string.
+            start_time (datetime64): Specify a start time if you do not want
+                to start reading from the first ping.
+            end_time (datetime64): Specify an end time if you do not want to read
+                to the last ping.
             start_ping (int): Specify starting ping number if you do not want
                 to start reading at first ping.
             end_ping (int): Specify end ping number if you do not want
@@ -272,9 +268,6 @@ class EK80(object):
             channel_ids (list): A list of strings that contain the unique
                 channel IDs to read. If no list is supplied, all channels are
                 read.
-            time_format_string (str): String containing the format of the
-                start and end time arguments. Format is used to create datetime
-                objects from the start and end time strings
             start_sample (int): Specify starting sample number if not
                 reading from first sample.
             end_sample (int): Specify ending sample number if not
@@ -291,9 +284,8 @@ class EK80(object):
     def append_raw(self, raw_files, power=None, angles=None, complex=None,
                  max_sample_count=None, start_time=None, end_time=None,
                  start_ping=None, end_ping=None, frequencies=None,
-                 channel_ids=None, time_format_string='%Y-%m-%d %H:%M:%S',
-                 incremental=None, start_sample=None, end_sample=None,
-                 progress_callback=None):
+                 channel_ids=None, incremental=None, start_sample=None,
+                 end_sample=None, progress_callback=None):
         """Reads one or more Simrad EK80 .raw files and appends the data to any
         existing data. The data are ordered as read.
 
@@ -307,12 +299,10 @@ class EK80(object):
             max_sample_count (int): Specify the max sample count to read
                 if your data of interest is less than the total number of
                 samples contained in the instrument files.
-            start_time (str): Specify a start time if you do not want to read
-                from the first ping. The format of the time string must
-                match the format specified in time_format_string.
-            end_time (str): Specify an end time if you do not want to read
-                to the last ping. The format of the time string must
-                match the format specified in time_format_string.
+            start_time (datetime64): Specify a start time if you do not want
+                to start reading from the first ping.
+            end_time (datetime64): Specify an end time if you do not want to read
+                to the last ping.
             start_ping (int): Specify starting ping number if you do not want
                 to start reading at first ping.
             end_ping (int): Specify end ping number if you do not want
@@ -322,9 +312,6 @@ class EK80(object):
             channel_ids (list): A list of strings that contain the unique
                 channel IDs to read. If no list is supplied, all channels are
                 read.
-            time_format_string (str): String containing the format of the
-                start and end time arguments. Format is used to create datetime
-                objects from the start and end time strings
             start_sample (int): Specify starting sample number if not
                 reading from first sample.
             end_sample (int): Specify ending sample number if not
@@ -339,11 +326,9 @@ class EK80(object):
 
         # Update the reader state variables.
         if start_time:
-            self.read_start_time = self._convert_time_bound(
-                    start_time, format_string=time_format_string)
+            self.read_start_time = start_time
         if end_time:
-            self.read_end_time = self._convert_time_bound(
-                    end_time, format_string=time_format_string)
+            self.read_end_time = end_time
         if start_ping:
             self.read_start_ping = start_ping
         if end_ping:
@@ -542,6 +527,20 @@ class EK80(object):
         result['bytes_read'] = new_datagram['bytes_read']
         result['type'] = new_datagram['type']
 
+        # We have to process all XML parameter and environment datagrams
+        # regardless of time/ping bounds. This ensures all pings have fresh
+        # references to these data.
+        if new_datagram['type'].startswith('XML'):
+            if new_datagram['subtype'] == 'parameter':
+                #  update the most recent parameter attribute for this channel
+                self._tx_params[new_datagram[new_datagram['subtype']]['channel_id']] = \
+                        new_datagram[new_datagram['subtype']]
+            elif new_datagram['subtype'] == 'environment':
+                #  update the most recent environment attribute
+                self._environment = new_datagram[new_datagram['subtype']]
+
+            return result
+
         # Check if data should be stored based on time bounds.
         if self.read_start_time is not None:
             if new_datagram['timestamp'] < self.read_start_time:
@@ -677,18 +676,6 @@ class EK80(object):
             self.annotations.add_datagram(new_datagram['timestamp'],
                     new_datagram['text'])
 
-        # XML datagrams contain contain data encoded as an XML string.
-        elif new_datagram['type'].startswith('XML'):
-            #  XML datagrams have a subtype field identifying what
-            #  kind of data they contain.
-            if new_datagram['subtype'] == 'parameter':
-                #  update the most recent parameter attribute for this channel
-                self._tx_params[new_datagram[new_datagram['subtype']]['channel_id']] = \
-                        new_datagram[new_datagram['subtype']]
-            elif new_datagram['subtype'] == 'environment':
-                #  update the most recent environment attribute
-                self._environment = new_datagram[new_datagram['subtype']]
-
         # MRU datagrams contain vessel motion data
         elif new_datagram['type'].startswith('MRU'):
             # append this motion datagram to the motion_data object
@@ -703,39 +690,6 @@ class EK80(object):
         #  return our result dict which contains some basic info about
         #  the datagram we just read
         return result
-
-
-    def _convert_time_bound(self, time, format_string):
-        """Converts strings to datetime objects and normalizes to UTC.
-
-        Internally, all times are datetime objects converted to UTC timezone.
-        This method converts arguments to comply with this practice.
-
-        Args:
-            time (str or datetime): Either a string representing a date and
-                time in format specified in format_string, or a datetime object.
-            format_string (str): Format of time string specified in datetime
-            object notations such as '%Y-%m-%d %H:%M:%S' to parse a time
-            string of '2017-02-28 23:34:01'
-
-        Returns:
-            Datetime object normalized to UTC time.
-        """
-        # If given a datetime64[ms] object, there's nothing to convert.
-        if time.dtype == '<M8[ms]':
-            return
-
-        utc = timezone('utc')
-
-        # Convert string to datetime object.
-        if isinstance(time, str):
-            time = datetime.datetime.strptime(time, format_string)
-
-        # Convert datetime object to UTC.
-        if isinstance(time, datetime.datetime):
-            time = utc.localize(time)
-
-        return time
 
 
     def get_channel_data(self, frequencies=None, channel_ids=None):
@@ -823,8 +777,7 @@ class EK80(object):
     def write_raw(self, output_filenames, power=True, angles=True,
                  complex=True, max_sample_count=None, start_time=None,
                  end_time=None, start_ping=None, end_ping=None, frequencies=None,
-                 channel_ids=None, time_format_string='%Y-%m-%d %H:%M:%S',
-                 start_sample=None, end_sample=None, progress_callback=None,
+                 channel_ids=None, start_sample=None, end_sample=None, progress_callback=None,
                  overwrite=False, async_window=5, reduce_complex_precision=False,
                  raw_index_array=None, nmea_index_array=None,
                  annotation_index_array=None, strip_padding=True):
@@ -892,12 +845,6 @@ class EK80(object):
             channel_ids (list): A list of strings that contain the unique
                 channel IDs to write. If no list is supplied, all channels are
                 written.
-
-            time_format_string (str): String containing the format of the
-                start and end time arguments *IF* they are provided as strings.
-                The format string is used to create datetime64 objects from the
-                start and end time strings. While you can pass tim estrings, it
-                is recommened that you pass datetime64 objects to start/end time.
 
             start_sample (int): Specify starting sample number if not
                 writing from first sample.
@@ -999,14 +946,12 @@ class EK80(object):
 
         # Process the args
         if start_time:
-            start_time = self._convert_time_bound(
-                    start_time, format_string=time_format_string)
+            start_time = start_time
         else:
             start_time = self.start_time
 
         if end_time:
-            end_time = self._convert_time_bound(
-                    end_time, format_string=time_format_string)
+            end_time = end_time
         else:
             end_time = self.end_time
 
@@ -2980,6 +2925,71 @@ class raw_data(ping_data):
         return alongship, athwartship, return_indices
 
 
+    def is_fm(self, all=False):
+        '''Convenience method that returns True if any of the pings contain
+        FM data.
+        '''
+
+        # Check if we have any fm pings
+        is_fm = self.pulse_form > 0
+        if all:
+            if np.all(is_fm):
+                return True
+            else:
+                return False
+        else:
+            if np.any(is_fm):
+                return True
+            else:
+                return False
+
+
+    def is_cw(self, all=False):
+        '''Convenience method that returns True if any of the pings contain
+        CW data.
+        '''
+        # Check if we have any cw pings
+        is_cw = self.pulse_form == 0
+        if all:
+            if np.all(is_cw):
+                return True
+            else:
+                return False
+        else:
+            if np.any(is_cw):
+                return True
+            else:
+                return False
+
+
+    def get_frequency(self, unique=False):
+        '''Convenience method that returns the frequency of the transmit signals
+        of the data stored in the raw_data object. If the transmit signal is FM,
+        the center frequency will be returned.
+
+        Args:
+            unique (bool): Set to True to return only the unique frequencies
+        '''
+
+        if self.is_fm(all=True):
+            # All of the pings are FM
+            frequency = (self.frequency_start + self.frequency_end) / 2.0
+        elif self.is_cw(all=True):
+            # All of the pings are CW
+            frequency = self.frequency
+        else:
+            # The data are mixed so we have to do this ping by ping
+
+            # Need to check if this can even happen and if so, do we want
+            # to allow CW and FM data to be mixed in a raw_data object?
+            raise NotImplementedError
+
+        if unique:
+            frequency = np.unique(frequency)
+
+        return frequency
+
+
     def _get_sample_data(self, property_name, calibration=None,
             resample_interval=RESAMPLE_SHORTEST, return_indices=None,
             **kwargs):
@@ -3293,15 +3303,24 @@ class raw_data(ping_data):
         # For EK60 hardware use pulse duration when computing gains
         # but for EK80 hardware use effectve pulse length.
         if self.transceiver_type == 'GPT':
-            effective_pulse_duration = cal_parms['pulse_duration']
+            effective_pulse_duration = calibration.get_parameter(self, 'pulse_duration',
+                    return_indices)
         else:
-            effective_pulse_duration = cal_parms['effective_pulse_duration']
+            if convert_to in ['sv','Sv']:
+                #  THIS IS NOT FULLY IMPLEMENTED YET - COMMENTING OUT SO CODE RUNS
+                #effective_pulse_duration = calibration.get_parameter(self,
+                #    'pulse_compressed_effective_pulse_duration', return_indices)
+                effective_pulse_duration = calibration.get_parameter(self,
+                    'effective_pulse_duration', return_indices)
+            else:
+                effective_pulse_duration = calibration.get_parameter(self,
+                    'effective_pulse_duration', return_indices)
 
         # Calculate the system gains.
         wavelength = cal_parms['sound_speed'] / power_data.frequency
         if convert_to in ['sv','Sv']:
             gains = 10 * np.log10((cal_parms['transmit_power'] * (10**( cal_parms['gain'] / 10.0))**2 *
-                    wavelength**2 * cal_parms['sound_speed'] * effective_pulse_duration *
+                wavelength**2 * cal_parms['sound_speed'] * effective_pulse_duration *
                 10**(cal_parms['equivalent_beam_angle']/10.0)) / (32 * np.pi**2))
         else:
             gains = 10 * np.log10((cal_parms['transmit_power'] * (10**(
@@ -3710,26 +3729,100 @@ class ek80_calibration(calibration):
                     param_data[ret_idx] = self.default_sampling_frequency[t_type]
                 ret_idx += 1
 
-        # These parameters are arrays where we need to extract a single value based
-        # on the pulse duration the system is using
-        elif param_name in ['sa_correction', 'gain']:
+        elif param_name == 'sa_correction':
+            # sa correction is extracted from a list that is indexed by pulse duration
             new_data = np.empty((return_indices.shape[0]), dtype=np.float32)
-            # TODO: Need to handle cases where lookup param is from pulse_duration_fm
+
             for idx, config_obj in enumerate(raw_data.configuration):
-                #  param_data will be 1d for data that is constant throughout the raw
-                #  object or it will be 2d for data that changes.
-                if param_data.ndim > 1:
-                    new_data[idx] = param_data[0,config_obj['pulse_duration'] == raw_data.pulse_duration[idx]]
+                if raw_data.pulse_form[idx] > 0:
+                    # TODO: Determine how the sa correction table is indexed. With a match in 'pulse_duration'?
+                    #       or a match in 'pulse_duration_fm'?
+                    match_idx = np.where(config_obj['pulse_duration_fm'] == raw_data.pulse_duration[idx])[0]
+                    new_data[idx] = param_data[match_idx][0]
+                    #new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
                 else:
-                     new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
+                    new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
+
+# Not sure why there was a check on the param_data dimensions. I don't think any param data is 2d
+# Keeping this here for now in case I am wrong.
+#                    if param_data.ndim > 1:
+#                        new_data[idx] = param_data[0,config_obj['pulse_duration'] == raw_data.pulse_duration[idx]]
+#                    else:
+#                        new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
+
             param_data = new_data
 
+        elif param_name == 'gain':
+            # Gain needs to be handled differently depending on if the data are FM or CW.
+            new_data = np.empty((return_indices.shape[0]), dtype=np.float32)
+
+            # Get the frequencies - this returns the center freq for FM
+            frequency = raw_data.get_frequency()
+
+            # Work thru the pings, extracting the params
+            for idx, config_obj in enumerate(raw_data.configuration):
+                # check if this is an fm ping
+                if raw_data.pulse_form[idx] > 0:
+                    # We try to obtain FM gain first from the wideband transducer parameters
+                    if 'transducer_params_wideband' in config_obj:
+                        # It looks like there will not always be a match in the transducer_params_wideband
+                        # table for the center freq so we have to find the closest. Wish I would have
+                        # known since the current implementation is not optimal for this.
+                        xdcr_parms_wb_freqs = np.array(list(config_obj['transducer_params_wideband'].keys()))
+                        table_freq = xdcr_parms_wb_freqs[np.abs(xdcr_parms_wb_freqs - frequency[idx]).argmin()]
+
+                        new_data[idx] = config_obj['transducer_params_wideband'][table_freq]['gain'][0]
+                    else:
+                        # TODO: Determine how the gain table is indexed. With a match in 'pulse_duration'?
+                        #       or a match in 'pulse_duration_fm'?
+                        match_idx = np.where(config_obj['pulse_duration_fm'] == raw_data.pulse_duration[idx])[0]
+                        gain = param_data[match_idx][0]
+                        #gain = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
+                        new_data[idx] = gain + (20 * np.log10(frequency[idx] / config_obj['transducer_frequency']))
+                else:
+                    # CW gain is obtained from the gain table that is indexed by pulse duration
+                    new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
+
+# Not sure why there was a check on the param_data dimensions. I don't think any param data is 2d
+# Keeping this here for now in case I am wrong.
+#                    if param_data.ndim > 1:
+#                        new_data[idx] = param_data[0,config_obj['pulse_duration'] == raw_data.pulse_duration[idx]]
+#                    else:
+#                         new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
+
+            param_data = new_data
+
+        elif param_name == 'equivalent_beam_angle':
+            # equivalent_beam_angle is computed differently for FM and CW applications
+            new_data = np.empty((return_indices.shape[0]), dtype=np.float32)
+
+            # Get the frequencies - this returns the center freq for FM
+            frequency = raw_data.get_frequency()
+
+            # Work thru the pings, extracting the params
+            for idx, config_obj in enumerate(raw_data.configuration):
+                # check if this is an fm ping
+                if raw_data.pulse_form[idx] > 0:
+                    new_data[idx] = param_data + (20 * np.log10(frequency[idx] / config_obj['transducer_frequency']))
+                else:
+                    new_data[idx] = param_data
+
         elif param_name == 'effective_pulse_duration':
-            # The EK60 does not use effective_pulse_duration so we only compute
-            # it for EK80 hardware
+            # For FM to pulse compressed TS, use the pulse_compressed_effective_pulse_duration
+            # The EK60 does not use effective_pulse_duration so we only compute it for EK80 hardware
             if self.transceiver_type != 'GPT':
                 param_data = simrad_signal_proc.compute_effective_pulse_duration(raw_data, self,
                         return_indices=return_indices)
+            else:
+                param_data = None
+
+
+        # TODO: THIS IS NOT FULLY IMPLEMENTED
+        elif param_name == 'pulse_compressed_effective_pulse_duration':
+            # For FM power to pulse compressed Sv, use the pulse_compressed_effective_pulse_duration
+            if self.transceiver_type != 'GPT':
+                param_data = simrad_signal_proc.compute_effective_pulse_duration(raw_data, self,
+                        return_pcepd=True, return_indices=return_indices)
             else:
                 param_data = None
 

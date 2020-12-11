@@ -36,10 +36,8 @@ $Id$
 '''
 
 import os
-import datetime
 import numpy as np
 from scipy.interpolate import interp1d
-from pytz import timezone
 from .util.simrad_calibration import calibration
 from .util.simrad_raw_file import RawSimradFile, SimradEOF
 from .util.nmea_data import nmea_data
@@ -334,12 +332,10 @@ class EK60(object):
             max_sample_count (int): Specify the max sample count to read
                 if your data of interest is less than the total number of
                 samples contained in the instrument files.
-            start_time (str): Specify a start time if you do not want to read
-                from the first ping. The format of the time string must
-                match the format specified in time_format_string.
-            end_time (str): Specify an end time if you do not want to read
-                to the last ping. The format of the time string must
-                match the format specified in time_format_string.
+            start_time (datetime64): Specify a start time if you do not want
+                to start reading from the first ping.
+            end_time (datetime64): Specify an end time if you do not want to read
+                to the last ping.
             start_ping (int): Specify starting ping number if you do not want
                 to start reading at first ping.
             end_ping (int): Specify end ping number if you do not want
@@ -349,9 +345,6 @@ class EK60(object):
             channel_ids (list): A list of strings that contain the unique
                 channel IDs to read. If no list is supplied, all channels are
                 read.
-            time_format_string (str): String containing the format of the
-                start and end time arguments. Format is used to create datetime
-                objects from the start and end time strings
             start_sample (int): Specify starting sample number if not
                 reading from first sample.
             end_sample (int): Specify ending sample number if not
@@ -366,11 +359,9 @@ class EK60(object):
 
         # Update the reader state variables.
         if start_time:
-            self.read_start_time = self._convert_time_bound(
-                    start_time, format_string=time_format_string)
+            self.read_start_time = start_time
         if end_time:
-            self.read_end_time = self._convert_time_bound(
-                    end_time, format_string=time_format_string)
+            self.read_end_time = end_time
         if start_ping:
             self.read_start_ping = start_ping
         if end_ping:
@@ -781,39 +772,6 @@ class EK60(object):
         return result
 
 
-    def _convert_time_bound(self, time, format_string):
-        """Converts strings to datetime objects and normalizes to UTC.
-
-        Internally, all times are datetime objects converted to UTC timezone.
-        This method converts arguments to comply with this practice.
-
-        Args:
-            time (str or datetime): Either a string representing a date and
-                time in format specified in format_string, or a datetime object.
-            format_string (str): Format of time string specified in datetime
-            object notations such as '%Y-%m-%d %H:%M:%S' to parse a time
-            string of '2017-02-28 23:34:01'
-
-        Returns:
-            Datetime object normalized to UTC time.
-        """
-        # If given a datetime64[ms] object, there's nothing to convert.
-        if time.dtype == '<M8[ms]':
-            return
-
-        utc = timezone('utc')
-
-        # Convert string to datetime object.
-        if isinstance(time, str):
-            time = datetime.datetime.strptime(time, format_string)
-
-        # Convert datetime object to UTC.
-        if isinstance(time, datetime.datetime):
-            time = utc.localize(time)
-
-        return time
-
-
     def get_channel_data(self, frequencies=None, channel_numbers=None, channel_ids=None):
         """returns a dict containing lists of raw_data objects for the specified channel IDs,
         or frequencies, or channel numbers.
@@ -920,8 +878,7 @@ class EK60(object):
     def write_raw(self, output_filenames, power=True, angles=True,
                  max_sample_count=None, start_time=None, end_time=None,
                  start_ping=None, end_ping=None, frequencies=None,
-                 channel_ids=None, time_format_string='%Y-%m-%d %H:%M:%S',
-                 start_sample=None, end_sample=None, progress_callback=None,
+                 channel_ids=None,start_sample=None, end_sample=None, progress_callback=None,
                  overwrite=False, async_window=5, raw_index_array=None,
                  nmea_index_array=None, annotation_index_array=None,
                  strip_padding=True):
@@ -986,12 +943,6 @@ class EK60(object):
             channel_ids (list): A list of strings that contain the unique
                 channel IDs to write. If no list is supplied, all channels are
                 written.
-
-            time_format_string (str): String containing the format of the
-                start and end time arguments *IF* they are provided as strings.
-                The format string is used to create datetime64 objects from the
-                start and end time strings. While you can pass tim estrings, it
-                is recommened that you pass datetime64 objects to start/end time.
 
             start_sample (int): Specify starting sample number if not
                 writing from first sample.
@@ -1092,14 +1043,12 @@ class EK60(object):
 
         # Process the args
         if start_time:
-            start_time = self._convert_time_bound(
-                    start_time, format_string=time_format_string)
+            start_time = start_time
         else:
             start_time = self.start_time
 
         if end_time:
-            end_time = self._convert_time_bound(
-                    end_time, format_string=time_format_string)
+            end_time = end_time
         else:
             end_time = self.end_time
 
@@ -2856,6 +2805,38 @@ class raw_data(ping_data):
             athwartship.to_depth(calibration)
 
         return alongship, athwartship, return_indices
+
+
+    def is_fm(self):
+        '''Convenience method that returns True if the raw data contains FM pings.
+        This method exists for API parity with the EK80 class.
+        '''
+
+        # EK60 hardware is CW only
+        return False
+
+
+    def is_cw(self):
+        '''Convenience method that returns True if the raw data contains CW pings.
+        This method exists for API parity with the EK80 class.
+        '''
+        # EK60 hardware is CW only
+        return True
+
+
+    def get_frequency(self, unique=False):
+        '''Convenience method that returns the frequency of the transmit signals
+        of the data stored in the raw_data object. For the EK60 this simply
+        returns the frequency attribute.
+
+        This method has the same interface as the EK80.get_frequency() method.
+
+        '''
+
+        if unique:
+            return np.unique(self.frequency)
+        else:
+            return self.frequency
 
 
     def _get_sample_data(self, property_name, calibration=None,

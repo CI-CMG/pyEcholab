@@ -33,7 +33,8 @@
 
 import numpy as np
 
-def create_ek80_tx(raw_data, calibration, return_indices=None):
+def create_ek80_tx(raw_data, calibration, return_pcepd=False,
+        return_indices=None):
     '''create_ek80_tx returns an array representing the ideal
     EK80 transmit signal computed using the parameters in the raw_data
     and calibration objects.
@@ -121,8 +122,13 @@ def create_ek80_tx(raw_data, calibration, return_indices=None):
         y = filter_and_decimate(y, cal_parms['filters'][idx], [1, 2])
 
         #  compute effective pulse duration
+        if return_pcepd and raw_data.pulse_form[idx] > 0:
+            y_eff = np.convolve(y, np.flipud(np.conj(y))) / np.linalg.norm(y) ** 2
+        else:
+            y_eff = y
+
         fs_dec = 1 / cal_parms['sample_interval'][idx]
-        ptxa = np.abs(y) ** 2
+        ptxa = np.abs(y_eff) ** 2
         teff =  np.sum(ptxa) / (np.max(ptxa) * fs_dec)
 
         #  store this ping's tx signal
@@ -132,10 +138,12 @@ def create_ek80_tx(raw_data, calibration, return_indices=None):
     return tx_data, tau_eff
 
 
-def compute_effective_pulse_duration(raw_data, calibration, return_indices=None):
+def compute_effective_pulse_duration(raw_data, calibration, return_pcepd=False,
+        return_indices=None):
 
     #  get the ideal transmit pulse which also returns effective pulse duration
-    _, tau_eff = create_ek80_tx(raw_data, calibration, return_indices=return_indices)
+    _, tau_eff = create_ek80_tx(raw_data, calibration, return_pcepd=return_pcepd,
+            return_indices=return_indices)
 
     return tau_eff
 
