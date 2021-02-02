@@ -2259,11 +2259,6 @@ class raw_data(ping_data):
 
                 # Create empty processed_data objects. We set the no_data keyword to
                 # skip creating the sample data array since we're creating it below.
-                p_data_alongship = p_data.empty_like(no_data=True)
-                p_data_alongship.is_log = False
-                p_data_athwartship = p_data.empty_like(no_data=True)
-                p_data_athwartship.is_log = False
-
                 if n_sectors == 4:
                     # average the quadrant pairs
                     yfore = np.sum(p_data[:,:,2:4], axis=2) / 2
@@ -2288,8 +2283,8 @@ class raw_data(ping_data):
                     athwartship_data = y - x
 
                 # Assign the data arrays to the processed_data objects
-                p_data_alongship.data = alongship_data
-                p_data_athwartship.data = athwartship_data
+                p_data_alongship = alongship_data
+                p_data_athwartship = athwartship_data
 
             else:
                 # We don't have enough sectors to compute angles
@@ -2307,7 +2302,7 @@ class raw_data(ping_data):
         p_data = 10 * np.log10(Per_t)
 
         if return_angles:
-            return (p_data, (p_data_alongship, p_data_athwartship))
+            return p_data, p_data_alongship, p_data_athwartship
         else:
             return p_data
 
