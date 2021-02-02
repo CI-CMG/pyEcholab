@@ -1672,7 +1672,7 @@ class raw_data(ping_data):
         # properties as this object.  Return the empty processed_data object.
         empty_obj = raw_data(self.channel_id, n_pings=n_pings,
                 n_samples=self.n_samples, rolling=self.rolling_array,
-                chunk_width=n_pings, store_power=self.store_power,
+                store_power=self.store_power,
                 store_angles=self.store_angles, store_complex=self.store_complex,
                 max_sample_number=self.max_sample_number)
 
