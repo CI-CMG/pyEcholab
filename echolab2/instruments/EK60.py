@@ -1516,8 +1516,8 @@ class EK60(object):
                     # If we have angle data, we have to convert it back to indexed and combine.
                     if hasattr(dg_objects[idx], 'angles_athwartship_e'):
                         # Convert from electrical angles to indexed.
-                        angles_athwart_data = (angles_athwart_data / raw_data.INDEX2ELEC).astype('uint8')
-                        angles_along_data = (angles_along_data / raw_data.INDEX2ELEC).astype('uint8')
+                        angles_athwart_data = (angles_athwart_data / raw_data.INDEX2ELEC).astype('int8')
+                        angles_along_data = (angles_along_data / raw_data.INDEX2ELEC).astype('int8')
                         dgram_dict['angle'] = np.column_stack((angles_athwart_data,angles_along_data))
 
                         #  set the angles bit in the beam mode
