@@ -3076,15 +3076,10 @@ class raw_data(ping_data):
             # Get an array of index values to return.
             return_indices = self.get_indices(**kwargs)
 
-        # Create the processed_data object we will return.
         if hasattr(self, 'frequency'):
             f = self.frequency[0]
         else:
             f = (self.frequency_start[0] + self.frequency_end[0]) / 2.0
-        p_data = processed_data(self.channel_id, f, None)
-
-        # Populate it with time.
-        p_data.ping_time = self.ping_time[return_indices].copy()
 
         # Get references to the data we're operating on. With the
         # introduction of complex data where power and angle data are combined
@@ -3220,6 +3215,12 @@ class raw_data(ping_data):
                 sound_velocity = unique_sound_velocity[0]
                 range = get_range_vector(output.shape[1], sample_interval,
                         sound_velocity, min_sample_offset)
+
+            # Create the processed_data object we will return.
+            p_data = processed_data(self.channel_id, f, None)
+
+            # Populate it with time.
+            p_data.ping_time = self.ping_time[return_indices].copy()
 
             # Assign the results to the "data" processed_data object.
             p_data.add_data_attribute('data', output)
