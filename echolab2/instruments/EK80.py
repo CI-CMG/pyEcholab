@@ -247,8 +247,7 @@ class EK80(object):
 
 
         Args:
-            raw_files (list): List containing full paths to data files to be
-                read.
+            raw_files (list): List containing full paths to data files to be read.
             power (bool): Controls whether power data is stored
             angles (bool): Controls whether angle data is stored
             complex (bool): Controls whether complex data is stored
@@ -1672,7 +1671,7 @@ class raw_data(ping_data):
         # properties as this object.  Return the empty processed_data object.
         empty_obj = raw_data(self.channel_id, n_pings=n_pings,
                 n_samples=self.n_samples, rolling=self.rolling_array,
-                chunk_width=n_pings, store_power=self.store_power,
+                store_power=self.store_power,
                 store_angles=self.store_angles, store_complex=self.store_complex,
                 max_sample_number=self.max_sample_number)
 
@@ -2259,11 +2258,6 @@ class raw_data(ping_data):
 
                 # Create empty processed_data objects. We set the no_data keyword to
                 # skip creating the sample data array since we're creating it below.
-                p_data_alongship = p_data.empty_like(no_data=True)
-                p_data_alongship.is_log = False
-                p_data_athwartship = p_data.empty_like(no_data=True)
-                p_data_athwartship.is_log = False
-
                 if n_sectors == 4:
                     # average the quadrant pairs
                     yfore = np.sum(p_data[:,:,2:4], axis=2) / 2
@@ -2288,8 +2282,8 @@ class raw_data(ping_data):
                     athwartship_data = y - x
 
                 # Assign the data arrays to the processed_data objects
-                p_data_alongship.data = alongship_data
-                p_data_athwartship.data = athwartship_data
+                p_data_alongship = alongship_data
+                p_data_athwartship = athwartship_data
 
             else:
                 # We don't have enough sectors to compute angles
@@ -2307,7 +2301,7 @@ class raw_data(ping_data):
         p_data = 10 * np.log10(Per_t)
 
         if return_angles:
-            return (p_data, (p_data_alongship, p_data_athwartship))
+            return p_data, p_data_alongship, p_data_athwartship
         else:
             return p_data
 
@@ -3081,10 +3075,10 @@ class raw_data(ping_data):
             f = self.frequency[0]
         else:
             f = (self.frequency_start[0] + self.frequency_end[0]) / 2.0
-        p_data = processed_data(self.channel_id, f, None)
 
-        # Populate it with time.
-        p_data.ping_time = self.ping_time[return_indices].copy()
+        # p_data = processed_data(self.channel_id, f, None)
+        # # Populate it with time.
+        # p_data.ping_time = self.ping_time[return_indices].copy()
 
         # Get references to the data we're operating on. With the
         # introduction of complex data where power and angle data are combined
@@ -3119,7 +3113,6 @@ class raw_data(ping_data):
             else:
                 raise AttributeError("Unable to convert raw sample data. The attribute name " +
                         property_name + " does not exist.")
-
         # Populate the calibration parameters required for this method.
         # First, create a dict with key names that match the attributes names
         # of the calibration parameters we require for this method.
@@ -3150,6 +3143,9 @@ class raw_data(ping_data):
         # there is only one reference. When requestig angle data, there will be two.
         # This is not an optimal solution, but a reasonable hack to handle complex data.
         for idx, data in enumerate(data_refs):
+            p_data = processed_data(self.channel_id, f, None)
+            p_data.ping_time = self.ping_time[return_indices].copy()
+
             if unique_sample_interval.shape[0] > 1:
                 # There are at least 2 different sample intervals in the data.  We
                 # must resample the data. We'll deal with adjusting sample offsets
@@ -3223,7 +3219,6 @@ class raw_data(ping_data):
 
             # Assign the results to the "data" processed_data object.
             p_data.add_data_attribute('data', output)
-
             # Calculate the sample thickness.
             sample_thickness = sample_interval * sound_velocity / 2.0
 
@@ -3246,10 +3241,8 @@ class raw_data(ping_data):
             else:
                 xdcr_draft = np.full((output.shape[0]), 0.0, dtype=np.float32)
             p_data.add_data_attribute('transducer_draft', xdcr_draft)
-
             #data = p_data
             data_refs[idx] = p_data
-
         # Return the processed_data object containing the requested data.
         data_refs.append(return_indices)
         return data_refs
@@ -3683,17 +3676,13 @@ class ek80_calibration(calibration):
         #  call the parent method
         super(ek80_calibration, self).from_raw_data(raw_data,
                 return_indices=return_indices)
-
         # Handle our special attributes
-
         # EK80 doesn't store absorption directly, but instead it
         # stores the bits needed to compute it.
         self.absorption_coefficient = self._compute_absorption(raw_data,
             return_indices, self.absorption_method)
-
         self.effective_pulse_duration = self.get_attribute_from_raw(raw_data,
                 param_name='effective_pulse_duration', return_indices=return_indices)
-
 
     def get_attribute_from_raw(self, raw_data, param_name, return_indices=None):
         """get_attribute_from_raw gets an individual attribute using the data
@@ -3705,7 +3694,6 @@ class ek80_calibration(calibration):
                 raw_data, param_name, return_indices=return_indices)
 
         # Now handle attributes that need some special handling
-
         # rx_sample_frequency is a special case because it is a parameter
         # that was recently added to the EK80 raw file configuration datagram
         # and there will be files that do not contain it. In these cases we
@@ -3846,8 +3834,9 @@ class ek80_calibration(calibration):
         attr_to_display.extend(self._raw_attributes)
         attr_to_display.extend(self._config_attributes)
         attr_to_display.extend(self._environment_attributes)
+        # Can get specific attributes
+        attr_to_display.extend(['absorption_coefficient','effective_pulse_duration'])
         attr_to_display.remove('filters')
-
         # And assemble the string
         for param_name in attr_to_display:
             n_spaces = 34 - len(param_name)
