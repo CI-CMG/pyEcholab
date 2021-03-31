@@ -13,8 +13,8 @@ from echolab2.processing import mask
 
 
 # Read in some data from files.
-rawfiles = ['./data/EK60/PC1106-D20110830-T052815.raw',
-            './data/EK60/PC1106-D20110830-T053815.raw']
+rawfiles = ['./data/OfotenDemo-D20001214-T145902.raw',
+            './data/OfotenDemo-D20001214-T154020.raw']
 
 # Specify the channel nummber to work with. This example shows
 channel_number = 1
@@ -77,11 +77,11 @@ print(ping_mask)
 # implemented, we'll focus on the second, more common use.
 
 # At the most basic level, setting mask elements to True will specify that
-# an operation occurs on that element.  For example, if we wanted to set
-# a block of samples between sample 50 and 800 from ping 20-500 to -999
+# an operation occurs on that element. For example, if we wanted to set
+# a block of samples between sample 50 and 800 from ping 20-1500 to -999
 # we could set those mask values to True and then use the mask to "index"
 # into our processed_data object Sv.
-sample_mask.mask[20:500, 50:800] = True
+sample_mask.mask[20:1500, 50:800] = True
 
 # Now use the mask to set these samples to -999.
 Sv[sample_mask] = -999

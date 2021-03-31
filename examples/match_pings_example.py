@@ -6,7 +6,7 @@ which can be used to insert missing pings between channels that have
 been recorded on the same system.
 
 For this example, assume that we want to compute the frequency difference
-between some channels in our data file. Unfortunately our sounder system
+between some channels in our data file. Unfortunately this sounder system
 was not installed by a certified Kongsberg technician and the various
 channels drop a lot of pings. When you read these files into pyEcholab
 the axes of the various channels do not match so you cannot subtract them
@@ -16,6 +16,13 @@ To overcome this, the match_pings method alters the ping time axes
 in your data object with that of the "other" object. Ping times in the
 other object that aren't in your object are inserted. Ping times in your
 object that aren't in the other object are deleted.
+
+The example will then execute the match_pings method on both the raw_data
+object and the processed_data object to test the method for both of these
+child classes. Each "match channel" vs "other channel" comparison for both
+the raw_data match and the processed_data match will be plotted. The results
+should be the same for both.
+
 
 In reality, Kongsberg systems are known for their legendary reliability
 so you probably don't have a file on hand that is actually missing any pings.
@@ -39,7 +46,7 @@ from echolab2.plotting.matplotlib import echogram
 # specify some parameters used when removing pings.
 
 # Set the minimum number of pings to remove from a channel
-min_pings_to_remove = 1
+min_pings_to_remove = 2
 
 # Set the maximum number of pings to remove from a channel
 max_pings_to_remove = 5
@@ -53,7 +60,7 @@ remove_from_match = True
 
 
 # Specify a data file for this test
-rawfiles = ['./data/EK60/DY1706_EK60-D20170625-T063335.raw']
+rawfiles = ['./data/EK60/DY1706_EK60-D20170625-T062521.raw']
 
 # Create an instance of the EK60 instrument. This is the top level object used
 # to interact with EK60 and  data sources.
@@ -108,7 +115,7 @@ for channel_id in raw_data:
             max_pings_to_remove)
 
     # and the indexes to remove
-    del_idx = np.random.randint(0, data.ping_time.size, del_npings)
+    del_idx = np.random.randint(1, data.ping_time.size, del_npings)
 
     # Store the indexes we removed
     removed_idx[channel_id] = del_idx
@@ -134,7 +141,7 @@ print()
 match_data_Sv = match_data.get_Sv()
 
 #  get the frequency of the match data in kHz (for labeling)
-match_freq = int(match_data.frequency[0] / 1000.)
+match_freq = int(match_data.get_frequency(unique=True)[0] / 1000)
 
 
 # Now match the other_data to our match_data. We can match both
@@ -153,7 +160,7 @@ for channel_id in raw_data:
     data = raw_data[channel_id][0]
 
     #  get the frequency in kHz (for labeling)
-    freq = int(data.frequency[0] / 1000.)
+    freq = int(data.get_frequency(unique=True)[0] / 1000)
 
     # Get the unmatched data as Sv
     Sv_original = data.get_Sv()

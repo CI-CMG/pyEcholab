@@ -111,7 +111,7 @@ class processed_data(ping_data):
         if channel_id:
             self.channel_id = channel_id
         else:
-            self.channel_id = None
+            self.channel_id = ''
         self.frequency = frequency
         self.data_type = data_type
 
@@ -880,7 +880,7 @@ class processed_data(ping_data):
             # iterate through the returned data and add or update it
             for attr_name in attr_names:
                 #  check if we had data for this attribute
-                if data[attr_name]:
+                if attr_name in data:
                     #  yes - add or update it
                     if hasattr(self, attr_name):
                         #  update existing attribute
@@ -924,7 +924,7 @@ class processed_data(ping_data):
             # iterate through the returned data and add or update it
             for attr_name in attr_names:
                 #  check if we had data for this attribute
-                if data[attr_name]:
+                if attr_name in data:
                     #  yes - add or update it
                     if hasattr(self, attr_name):
                         #  update existing attribute
@@ -1923,8 +1923,13 @@ def read_ev_csv(channel_id, frequency, ev_csv_filename, data_type='Ts',
             idx += 1
     p_data.data[p_data.data < -9.9000003e+36] = np.nan
 
-    if data_type in ['Ts', 'Sp', 'Sv', 'power', 'Power']:
+    if data_type.lower() in ['ts', 'sp', 'sv', 'power']:
         p_data.is_log = True
+
+        #  Echoview seems to output 0 for empty (nan) samples in csv format
+        #  We can safely convert them to NaN for everything except angles
+        p_data.data[p_data.data == 0] = np.nan
+
     else:
         p_data.is_log = False
 

@@ -29,6 +29,7 @@
 
 import numpy as np
 from matplotlib import figure, axes
+import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from matplotlib.colors import LinearSegmentedColormap, Colormap
 
@@ -145,8 +146,11 @@ class Echogram(object):
         if cmap is None:
             self.cmap = self._simrad_cmap
         else:
-            self.cmap = cmap
-            self.cmap.set_bad(color='grey')
+            if type(cmap) is str:
+                self.cmap = plt.get_cmap(cmap)
+            else:
+                self.cmap = cmap
+        self.cmap.set_bad(color='grey')
 
         # Determine the vertical axis attribute.
         if hasattr(self.data_object, 'range'):
@@ -228,6 +232,15 @@ class Echogram(object):
             mid, dtype='float') / mid) * ping_int)
 
         return adj_x
+
+
+    def add_colorbar(self, fig, units='dB'):
+        """
+        add_colorbar adds a colorbar on the right side of the echogram in the provided
+        figure.
+        """
+        cb = fig.colorbar(self.axes_image)
+        cb.set_label(units)
 
 
     def _adjust_ydata(self, y_data):

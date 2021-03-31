@@ -392,10 +392,6 @@ class calibration(object):
         data identified by the raw_attribute dictionary and param_name key.
         '''
 
-        # Bail if we don't have this particular parameter
-        if param_name not in raw_attribute[0]:
-            return None
-
         # Determine the data type and size of the param and create empty array.
         # Since we can have "empty" pings where the array of dicts we're unpacking
         # may contain NaNs, we can't assume the first (or any) ping will contain
@@ -404,7 +400,11 @@ class calibration(object):
         for idx in return_indices:
             # Check if this attribute is a dict
             if isinstance(raw_attribute[idx], dict):
-                # Yes - now get the size and type of this data
+                # Check if the requested parameter exists in this dict
+                if param_name not in raw_attribute[idx]:
+                    # it doesn't - move on to the
+                    continue
+                # The key exists, now get the size and type of this data
                 if isinstance(raw_attribute[idx][param_name], np.ndarray):
                     dtype = raw_attribute[idx][param_name].dtype
                     dsize = (return_indices.shape[0], raw_attribute[idx][param_name].shape[0])
@@ -457,7 +457,7 @@ class calibration(object):
                     if param_data.ndim == 2:
                         this_val = np.full(dsize[1], this_val)
 
-                # Assign the value to the return array and check if our it has changed
+                # Assign the value to the return array and check if it has changed
                 if param_data.ndim == 1:
                     param_data[data_idx] = this_val
                     param_is_constant &= this_val == first_val
@@ -508,6 +508,18 @@ class calibration(object):
 
         absorption is returned as dB/m
         '''
+
+        def compute_sound_speed(T, D, S):
+            '''
+            compute_sound_speed in saltwater (Mackenzie, 1981)
+
+            '''
+            c = 1448.96 + 4.591 * T - 0.05304 * T ** 2
+            c += 2.374e-4 * T ** 3 + 1.34 * (S - 35) + 0.0163 * D
+            c += 1.675e-7 * D**2 - 0.01025 * T * (S - 35) - 7.139e-13*(T*D)**3
+
+            return c
+
         # Get depth in m
         D = self.get_parameter(raw_data, 'depth',
                 return_indices=return_indices)
@@ -522,6 +534,10 @@ class calibration(object):
 
         # Temperature in deg c
         T = self.get_parameter(raw_data, 'temperature',
+                return_indices=return_indices)
+
+        # Sound speed in m/s
+        c = self.get_parameter(raw_data, 'sound_speed',
                 return_indices=return_indices)
 
         # Get the tx frequency
@@ -539,13 +555,12 @@ class calibration(object):
             # This is CW - just convert freq to kHz
             fkhz = fhz / 1000.0
 
-
         # Compute absorption using the specified method
         if method.lower() in ['am', 'a&m']:
             # Ainslie M. A., McColm J. G.
 
             # Frequency in kHz squared
-            fsq = np.square(fkhz)
+            fsq = fkhz ** 2
 
             # Depth in km
             D = D / 1000.0
@@ -555,11 +570,11 @@ class calibration(object):
             f2 = 42.0 * np.exp(T / 17.0)
 
             # Compute absorption in dB/m
-            a = 0.106 * ((f1 * fsq) / (np.square(f1) + fsq)) * np.exp((pH - 8.0) / 0.56)
-            a += 0.52 * (1 + T / 43.0) * (S / 35.0) * ((f2 * fsq) / (np.square(f2) + fsq)) * np.exp(-D / 6.0)
-            a += 0.00049 * fsq * np.exp(-(T / 27.0 + D / 17.0))
-            #  return value in dB/m
-            a = a / 1000
+            a = 0.106 * np.exp((pH - 8.0) / 0.56) * f1 / (f1**2 + fsq)
+            a += 0.52 * (1 + T / 43.0) * (S / 35.0) * np.exp(-D / 6.0) * f2 / (fsq + f2**2)
+            a *= 0.00049 * np.exp(-(T/27.0 + D/17.0))
+
+            a = (fsq/1000) * a
 
         elif method.lower() in ['fg', 'f&g']:
             # Francois R. E., Garrison G. R.
@@ -567,8 +582,11 @@ class calibration(object):
             # Frequency in kHz
             f = fkhz
 
+            # We don't compute the sound speed but instead use the speed provided
+            # in the raw file or calibration object.
+            #c = compute_sound_speed(T, D, S)
+
             # from echopype.utils.uwa.calc_seawater_absorption
-            c = 1412.0 + 3.21 * T + 1.19 * S + 0.0167 * D
             A1 = 8.86 / c * 10**(0.78 * pH - 5)
             P1 = 1.0
             f1 = 2.8 * np.sqrt(S / 35) * 10**(4 - 1245 / (T + 273))
@@ -577,9 +595,8 @@ class calibration(object):
             f2 = 8.17 * 10 ** (8 - 1990 / (T + 273)) / (1 + 0.0018 * (S - 35))
             P3 = 1.0 - 3.83e-5 * D + 4.9e-10 * D * D
             A3 = np.empty((T.shape[0]), np.float32)
-            tidx = T < 20
-            A3[tidx] = (4.937e-4 - 2.59e-5 * T[tidx] + 9.11e-7 * T[tidx] ** 2 -
-                  1.5e-8 * T[tidx] ** 3)
+            tidx = T <= 20
+            A3[tidx] = (4.937e-4 - 2.59e-5 * T[tidx] + 9.11e-7 * T[tidx] ** 2 - 1.5e-8 * T[tidx] ** 3)
             tidx = T > 20
             A3[tidx] = 3.964e-4 - 1.146e-5 * T[tidx] + 1.45e-7 * T[tidx] ** 2 - 6.5e-10 * T[tidx] ** 3
 

@@ -24,9 +24,9 @@ from echolab2.processing import afsc_bot_detector
 
 
 # Create a list of .raw files.
-rawfiles = ['./data/EK60/DY1706_EK60-D20170625-T061707.raw']
+rawfiles = ['./data/EK60/DY1706_EK60-D20170625-T062521.raw']
 # Also create a list of .bot files.
-botfiles = ['./data/EK60/DY1706_EK60-D20170625-T061707.bot']
+botfiles = ['./data/EK60/DY1706_EK60-D20170625-T062521.bot']
 
 frequencies_to_read = [38000, 120000]
 
@@ -43,7 +43,7 @@ ek60 = EK60.EK60()
 #  minimum DEPTH in meters to search for the bottom
 search_min = 15
 
-#  since we'll be passing Sv data to the bottom detector,, set the backstep in Sv (db)
+#  since we'll be passing Sv data to the bottom detector, set the backstep in Sv (db)
 backstep = 35
 
 #  create an instance of our bottom detector
@@ -106,18 +106,21 @@ bottom_120_detected = bot_detector.detect(Sv_120_as_depth)
 bottom_120_detected.color = [244./255, 200./255, 66/255.]
 
 
+print(bottom_38.data[0])
+print(bottom_38_detected.data[0])
+
 # Create matplotlib figures and display the results.
 fig_38 = figure()
 eg = echogram.Echogram(fig_38, Sv_38_as_depth, threshold=[-70, -34])
 eg.axes.set_title("Heave Corrected with Two Detected Bottoms - 38kHz")
-eg.plot_line(bottom_38, linewidth=2.5)
-eg.plot_line(bottom_38_detected, linewidth=2.5)
+eg.plot_line(bottom_38, linewidth=1.5)
+eg.plot_line(bottom_38_detected, linewidth=1.5)
 
 fig_120 = figure()
 eg = echogram.Echogram(fig_120, Sv_120_as_depth, threshold=[-70, -34])
 eg.axes.set_title("Heave Corrected with Two Detected Bottoms - 120kHz")
-eg.plot_line(bottom_120, linewidth=2.5)
-eg.plot_line(bottom_120_detected, linewidth=2.5)
+eg.plot_line(bottom_120, linewidth=1.5)
+eg.plot_line(bottom_120_detected, linewidth=1.5)
 
 show()
 

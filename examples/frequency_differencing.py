@@ -18,13 +18,11 @@ import numpy as np
 
 # Read in some data.
 rawfiles = ['./data/EK60/DY1706_EK60-D20170625-T062521.raw',
-            './data/EK60/DY1706_EK60-D20170625-T063335.raw',
-            './data/EK60/DY1706_EK60-D20170625-T064148.raw']
+            './data/EK60/DY1706_EK60-D20170625-T063335.raw']
 
 # Specify the matching bottom files.
 botfiles = ['./data/EK60/DY1706_EK60-D20170625-T062521.bot',
-            './data/EK60/DY1706_EK60-D20170625-T063335.bot',
-            './data/EK60/DY1706_EK60-D20170625-T064148.bot']
+            './data/EK60/DY1706_EK60-D20170625-T063335.bot']
 
 # Create an instance of our EK60 class.
 ek60 = EK60.EK60()

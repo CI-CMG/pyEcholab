@@ -31,7 +31,7 @@ print(raw_data_38)
 # Insert synthetic data.  Create data where each ping is a constant value and
 # the values change significantly from ping to ping so it is easy to
 # distinguish the pings and verify (or not) that data is in the right place.
-fake_data = np.arange(20) * 9.0 - 150.0
+fake_data = np.arange(20) * 9.0 - 100.0
 j = 0
 for i in range(raw_data_38.n_pings):
     raw_data_38.power[i, :] = fake_data[j]

@@ -12,7 +12,7 @@ ensure that the correct parameters are written to the raw file configuration
 header and results in the writer creating the same number of files as were
 originally read.
 
-The means that if one wants to combine two or more files, the references
+This means that if one wants to combine two or more files, the references
 to the configuration data must be updated in all raw_data objects to point
 to a single configuration dictionary. Obviously this should only be done
 when you know that the files you are combining were all recorded using
@@ -47,34 +47,28 @@ def read_write_callback(filename, cumulative_pct, cumulative_bytes):
         sys.stdout.write('  done!\n')
 
 
-
-# In this example we'll read two raw files and write a combined file
-two_files = ['./data/EK60/PC1106-D20110830-T034700.raw',
-             './data/EK60/PC1106-D20110830-T044817.raw']
-
-# This has also been tested with these 4 files
-#two_files = ['./data/EK60/OfotenDemo-D20001214-T145902.raw',
-#             './data/EK60/OfotenDemo-D20001214-T154020.raw',
-#             './data/EK60/OfotenDemo-D20001214-T162003.raw',
-#             './data/EK60/OfotenDemo-D20001214-T164709.raw']
+# Specify the raw files to combine
+combine_files = ['./data/OfotenDemo-D20001214-T145902.raw',
+                 './data/OfotenDemo-D20001214-T154020.raw']
 
 
-# specify the output path AND file name header. write_raw will generate a
-# output file name using this in a similar manner as the ER60 software.
-# The actual file written will be named:
-#   'C:/Temp_EK_Test/PC1106-Combined-Test-DYYYYMMDD-Thhmmss'
+# specify the output path AND file name header. write_raw() will
+# generate an output file name using this in a similar manner as
+# the ER60 software. The actual file written will be named:
+#
+#   './Ofoten-Combined-Test-DYYYYMMDD-Thhmmss'
+#
 # where the date and time will be determined by the time of the first
-# raw datagram in the file. This may or may not match the input file's
-# time.
-out_file = 'C:/Temp_EK_Test/PC1106-Combined-Test'
-#out_file = 'C:/Temp_EK_Test/Ofoten-Combined-Test'
+# raw datagram in the file. This may or may not exactly match the first
+# input file's time.
+out_file = './Ofoten-Combined-Test'
 
 # Create an instance of the EK60 instrument.
 ek60 = EK60.EK60()
 
 # Use the read_raw method to read in our list of data files.
 print('Reading source file(s):')
-ek60.read_raw(two_files, progress_callback=read_write_callback)
+ek60.read_raw(combine_files, progress_callback=read_write_callback)
 
 # Print some basic info about our object.
 print(ek60)

@@ -1,21 +1,37 @@
 # -*- coding: utf-8 -*-
 """
-ek60_multiple_pulse_length_test
+ek60_test
 
-This test reads data collected using a 5 frequency Simrad EK60 GPT
-system running ER60 version 2.x.x. The test reads 3 files where the
-pulde length for the 38 kHz transceiver is changed between files.
+This test reads data collected using EK60 GPTs recorded using ER60
+version 2.2.0.
 
-power, Sv, Sp/TS, and angle data (38 kHz only) are compared with the
+power, Sv, Sp/TS, and angle data from 5 frequencies are compared with the
 same data exported from Echoview. Ranges and ping times are also compared.
+The data are also written to disk, then the re-writen data is read and
+the power and angle data is compared to Echoview to ensure that the write
+method is working properly.
+
+There are a few details to note about comparing data:
+
+Echolab returns an additional sample at a sample index 0 when reading EK60
+raw files. The range of this sample is -sample_thickness. Echoview discards
+this sample so comparisons are made omitting this extra sample.
+
+The echolab and Echoview values can differ by up to 0.2 dB in the first 10-15
+samples. We don't care about this and start the comparison at the 15th sample.
+
+The read/write/read cycle can result in differences in power values between
+the original file and the newly written file of up to +-0.0118 dB which is the
+
 
 When the test is passing:
 
 Power values will match Echoview values
-Sv and TS values will be within +-0.01 dB of Echoview values
-Angle values will be within +-0.00001 deg. of Echoview values
+Sv and TS values will be within +-0.0001 dB of Echoview values
+Angle values will be within +-0.0001 deg. of Echoview values
 Range values will match
 Ping time values will match
+Rewritten power data will match original within +-0.0118 dB
 
 """
 
@@ -25,47 +41,57 @@ import unittest
 import unittest.runner
 import itertools
 import numpy as np
-from echolab2.instruments import EK60
+from echolab2.instruments import echosounder
 from echolab2.processing import processed_data
 
 
 # Set the max absolute differences allowed between echolab and echoview
 # for certain data types. For CW data, power values should match but differences
 # in the implementation of the conversion methods result in minor differences
-sv_atol = 1e-02
-ts_atol = 1e-03
-angle_atol = 1e-05
+convert_atol = 1e-04
+rewrite_atol = 12e-03
+
+# For Sv and TS values, pyEcholab and Echoview differ most in the first 13 samples
+# or so and so we skip comparing them.
+start_sample = 13
 
 # Specify the data files for this test
 
-# 3 EK60 data files
-in_file = ['./data/EK60_GPT_18(4s-1024us)_38(4s-256us)_70(4s-1024us)_120(4s_1024us)_200(4s-1024us)_1461.4ms_100m_test.raw',
-           './data/EK60_GPT_18(4s-1024us)_38(4s-1024us)_70(4s-1024us)_120(4s_1024us)_200(4s-1024us)_1461.4ms_100m_test.raw',
-           './data/EK60_GPT_18(4s-1024us)_38(4s-4096us)_70(4s-1024us)_120(4s_1024us)_200(4s-1024us)_1461.4ms_100m_test.raw']
+# EK80 CW Complex 38 (3 sector) + 200 (1 sector)
+in_file = './data/EK60_GPT_test.raw'
 out_file = './data/test_write.raw'
 
 # Echoview power, Sv, TS, and angles data exports of above raw file
 ev_Sv_filename = {}
-ev_Sv_filename[18000] = './data/EK_60_example_multiple_pulse_lengths_Sv_T1.mat'
-ev_Sv_filename[38000] = './data/EK_60_example_multiple_pulse_lengths_Sv_T2.mat'
-ev_Sv_filename[70000] = './data/EK_60_example_multiple_pulse_lengths_Sv_T3.mat'
-ev_Sv_filename[120000] = './data/EK_60_example_multiple_pulse_lengths_Sv_T4.mat'
-ev_Sv_filename[200000] = './data/EK_60_example_multiple_pulse_lengths_Sv_T5.mat'
-
+ev_Sv_filename[18000] = './data/EK60_GPT_test_EV-18.Sv.mat'
+ev_Sv_filename[38000] = './data/EK60_GPT_test_EV-38.Sv.mat'
+ev_Sv_filename[70000] = './data/EK60_GPT_test_EV-70.Sv.mat'
+ev_Sv_filename[120000] = './data/EK60_GPT_test_EV-120.Sv.mat'
+ev_Sv_filename[200000] = './data/EK60_GPT_test_EV-200.Sv.mat'
 
 ev_TS_filename = {}
-ev_TS_filename[38000] = './data/SD_alaska_2019-Phase0-D20190516-T030157-0-38kHz.ts.csv'
-ev_TS_filename[200000] = './data/SD_alaska_2019-Phase0-D20190516-T030157-0-200kHz.ts.csv'
+ev_TS_filename[18000] = './data/EK60_GPT_test_EV-18.ts.csv'
+ev_TS_filename[38000] = './data/EK60_GPT_test_EV-38.ts.csv'
+ev_TS_filename[70000] = './data/EK60_GPT_test_EV-70.ts.csv'
+ev_TS_filename[120000] = './data/EK60_GPT_test_EV-120.ts.csv'
+ev_TS_filename[200000] = './data/EK60_GPT_test_EV-200.ts.csv'
 
 ev_power_filename = {}
-ev_power_filename[38000] = './data/SD_alaska_2019-Phase0-D20190516-T030157-0-38kHz.power.csv'
-ev_power_filename[200000] = './data/SD_alaska_2019-Phase0-D20190516-T030157-0-200kHz.power.csv'
+ev_power_filename[18000] = './data/EK60_GPT_test_EV-18.power.csv'
+ev_power_filename[38000] = './data/EK60_GPT_test_EV-38.power.csv'
+ev_power_filename[70000] = './data/EK60_GPT_test_EV-70.power.csv'
+ev_power_filename[120000] = './data/EK60_GPT_test_EV-120.power.csv'
+ev_power_filename[200000] = './data/EK60_GPT_test_EV-200.power.csv'
 
 ev_angles_filename = {}
-ev_angles_filename[38000] = './data/SD_alaska_2019-Phase0-D20190516-T030157-0-38kHz.angles.csv'
+ev_angles_filename[18000] = './data/EK60_GPT_test_EV-18.angles.csv'
+ev_angles_filename[38000] = './data/EK60_GPT_test_EV-38.angles.csv'
+ev_angles_filename[70000] = './data/EK60_GPT_test_EV-70.angles.csv'
+ev_angles_filename[120000] = './data/EK60_GPT_test_EV-120.angles.csv'
+ev_angles_filename[200000] = './data/EK60_GPT_test_EV-200.angles.csv'
 
 
-class ek60_multiple_pulse_length_test(unittest.TestCase):
+class ek60_test(unittest.TestCase):
 
     @classmethod
     def setUpClass(self):
@@ -73,42 +99,48 @@ class ek60_multiple_pulse_length_test(unittest.TestCase):
         setUpClass is executed once, before all tests are conducted
         '''
 
-        # Create an instance of EK60 and read the test data file
-        self.ek60 = EK60.EK60()
-        self.ek60.read_raw(in_file)
+        # Use echosounder.read() to read the input file and return either an
+        # EK60 or EK80 object depending on what type of file is read.
+        ek_data = echosounder.read(in_file)
+
+        # We know we are reading one file so we just grab the first object
+        # returned by echosounder.read()
+        self.ek_data = ek_data[0]
+
+        self.progress_index = 0
 
         # Store a list of our channels for convienience
-        self.channels = list(self.ek60.raw_data.keys())
+        self.channels = list(self.ek_data.raw_data.keys())
 
         print()
-        print('wbt_mini_cw_complex_3sector_test')
+        print('ek60_test: ' + in_file)
 
 
     def test_TS_conversion(self):
 
         for chan in self.channels:
             # Get a reference to the first data object
-            raw_data = self.ek60.raw_data[chan][0]
+            raw_data = self.ek_data.raw_data[chan][0]
 
-            # Get the frequency of this channel. CW data will
-            # have the frequency property
+            # Get the frequency of this channel.
             this_freq = raw_data.frequency[0]
 
             ev_file = ev_TS_filename.get(this_freq, None)
             if ev_file is not None:
                 sys.stdout.write(('%i kHz ' % this_freq))
 
-                # Get the power data
+                # Get the Sp data
                 Sp = raw_data.get_Sp()
 
-                # Read the Echoview export file containing power.
+                # Read the Echoview export file containing TS.
                 ev_TS = processed_data.read_ev_csv('', 0, ev_file, data_type='TS')
 
-                # Compare TS values from 10th sample onwards
-                self.assertTrue(np.allclose(Sp[:,9:], ev_TS[:,9:], atol=ts_atol, equal_nan=True))
+                # Compare TS values from the start sample onwards
+                self.assertTrue(np.allclose(Sp[:,start_sample:], ev_TS[:,start_sample-1:],
+                        atol=convert_atol, equal_nan=True))
 
                 # Compare ranges
-                self.assertTrue(np.allclose(Sp.range[:], ev_TS.range[:], equal_nan=True))
+                self.assertTrue(np.allclose(Sp.range[1:], ev_TS.range[:], equal_nan=True))
 
                 # Compare times
                 self.assertTrue(np.allclose(Sp.ping_time.view(dtype=np.uint64),
@@ -119,7 +151,7 @@ class ek60_multiple_pulse_length_test(unittest.TestCase):
 
         for chan in self.channels:
             # Get a reference to the first data object
-            raw_data = self.ek60.raw_data[chan][0]
+            raw_data = self.ek_data.raw_data[chan][0]
 
             # Get the frequency of this channel.
             this_freq = raw_data.frequency[0]
@@ -135,10 +167,10 @@ class ek60_multiple_pulse_length_test(unittest.TestCase):
                 ev_power = processed_data.read_ev_csv('', 0, ev_file, data_type='power')
 
                 # Compare power values
-                self.assertTrue(np.allclose(power[:], ev_power[:], equal_nan=True))
+                self.assertTrue(np.allclose(power[:,1:], ev_power[:,:], equal_nan=True))
 
                 # Compare ranges
-                self.assertTrue(np.allclose(power.range[:], ev_power.range[:], equal_nan=True))
+                self.assertTrue(np.allclose(power.range[1:], ev_power.range[:], equal_nan=True))
 
                 # Compare times
                 self.assertTrue(np.allclose(power.ping_time.view(dtype=np.uint64),
@@ -150,7 +182,7 @@ class ek60_multiple_pulse_length_test(unittest.TestCase):
         for chan in self.channels:
 
             # Get a reference to the first data object
-            raw_data = self.ek60.raw_data[chan][0]
+            raw_data = self.ek_data.raw_data[chan][0]
 
             # Get the frequency of this channel. CW data will
             # have the frequency property
@@ -166,11 +198,11 @@ class ek60_multiple_pulse_length_test(unittest.TestCase):
                 # Read the Echoview export file containing Sv.
                 ev_Sv = processed_data.read_ev_mat('', 0, ev_file, data_type='Sv')
 
-                # Compare Sv values from 10th sample onwards
-                self.assertTrue(np.allclose(Sv[:,9:-1], ev_Sv[:,9:], atol=sv_atol, equal_nan=True))
+                # Compare Sv values
+                self.assertTrue(np.allclose(Sv[:,start_sample:], ev_Sv[:,start_sample-1:], atol=convert_atol, equal_nan=True))
 
                 # Compare ranges
-                self.assertTrue(np.allclose(Sv.range[:], ev_Sv.range[:], equal_nan=True))
+                self.assertTrue(np.allclose(Sv.range[1:], ev_Sv.range[:], equal_nan=True))
 
                 # Compare times
                 self.assertTrue(np.allclose(Sv.ping_time.view(dtype=np.uint64),
@@ -182,7 +214,7 @@ class ek60_multiple_pulse_length_test(unittest.TestCase):
         for chan in self.channels:
 
             # Get a reference to the first data object
-            raw_data = self.ek60.raw_data[chan][0]
+            raw_data = self.ek_data.raw_data[chan][0]
 
             # Get the frequency of this channel. CW data will
             # have the frequency property
@@ -200,15 +232,15 @@ class ek60_multiple_pulse_length_test(unittest.TestCase):
                         ev_file, data_type='angles')
 
                 # Compare alongship and athwartship angles
-                self.assertTrue(np.allclose(alongship[:], ev_alongship[:],
-                        atol=angle_atol, equal_nan=True))
-                self.assertTrue(np.allclose(athwartship[:], ev_athwartship[:],
-                        atol=angle_atol, equal_nan=True))
+                self.assertTrue(np.allclose(alongship[:,1:], ev_alongship[:,:],
+                        atol=convert_atol, equal_nan=True))
+                self.assertTrue(np.allclose(athwartship[:,1:], ev_athwartship[:,:],
+                        atol=convert_atol, equal_nan=True))
 
                 # Compare ranges
-                self.assertTrue(np.allclose(alongship.range[:], ev_alongship.range[:],
+                self.assertTrue(np.allclose(alongship.range[1:], ev_alongship.range,
                         equal_nan=True))
-                self.assertTrue(np.allclose(athwartship.range[:], ev_athwartship.range[:],
+                self.assertTrue(np.allclose(athwartship.range[1:], ev_athwartship.range,
                         equal_nan=True))
 
                 # Compare times
@@ -224,18 +256,18 @@ class ek60_multiple_pulse_length_test(unittest.TestCase):
         # to output file name so we have full control of name.
         fname = os.path.split(in_file)[1]
         out_name = {fname:out_file}
-        self.ek60.write_raw(out_name, overwrite=True)
+        self.ek_data.write_raw(out_name, overwrite=True)
 
         # The read this re-written data
-        ek60rewrite = EK60.EK60()
-        ek60rewrite.read_raw(out_file)
+        ek_rewrite = echosounder.read(out_file)
+        ek_rewrite = ek_rewrite[0]
 
         # Get a list of the rewritten channels
-        rewrite_channels = list(ek60rewrite.raw_data.keys())
+        rewrite_channels = list(ek_rewrite.raw_data.keys())
 
         for chan in rewrite_channels:
             # Get a reference to the first data object
-            raw_data = ek60rewrite.raw_data[chan][0]
+            raw_data = ek_rewrite.raw_data[chan][0]
 
             # Get the frequency of this channel.
             this_freq = raw_data.frequency[0]
@@ -251,15 +283,31 @@ class ek60_multiple_pulse_length_test(unittest.TestCase):
                 ev_power = processed_data.read_ev_csv('', 0, ev_file, data_type='power')
 
                 # Compare power values
-                self.assertTrue(np.allclose(power[:], ev_power[:], equal_nan=True))
+                self.assertTrue(np.allclose(power[:,1:], ev_power[:,:],
+                        atol=rewrite_atol, equal_nan=True))
 
                 # Compare ranges
-                self.assertTrue(np.allclose(power.range[:], ev_power.range[:], equal_nan=True))
+                self.assertTrue(np.allclose(power.range[1:], ev_power.range, equal_nan=True))
 
                 # Compare times
                 self.assertTrue(np.allclose(power.ping_time.view(dtype=np.uint64),
                         ev_power.ping_time.view(dtype=np.uint64), equal_nan=True))
 
+            ev_file = ev_angles_filename.get(this_freq, None)
+            if ev_file is not None:
+
+                # Get the angle data
+                alongship, athwartship = raw_data.get_physical_angles()
+
+                # Read the Echoview export file containing angles.
+                ev_alongship, ev_athwartship = processed_data.read_ev_csv('', 0,
+                        ev_file, data_type='angles')
+
+                # Compare angles
+                self.assertTrue(np.allclose(alongship[:,1:], ev_alongship[:,:],
+                        atol=convert_atol, equal_nan=True))
+                self.assertTrue(np.allclose(athwartship[:,1:], ev_athwartship[:,:],
+                        atol=convert_atol, equal_nan=True))
 
 
 '''
@@ -296,10 +344,11 @@ class CustomTextTestResult(unittest.runner.TextTestResult):
         info = super(CustomTextTestResult, self)._exc_info_to_string(err, test)
 
         if self.showAll:
-            info = 'Test number: {index}\n{info}'.format(
-                index=test.progress_index,
-                info=info
-            )
+            if hasattr(test, 'progress_index'):
+                info = 'Test number: {index}\n{info}'.format(index=test.progress_index,
+                        info=info)
+            else:
+                info = 'Error in Setup:\n{info}'.format(info=info)
 
         return info
 
@@ -325,12 +374,11 @@ class CustomTextTestRunner(unittest.runner.TextTestRunner):
 
 if __name__ == "__main__":
 
-    #test_funcs = ['test_power_conversion', 'test_Sv_conversion', 'test_TS_conversion',
-    #        'test_angle_conversion']
-    test_funcs = ['test_Sv_conversion']
+    test_funcs = ['test_power_conversion', 'test_Sv_conversion', 'test_TS_conversion',
+            'test_angle_conversion', 'test_write_raw']
 
     test_suite = unittest.TestSuite()
-    tests = [ek60_multiple_pulse_length_test(func) for func in test_funcs]
+    tests = [ek60_test(func) for func in test_funcs]
     test_suite.addTests(tests)
 
     CustomTextTestRunner(verbosity=2).run(test_suite)

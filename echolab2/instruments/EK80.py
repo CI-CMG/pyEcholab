@@ -139,8 +139,8 @@ class EK80(object):
         self.store_complex = True
 
         # Specify the maximum sample count to read.  This property can be used
-        # to limit the number of samples read (and memory used) when your data
-        # of interest is large.
+        # to limit the number of samples read (and memory used). Samples beyond
+        # the maximum will be dropped.
         self.read_max_sample_count = None
 
         # These params store any limits set on storing of data contained in
@@ -608,60 +608,63 @@ class EK80(object):
         # RAW datagrams store raw acoustic data for a channel.
         elif new_datagram['type'].startswith('RAW'):
 
-            #  check if we should set our start time property
-            if not self.start_time:
-                self.start_time = new_datagram['timestamp']
-            # Set the first ping number we read.
-            if not self.start_ping:
-                self.start_ping = self.n_pings
-            # Update the last ping number.
-            self.end_ping = self.n_pings
+            # Check if we're storing this channel
+            if new_datagram['channel_id'] in self.channel_ids:
 
-            #  loop through the raw_data objects to find the raw_data object
-            #  to store this data.
-            this_raw_data = None
-            for raw_obj in self.raw_data[new_datagram['channel_id']]:
-                if raw_obj.data_type == '':
-                    #  This raw_data object has no type so is empty and can store anything
-                    this_raw_data = raw_obj
-                    break
-                if new_datagram['data_type'] <= 3 and raw_obj.data_type == 'power/angle':
-                    # This raw_data object contains power/angle data and this datagram
-                    # also contains power/angle data
-                    this_raw_data = raw_obj
-                    break
-                if new_datagram['data_type'] > 3:
-                    # first check if the number of sectors are the same
-                    if new_datagram['n_complex'] == raw_obj.complex.shape[2]:
-                        # Then make sure the data types are the same
-                        is_fm = self._tx_params[new_datagram['channel_id']]['pulse_form'] > 0
-                        if is_fm and raw_obj.data_type == 'complex-FM':
-                            this_raw_data = raw_obj
-                        elif not is_fm and raw_obj.data_type == 'complex-CW':
-                            this_raw_data = raw_obj
+                #  check if we should set our start time property
+                if not self.start_time:
+                    self.start_time = new_datagram['timestamp']
+                # Set the first ping number we read.
+                if not self.start_ping:
+                    self.start_ping = self.n_pings
+                # Update the last ping number.
+                self.end_ping = self.n_pings
+
+                #  loop through the raw_data objects to find the raw_data object
+                #  to store this data.
+                this_raw_data = None
+                for raw_obj in self.raw_data[new_datagram['channel_id']]:
+                    if raw_obj.data_type == '':
+                        #  This raw_data object has no type so is empty and can store anything
+                        this_raw_data = raw_obj
                         break
+                    if new_datagram['data_type'] <= 3 and raw_obj.data_type == 'power/angle':
+                        # This raw_data object contains power/angle data and this datagram
+                        # also contains power/angle data
+                        this_raw_data = raw_obj
+                        break
+                    if new_datagram['data_type'] > 3:
+                        # first check if the number of sectors are the same
+                        if new_datagram['n_complex'] == raw_obj.complex.shape[2]:
+                            # Then make sure the data types are the same
+                            is_fm = self._tx_params[new_datagram['channel_id']]['pulse_form'] > 0
+                            if is_fm and raw_obj.data_type == 'complex-FM':
+                                this_raw_data = raw_obj
+                            elif not is_fm and raw_obj.data_type == 'complex-CW':
+                                this_raw_data = raw_obj
+                            break
 
-            #  check if we need to create a new raw_data object
-            if this_raw_data is None:
-                #  create the new raw_data object
-                this_raw_data = raw_data(new_datagram['channel_id'],
-                        store_power=self.store_power,
-                        store_angles=self.store_angles,
-                        store_complex=self.store_complex,
-                        max_sample_number=self.read_max_sample_count)
-                # Set the transceiver type
-                this_raw_data.transceiver_type = \
-                        self._config[new_datagram['channel_id']]['transceiver_type']
-                #  and add it to this channel's list of raw_data objects
-                self.raw_data[new_datagram['channel_id']].append(this_raw_data)
+                #  check if we need to create a new raw_data object
+                if this_raw_data is None:
+                    #  create the new raw_data object
+                    this_raw_data = raw_data(new_datagram['channel_id'],
+                            store_power=self.store_power,
+                            store_angles=self.store_angles,
+                            store_complex=self.store_complex,
+                            max_sample_number=self.read_max_sample_count)
+                    # Set the transceiver type
+                    this_raw_data.transceiver_type = \
+                            self._config[new_datagram['channel_id']]['transceiver_type']
+                    #  and add it to this channel's list of raw_data objects
+                    self.raw_data[new_datagram['channel_id']].append(this_raw_data)
 
-            # Call this channel's append_ping method.
-            this_raw_data.append_ping(new_datagram,
-                    self._config[new_datagram['channel_id']], self._environment,
-                    self._tx_params[new_datagram['channel_id']],
-                    self._filters[new_datagram['channel_id']],
-                    start_sample=self.read_start_sample,
-                    end_sample=self.read_end_sample)
+                # Call this channel's append_ping method.
+                this_raw_data.append_ping(new_datagram,
+                        self._config[new_datagram['channel_id']], self._environment,
+                        self._tx_params[new_datagram['channel_id']],
+                        self._filters[new_datagram['channel_id']],
+                        start_sample=self.read_start_sample,
+                        end_sample=self.read_end_sample)
 
         # NME datagrams store ancillary data as NMEA-0183 style ASCII data.
         elif new_datagram['type'].startswith('NME'):
@@ -1521,8 +1524,11 @@ class raw_data(ping_data):
     # Specify the default transceiver impedance in ohms. This value is
     # used when the transceiver impedance is not availabe in the data file.
     # Older versions of the EK80 configuration header did not include this
-    # value. Early versions of the EK80 WBT had an impedance of 1000 omhs.
-    ZTRANSCEIVER = 5400
+    # value. Earlier versions of the EK80 software assumed a nominal
+    # impedance of 1000 omhs. This may or may not have changed to 5400 before
+    # transceiver impedance was included in the data file so this may not
+    # be correct for all older files.
+    ZTRANSCEIVER = 1000
 
 
     def __init__(self, channel_id, n_pings=500, n_samples=-1,
@@ -1787,7 +1793,7 @@ class raw_data(ping_data):
         max_data_samples = []
 
         # The contents of the first ping appended to a raw_data object defines
-        # thedata_type and determines how the data arrays will be created. Also,
+        # the data_type and determines how the data arrays will be created. Also,
         # since a raw_data object can only store onedata_type, we disable saving
         # of the other types.
         if self.n_pings == -1:
@@ -1807,8 +1813,7 @@ class raw_data(ping_data):
                 self.store_angles = False
 
                 #  determine if this is an FM or CW file
-                tx_freq = tx_parms.get('frequency', None)
-                if tx_freq:
+                if tx_parms['pulse_form'] == 0:
                     # CW files will have the frequency parameter
                     self.data_type = 'complex-CW'
                     self._data_attributes += ['frequency']
@@ -1969,8 +1974,7 @@ class raw_data(ping_data):
         self.ping_time[this_ping] = sample_datagram['timestamp']
         self.channel_mode[this_ping] = tx_parms['channel_mode']
         self.pulse_form[this_ping] = tx_parms['pulse_form']
-        tx_freq = tx_parms.get('frequency', None)
-        if tx_freq:
+        if tx_parms['pulse_form'] == 0:
             # CW files will have the freuqency parameter
             self.frequency[this_ping] = tx_parms['frequency']
         else:
@@ -2052,12 +2056,12 @@ class raw_data(ping_data):
         if self.store_angles:
 
             # Convert from indexed to electrical angles.
-            alongship_e = sample_datagram['angle'] \
-                [start_sample:self.sample_count[this_ping], 1] \
-                .astype(self.sample_dtype) * self.INDEX2ELEC
-            athwartship_e = sample_datagram['angle'] \
-                [start_sample:self.sample_count[this_ping], 0] \
-                .astype(self.sample_dtype) * self.INDEX2ELEC
+            alongship_e = sample_datagram['angle'][start_sample:self.sample_count[this_ping], 1].astype(self.sample_dtype)
+            alongship_e[alongship_e > 127] -= 256
+            alongship_e *= self.INDEX2ELEC
+            athwartship_e = sample_datagram['angle'][start_sample:self.sample_count[this_ping], 0].astype(self.sample_dtype)
+            athwartship_e[athwartship_e > 127] -= 256
+            athwartship_e *= self.INDEX2ELEC
 
             # Check if we need to pad or trim our sample data.
             sample_pad = sample_dims - athwartship_e.shape[0]
@@ -2216,8 +2220,9 @@ class raw_data(ping_data):
         return p_data
 
 
-    def _complex_to_power(self, calibration, return_indices, return_angles=False, **kwargs):
-        '''_complex_to_power converts the compex data in the processed_data
+    def _complex_to_power(self, calibration, return_indices, return_angles=False,
+            pulse_compress=True, **kwargs):
+        '''_complex_to_power converts the complex data in the processed_data
         object p_data to power. It will optionally compute and return electrical andgle
         data.
 
@@ -2231,9 +2236,15 @@ class raw_data(ping_data):
 
         '''
 
-        # Pulse compress (this funtion has no effect on CW data)
-        p_data = simrad_signal_proc.pulse_compression(self, calibration,
-            return_indices=return_indices)
+        # extract the fast keyword. If present - The fast keyword tells the pulse
+        # compression function to assume the Tx params for all FM pings are constant
+        # and thus a single Tx signal is coputed and used for all conversions.
+        fast = kwargs.get('fast',False)
+
+        if pulse_compress:
+            # Pulse compress (this funtion has no effect on CW data)
+            p_data = simrad_signal_proc.pulse_compression(self, calibration,
+                return_indices=return_indices, fast=fast)
 
         # get the impedance values we need to convert to power
         Zet = kwargs.pop('Zet', None)
@@ -2254,17 +2265,25 @@ class raw_data(ping_data):
         # Check if we're supposed to return angles
         if return_angles:
 
-            # Compute angles based on the number of sectors
-            if n_sectors in [3,4]:
+            #  get the unique beam type for all pings
+            beam_type = np.unique(calibration.get_parameter(self,
+                    'transducer_beam_type',return_indices))
 
-                # Create empty processed_data objects. We set the no_data keyword to
-                # skip creating the sample data array since we're creating it below.
-                p_data_alongship = p_data.empty_like(no_data=True)
-                p_data_alongship.is_log = False
-                p_data_athwartship = p_data.empty_like(no_data=True)
-                p_data_athwartship.is_log = False
+            #  make sure every ping has the same type to keep it simple.
+            #  You can implement something more complete if you need it.
+            if beam_type.size > 1:
+                raise NotImplementedError('Angle conversion for arrays of mixed beam ' +
+                    'types is not suppored at this time. Beam types in data:' +
+                    ','.join(list(beam_type)))
+            else:
+                beam_type = beam_type[0]
 
-                if n_sectors == 4:
+            # Compute electrical angles based on the beam type
+            if beam_type in [1,17,49,65,81]:
+
+                if beam_type == 1:
+                    #  transducer with 4 quadrants
+
                     # average the quadrant pairs
                     yfore = np.sum(p_data[:,:,2:4], axis=2) / 2
                     yaft = np.sum(p_data[:,:,0:2], axis=2) / 2
@@ -2272,42 +2291,47 @@ class raw_data(ping_data):
                     yport = np.sum(p_data[:,:,1:3], axis=2) / 2
 
                     # Compute the electrical angles
-                    alongship_data = np.angle(yfore * np.conj(yaft), deg=True)
-                    athwartship_data = np.angle(ystar * np.conj(yport), deg=True)
+                    p_data_alongship = np.angle(yfore * np.conj(yaft), deg=True)
+                    p_data_athwartship = np.angle(ystar * np.conj(yport), deg=True)
 
-                elif n_sectors == 3:
-                    # no averaging with 3 sector transducers
-                    yfore = p_data[:,:,2]
-                    ystar = p_data[:,:,0]
-                    yport = p_data[:,:,1]
+                elif beam_type in [17,49,65,81]:
+                    #  transducers with 3 sectors, or 3 sectors and a center element
+
+                    if beam_type == 17:
+                        # no averaging with 3 sector transducers
+                        ystar = p_data[:,:,0]
+                        yport = p_data[:,:,1]
+                        yfore = p_data[:,:,2]
+                    else:
+                        # Transducer with 3 sectors and center element.
+                        # Average the sectors with center
+                        ystar = (p_data[:,:,0] + p_data[:,:,3]) / 2.0
+                        yport = (p_data[:,:,1] + p_data[:,:,3]) / 2.0
+                        yfore = (p_data[:,:,2] + p_data[:,:,3]) / 2.0
 
                     # Compute the electrical angles
                     x = np.angle(yfore * np.conj(ystar), deg=True)
                     y = np.angle(yfore * np.conj(yport), deg=True)
-                    alongship_data = (x + y) / np.sqrt(3)
-                    athwartship_data = y - x
-
-                # Assign the data arrays to the processed_data objects
-                p_data_alongship.data = alongship_data
-                p_data_athwartship.data = athwartship_data
+                    p_data_alongship = (x + y) / np.sqrt(3)
+                    p_data_athwartship = y - x
 
             else:
-                # We don't have enough sectors to compute angles
+                # this is an unknown/unsupported beam type
                 p_data_alongship = None
                 p_data_athwartship = None
 
         # Compute power
         Ur_t = np.mean(p_data, axis=2)
-        vrsplit = Zer / (Zer + Zet)
+        vrsplit = (Zer + Zet) / Zer
         Per_t = (n_sectors * (np.abs(Ur_t) / (2 * np.sqrt(2)))**2 *
-                (1 / vrsplit)**2 * 1 / Zet)
+                vrsplit**2 * 1 / Zet)
         Per_t[Per_t == 0] = np.nan
 
         # convert to log units
         p_data = 10 * np.log10(Per_t)
 
         if return_angles:
-            return (p_data, (p_data_alongship, p_data_athwartship))
+            return (p_data, p_data_alongship, p_data_athwartship)
         else:
             return p_data
 
@@ -2375,7 +2399,7 @@ class raw_data(ping_data):
 
 
     def get_Sv(self, calibration=None, linear=False, tvg_correction=True,
-               return_depth=False, **kwargs):
+               return_depth=False, clear_cache=True, **kwargs):
         """Gets Sv data
 
         This method returns a processed_data object containing Sv or sv data.
@@ -2385,9 +2409,19 @@ class raw_data(ping_data):
         thickness and are correctly arranged relative to each other. It then
         computes Sv/sv as follows:
 
+            CW:
+
             Sv = power + 20 log10(Range) + (2 *  alpha * Range) - (10 * ...
                 log10((TransmitPower * (10^(Gain/10))^2 * lambda^2 * ...
                 c * tau * 10^(psi/10)) / (32 * pi^2)) - (2 * SaCorrection)
+
+
+            FM:
+
+            Sv = power + 20 log10(Range) + (2 *  alpha * Range) - (10 * ...
+                log10((TransmitPower * (10^(Gain/10))^2 * lambda^2 * ...
+                c * tau * 10^(psi/10)) / (32 * pi^2))
+
 
         Args:
             resample_interval (float): Set this to a float specifying the
@@ -2428,11 +2462,27 @@ class raw_data(ping_data):
                 used for more advanced anipulations where start/end ping/time are
                 inadequate.
 
+                Default: None (return all pings)
+
             calibration (EK80.ek80_calibration): Set to an instance of
                 EK80.ek80_calibration containing the calibration parameters
                 you want to use when transforming to Sv/sv. If no calibration
                 object is provided, the values will be extracted from the raw
                 data.
+
+                Default: None
+
+            clear_cache (bool): Set to True to clear out intermediate data cached
+                in the calibration object during conversion. In order to speed up
+                conversions, the Tx signal and effective pulse length are cached when
+                first computed and the values are reused during subsequent computations
+                during conversion. In order to ensure that the correct data are used
+                during subsequent calls to a conversion routine, these data are
+                discarded at the end of the conversion. Set this keyword to False to
+                keep the cached data. It is your responsibility to use this cached data
+                wisely.
+
+                Default: True
 
             linear (bool): Set to True if getting "sv" data
                 Default: False
@@ -2478,8 +2528,7 @@ class raw_data(ping_data):
             Zer (float): Specify the WBT receiver nominal impedance in ohms.
                 The default is to use the receiver nominal impedance from the
                 raw data if available. If the data were recorded using a version
-                of EK80 that didn't store that value, 5400 ohms is used. Some
-                older WBT hardware had a nominal impedance of 1000 ohms. See
+                of EK80 that didn't store that value, 1000 ohms is used. See
                 Demer et. al 2017 ICES Cooperative Research Report #336
                 "Evaluation of a wideband echosounder for fisheries and marine
                 ecosystem science" for details.
@@ -2524,6 +2573,14 @@ class raw_data(ping_data):
         if return_depth:
             p_data.to_depth(calibration)
 
+        # check if we're clearing the cached intermediate data in the cal object
+        if clear_cache:
+            #  yes - check for and delete cached
+            if hasattr(calibration, '_tx_signal'):
+                delattr(calibration, '_tx_signal')
+            if hasattr(calibration, '_tau_eff'):
+                delattr(calibration, '_tau_eff')
+
         return p_data
 
 
@@ -2551,7 +2608,7 @@ class raw_data(ping_data):
 
 
     def get_Sp(self,  calibration=None, linear=False, tvg_correction=False,
-            return_depth=False, **kwargs):
+            return_depth=False, clear_cache=True, **kwargs):
         """Gets Sp data.
 
         This method returns a processed_data object containing Sp or sp data.
@@ -2609,6 +2666,18 @@ class raw_data(ping_data):
                 you want to use when transforming to Sv/sv. If no calibration
                 object is provided, the values will be extracted from the raw
                 data.
+
+            clear_cache (bool): Set to True to clear out intermediate data cached
+                in the calibration object during conversion. In order to speed up
+                conversions, the Tx signal and effective pulse length are cached when
+                first computed and the values are reused during subsequent computations
+                during conversion. In order to ensure that the correct data are used
+                during subsequent calls to a conversion routine, these data are
+                discarded at the end of the conversion. Set this keyword to False to
+                keep the cached data. It is your responsibility to use this cached data
+                wisely.
+
+                Default: True
 
             linear (bool): Set to True if getting "sv" data
                 Default: False
@@ -2707,10 +2776,18 @@ class raw_data(ping_data):
         if return_depth:
             p_data.to_depth(calibration)
 
+        # check if we're clearing the cached intermediate data in the cal object
+        if clear_cache:
+            #  yes - check for and delete cached
+            if hasattr(calibration, '_tx_signal'):
+                delattr(calibration, '_tx_signal')
+            if hasattr(calibration, '_tau_eff'):
+                delattr(calibration, '_tau_eff')
+
         return p_data
 
 
-    def get_physical_angles(self, calibration=None, **kwargs):
+    def get_physical_angles(self, calibration=None, clear_cache=True, **kwargs):
         """Gets the alongship and athwartship angle data.
 
         This method returns an tuple of processed data objects (alongship,
@@ -2738,6 +2815,18 @@ class raw_data(ping_data):
                 you want to use when transforming to Sv/sv. If no calibration
                 object is provided, the values will be extracted from the raw
                 data.
+
+            clear_cache (bool): Set to True to clear out intermediate data cached
+                in the calibration object during conversion. In order to speed up
+                conversions, the Tx signal and effective pulse length are cached when
+                first computed and the values are reused during subsequent computations
+                during conversion. In order to ensure that the correct data are used
+                during subsequent calls to a conversion routine, these data are
+                discarded at the end of the conversion. Set this keyword to False to
+                keep the cached data. It is your responsibility to use this cached data
+                wisely.
+
+                Default: True
 
             return_depth (bool): Set to True to return a line object with a
                 with a depth axis. When False, the line object has a range axis.
@@ -2802,18 +2891,20 @@ class raw_data(ping_data):
             cal_parms[key] = calibration.get_parameter(self, key,
                     return_indices)
 
-        # Compute the center frequency
+        # Adjust sensitivities for FM
         if cal_parms['frequency'] is None:
             fc = (cal_parms['frequency_start'] + cal_parms['frequency_end']) / 2
+            fc /= cal_parms['transducer_frequency']
+            sens_along = cal_parms['angle_sensitivity_alongship'] * fc
+            sens_athwart = cal_parms['angle_sensitivity_athwartship'] * fc
         else:
-            fc = cal_parms['frequency']
+            sens_along = cal_parms['angle_sensitivity_alongship']
+            sens_athwart = cal_parms['angle_sensitivity_athwartship']
 
         # Compute the physical angles.
-        alongship.data[:] = (alongship.data / (cal_parms['angle_sensitivity_alongship']
-                * fc / cal_parms['transducer_frequency'])[:,np.newaxis])
+        alongship.data /= sens_along[:, np.newaxis]
         alongship.data -= cal_parms['angle_offset_alongship'][:, np.newaxis]
-        athwartship.data[:] = (athwartship.data / (cal_parms['angle_sensitivity_athwartship']
-                * fc / cal_parms['transducer_frequency'])[:,np.newaxis])
+        athwartship.data /= sens_athwart[:, np.newaxis]
         athwartship.data -= cal_parms['angle_offset_athwartship'][:,np.newaxis]
 
         # Set the data types.
@@ -2822,6 +2913,14 @@ class raw_data(ping_data):
 
         # We do not need to convert to depth here since the electrical_angle
         # data will already have been converted to depth if requested.
+
+        # check if we're clearing the cached intermediate data in the cal object
+        if clear_cache:
+            #  yes - check for and delete cached
+            if hasattr(calibration, '_tx_signal'):
+                delattr(calibration, '_tx_signal')
+            if hasattr(calibration, '_tau_eff'):
+                delattr(calibration, '_tau_eff')
 
         return alongship, athwartship
 
@@ -2907,6 +3006,7 @@ class raw_data(ping_data):
             # Get the angle data
             alongship, athwartship, return_indices = self._get_sample_data('angles_e',
                     calibration=calibration, **kwargs)
+
         else:
             # We don't have complex nor electrical angle data required so
             # we can't do anything.
@@ -2914,8 +3014,8 @@ class raw_data(ping_data):
                         'data required to return angle data.')
 
         # Set the data type.
-        alongship.data_type = 'angles_alongship_e'
-        athwartship.data_type = 'angles_athwartship_e'
+        alongship.data_type = 'angles_alongship'
+        athwartship.data_type = 'angles_athwartship'
 
         # Apply depth and/or heave correction
         if return_depth:
@@ -2924,6 +3024,11 @@ class raw_data(ping_data):
 
         return alongship, athwartship, return_indices
 
+
+# The following 3 methods are probbaly more complicated than they need to be
+# considering that normally mixed CW and FM data (or in the case of the
+# get_frequency method mixed frequencies) can't occur in a normal raw file
+# as the data would be in different channels.
 
     def is_fm(self, all=False):
         '''Convenience method that returns True if any of the pings contain
@@ -2980,8 +3085,7 @@ class raw_data(ping_data):
         else:
             # The data are mixed so we have to do this ping by ping
 
-            # Need to check if this can even happen and if so, do we want
-            # to allow CW and FM data to be mixed in a raw_data object?
+            # I don't think this can this even happen?
             raise NotImplementedError
 
         if unique:
@@ -3077,14 +3181,11 @@ class raw_data(ping_data):
             return_indices = self.get_indices(**kwargs)
 
         # Create the processed_data object we will return.
-        if hasattr(self, 'frequency'):
-            f = self.frequency[0]
-        else:
-            f = (self.frequency_start[0] + self.frequency_end[0]) / 2.0
-        p_data = processed_data(self.channel_id, f, None)
-
-        # Populate it with time.
-        p_data.ping_time = self.ping_time[return_indices].copy()
+        f = self.get_frequency(unique=True)[0]
+#        if hasattr(self, 'frequency'):
+#            f = self.frequency[0]
+#        else:
+#            f = (self.frequency_start[0] + self.frequency_end[0]) / 2.0
 
         # Get references to the data we're operating on. With the
         # introduction of complex data where power and angle data are combined
@@ -3092,7 +3193,7 @@ class raw_data(ping_data):
         # "metatype" since the power, angles_alongship_e, and angles_athwartship_e
         # attributes don't exist with EK80 complex data. We'll handle the
         # conversion of complex to power or angles as needed here and downstream
-        # mthods can more or less remain the same.
+        # methods can more or less remain the same.
 
         # Here we determine what data to operate on given the type requested
         # and the data attributes we have.
@@ -3221,6 +3322,12 @@ class raw_data(ping_data):
                 range = get_range_vector(output.shape[1], sample_interval,
                         sound_velocity, min_sample_offset)
 
+            #  Create the processed data object we will return
+            p_data = processed_data(self.channel_id, f, None)
+
+            # Populate it with time.
+            p_data.ping_time = self.ping_time[return_indices].copy()
+
             # Assign the results to the "data" processed_data object.
             p_data.add_data_attribute('data', output)
 
@@ -3255,8 +3362,7 @@ class raw_data(ping_data):
         return data_refs
 
 
-    def _convert_power(
-            self, power_data, calibration, convert_to, linear,
+    def _convert_power(self, power_data, calibration, convert_to, linear,
             return_indices, tvg_correction):
         """Converts power to Sv/sv/Sp/sp
 
@@ -3285,7 +3391,7 @@ class raw_data(ping_data):
                      'pulse_duration':None,
                      'absorption_coefficient':None,
                      'sa_correction':None,
-                     'effective_pulse_duration':None}
+                     'pulse_form':None}
 
         # Next, iterate through the dictionary, calling the method to extract
         # the values for each parameter.
@@ -3301,25 +3407,17 @@ class raw_data(ping_data):
         cal_parms['sound_speed'].fill(power_data.sound_velocity)
 
         # For EK60 hardware use pulse duration when computing gains
-        # but for EK80 hardware use effectve pulse length.
+        # but for EK80 hardware use effectve pulse duration.
         if self.transceiver_type == 'GPT':
-            effective_pulse_duration = calibration.get_parameter(self, 'pulse_duration',
-                    return_indices)
+            effective_pulse_duration = cal_parms['pulse_duration']
         else:
-            if convert_to in ['sv','Sv']:
-                #  THIS IS NOT FULLY IMPLEMENTED YET - COMMENTING OUT SO CODE RUNS
-                #effective_pulse_duration = calibration.get_parameter(self,
-                #    'pulse_compressed_effective_pulse_duration', return_indices)
-                effective_pulse_duration = calibration.get_parameter(self,
-                    'effective_pulse_duration', return_indices)
-            else:
-                effective_pulse_duration = calibration.get_parameter(self,
-                    'effective_pulse_duration', return_indices)
+            effective_pulse_duration = calibration.get_parameter(self,
+                'effective_pulse_duration', return_indices)
 
         # Calculate the system gains.
         wavelength = cal_parms['sound_speed'] / power_data.frequency
         if convert_to in ['sv','Sv']:
-            gains = 10 * np.log10((cal_parms['transmit_power'] * (10**( cal_parms['gain'] / 10.0))**2 *
+            gains = 10 * np.log10((cal_parms['transmit_power'] * (10**(cal_parms['gain'] / 10.0))**2 *
                 wavelength**2 * cal_parms['sound_speed'] * effective_pulse_duration *
                 10**(cal_parms['equivalent_beam_angle']/10.0)) / (32 * np.pi**2))
         else:
@@ -3337,7 +3435,7 @@ class raw_data(ping_data):
                 c_range -= (2.0 * power_data.sample_thickness)
             else:
                 # For the Ex80 WBT style hardware corrected range is computed as:
-                #    c_range = range - (sound speed * pulse length / 4)
+                #    c_range = range - (sound speed * transmitted pulse length / 4)
                 c_range -= (power_data.sound_velocity * cal_parms['pulse_duration'] / 4.0)[:,np.newaxis]
 
             #  zero out negative ranges
@@ -3360,14 +3458,19 @@ class raw_data(ping_data):
         # Subtract the applied gains.
         data -= gains[:, np.newaxis]
 
-        # Apply sa correction for Sv/sv.
+        # Apply sa correction for Sv/sv. As of 3/17/21 Echoview doesn't apply
+        # Sa Correction to FM Sv data. We're going to do the same thing here
+        # until advised otherwise.
         if convert_to in ['sv','Sv']:
-            data -= (2.0 * cal_parms['sa_correction'])[:, np.newaxis]
+            # Only apply to CW data
+            not_fm = cal_parms['pulse_form'] == 0
+            data[not_fm,:] -= (2.0 * cal_parms['sa_correction'])[not_fm, np.newaxis]
 
         # Check if we're returning linear or log values.
         if linear:
             # Convert to linear units.
-            data[:] = 10**(data / 10.0)
+            data /= 10.0
+            data **= 10.0
 
         # Return the result.
         return data
@@ -3649,7 +3752,7 @@ class ek80_calibration(calibration):
                 'transducer_offset_z', 'transducer_alpha_x', 'transducer_alpha_y', 'transducer_alpha_z',
                 'transducer_name', 'hw_channel_configuration', 'rx_sample_frequency', 'time_bias',
                 'transducer_mounting','transceiver_type','impedance', 'transducer_frequency',
-                'transducer_frequency_minimum','transducer_frequency_maximum']
+                'transducer_frequency_minimum','transducer_frequency_maximum','transducer_beam_type']
         self._init_attributes(self._config_attributes)
 
         # These attributes are found in the environment datagrams
@@ -3704,7 +3807,15 @@ class ek80_calibration(calibration):
         param_data, return_indices = super(ek80_calibration, self).get_attribute_from_raw(
                 raw_data, param_name, return_indices=return_indices)
 
-        # Now handle attributes that need some special handling
+        # Now handle attributes that need some special handling These are mostly
+        # parameters that must be looked up from a lookup table.
+
+        # Files written with EK80 software versions < 1.12.0 lacked xcvr impedance
+        # info in the file header. The EK80 software used 1000 ohms so we're going
+        # to assume that's what we should use here.
+        if param_name == 'impedance':
+            if param_data is None:
+                param_data = raw_data.ZTRANSCEIVER
 
         # rx_sample_frequency is a special case because it is a parameter
         # that was recently added to the EK80 raw file configuration datagram
@@ -3733,22 +3844,14 @@ class ek80_calibration(calibration):
             # sa correction is extracted from a list that is indexed by pulse duration
             new_data = np.empty((return_indices.shape[0]), dtype=np.float32)
 
-            for idx, config_obj in enumerate(raw_data.configuration):
+            for idx, config_obj in enumerate(raw_data.configuration[return_indices]):
                 if raw_data.pulse_form[idx] > 0:
-                    # TODO: Determine how the sa correction table is indexed. With a match in 'pulse_duration'?
-                    #       or a match in 'pulse_duration_fm'?
-                    match_idx = np.where(config_obj['pulse_duration_fm'] == raw_data.pulse_duration[idx])[0]
+                    # For now we assume that just like with gain, we use the pulse_duration table even
+                    # though there is also a pulse_duration_fm table.
+                    match_idx = np.where(config_obj['pulse_duration'] == raw_data.pulse_duration[idx])[0]
                     new_data[idx] = param_data[match_idx][0]
-                    #new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
                 else:
                     new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
-
-# Not sure why there was a check on the param_data dimensions. I don't think any param data is 2d
-# Keeping this here for now in case I am wrong.
-#                    if param_data.ndim > 1:
-#                        new_data[idx] = param_data[0,config_obj['pulse_duration'] == raw_data.pulse_duration[idx]]
-#                    else:
-#                        new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
 
             param_data = new_data
 
@@ -3760,37 +3863,72 @@ class ek80_calibration(calibration):
             frequency = raw_data.get_frequency()
 
             # Work thru the pings, extracting the params
-            for idx, config_obj in enumerate(raw_data.configuration):
+            for idx, config_obj in enumerate(raw_data.configuration[return_indices]):
                 # check if this is an fm ping
                 if raw_data.pulse_form[idx] > 0:
-                    # We try to obtain FM gain first from the wideband transducer parameters
+                    # We try to obtain FM gain first from the wideband transducer parameters. The
+                    # transducer_params_wideband key will exist if the data were collected from a
+                    # system with a broadband cal applied.
                     if 'transducer_params_wideband' in config_obj:
                         # It looks like there will not always be a match in the transducer_params_wideband
                         # table for the center freq so we have to find the closest. Wish I would have
                         # known since the current implementation is not optimal for this.
                         xdcr_parms_wb_freqs = np.array(list(config_obj['transducer_params_wideband'].keys()))
-                        table_freq = xdcr_parms_wb_freqs[np.abs(xdcr_parms_wb_freqs - frequency[idx]).argmin()]
 
-                        new_data[idx] = config_obj['transducer_params_wideband'][table_freq]['gain'][0]
+                        #  I'm not sure if using the closest value or an interpolated value is better.
+                        if False:
+                            #  use the closest value we find in our table
+                            table_freq = xdcr_parms_wb_freqs[np.abs(xdcr_parms_wb_freqs - frequency[idx]).argmin()]
+                            new_data[idx] = config_obj['transducer_params_wideband'][table_freq]['gain']
+                        else:
+                            #  use an interpreted gain value
+                            gains = []
+                            for f in xdcr_parms_wb_freqs:
+                                gains.append(config_obj['transducer_params_wideband'][f]['gain'])
+                            new_data[idx] = np.interp(frequency[idx], xdcr_parms_wb_freqs, gains)
                     else:
-                        # TODO: Determine how the gain table is indexed. With a match in 'pulse_duration'?
-                        #       or a match in 'pulse_duration_fm'?
-                        match_idx = np.where(config_obj['pulse_duration_fm'] == raw_data.pulse_duration[idx])[0]
+                        # per Echoview bug fix notification, it seems that the 'pulse_duration' table is used
+                        # for FM data without BB cal even though the 'pulse_duration_fm' table exists.
+                        # https://www.echoview.com/products-services/news/echoview-bug-fix-correction-to-transducer-gain-calculations-in-simrad-ek80-wideband-data
+                        match_idx = np.where(config_obj['pulse_duration'] == raw_data.pulse_duration[idx])[0]
                         gain = param_data[match_idx][0]
-                        #gain = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
+
                         new_data[idx] = gain + (20 * np.log10(frequency[idx] / config_obj['transducer_frequency']))
                 else:
                     # CW gain is obtained from the gain table that is indexed by pulse duration
                     new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
 
-# Not sure why there was a check on the param_data dimensions. I don't think any param data is 2d
-# Keeping this here for now in case I am wrong.
-#                    if param_data.ndim > 1:
-#                        new_data[idx] = param_data[0,config_obj['pulse_duration'] == raw_data.pulse_duration[idx]]
-#                    else:
-#                         new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
-
             param_data = new_data
+
+        elif param_name in ['angle_offset_alongship', 'angle_offset_athwartship',
+                            'beam_width_alongship', 'beam_width_athwartship']:
+            # Gain needs to be handled differently depending on if the data are FM or CW.
+            new_data = np.empty((return_indices.shape[0]), dtype=np.float32)
+
+            # Get the frequencies - this returns the center freq for FM
+            frequency = raw_data.get_frequency()
+
+            # Work thru the pings, extracting the params
+            for idx, config_obj in enumerate(raw_data.configuration[return_indices]):
+                # check if this is an fm ping with a broadband cal
+                if raw_data.pulse_form[idx] > 0 and 'transducer_params_wideband' in config_obj:
+                    # The structure of the transducer_params_wideband dict makes extracting
+                    # params like this awkward.
+                    xdcr_parms_wb_freqs = np.array(list(config_obj['transducer_params_wideband'].keys()))
+
+                    #  I'm not sure if using the closest value or an interpolated value is better.
+                    if False:
+                        #  use the closest value we find in our table
+                        table_freq = xdcr_parms_wb_freqs[np.abs(xdcr_parms_wb_freqs - frequency[idx]).argmin()]
+                        new_data[idx] = config_obj['transducer_params_wideband'][table_freq][param_name]
+                    else:
+                        #  use an interpreted gain value
+                        vals = []
+                        for f in xdcr_parms_wb_freqs:
+                            vals.append(config_obj['transducer_params_wideband'][f][param_name])
+                        new_data[idx] = np.interp(frequency[idx], xdcr_parms_wb_freqs, vals)
+
+                    param_data = new_data
 
         elif param_name == 'equivalent_beam_angle':
             # equivalent_beam_angle is computed differently for FM and CW applications
@@ -3800,31 +3938,27 @@ class ek80_calibration(calibration):
             frequency = raw_data.get_frequency()
 
             # Work thru the pings, extracting the params
-            for idx, config_obj in enumerate(raw_data.configuration):
+            for idx, config_obj in enumerate(raw_data.configuration[return_indices]):
                 # check if this is an fm ping
                 if raw_data.pulse_form[idx] > 0:
-                    new_data[idx] = param_data + (20 * np.log10(frequency[idx] / config_obj['transducer_frequency']))
+                    new_data[idx] = param_data + (20 * np.log10(config_obj['transducer_frequency'] / frequency[idx]))
                 else:
                     new_data[idx] = param_data
 
+            param_data = new_data
+
         elif param_name == 'effective_pulse_duration':
-            # For FM to pulse compressed TS, use the pulse_compressed_effective_pulse_duration
-            # The EK60 does not use effective_pulse_duration so we only compute it for EK80 hardware
+            # EK80 hardware uses the effective_pulse_duration
             if self.transceiver_type != 'GPT':
+                # For now we're always converting to pulse compressed Sv/Sp so we return the
+                # effective pulse duration of the pulse compressed Tx signal
+                return_pc = True
                 param_data = simrad_signal_proc.compute_effective_pulse_duration(raw_data, self,
-                        return_indices=return_indices)
+                        return_pc=return_pc, return_indices=return_indices)
             else:
+                # EK60 hardware power conversion does not require this parameter
                 param_data = None
 
-
-        # TODO: THIS IS NOT FULLY IMPLEMENTED
-        elif param_name == 'pulse_compressed_effective_pulse_duration':
-            # For FM power to pulse compressed Sv, use the pulse_compressed_effective_pulse_duration
-            if self.transceiver_type != 'GPT':
-                param_data = simrad_signal_proc.compute_effective_pulse_duration(raw_data, self,
-                        return_pcepd=True, return_indices=return_indices)
-            else:
-                param_data = None
 
         return param_data
 

@@ -107,6 +107,7 @@ class RawSimradFile(BufferedReader):
                       'XML': simrad_parsers.SimradXMLParser(),
                       'FIL': simrad_parsers.SimradFILParser(),
                       'MRU': simrad_parsers.SimradMRUParser(),
+                      'IDX': simrad_parsers.SimradIDXParser(),
                       }
 
 
