@@ -229,7 +229,7 @@ class Echogram(object):
         adj_x[0:mid] = x_data[0:mid] + ((np.arange(
             mid, dtype='float')[::-1] / mid) * ping_int)
         adj_x[mid:] = x_data[mid:] - ((np.arange(
-            mid, dtype='float') / mid) * ping_int)
+            n_pings-mid, dtype='float') / mid) * ping_int)
 
         return adj_x
 

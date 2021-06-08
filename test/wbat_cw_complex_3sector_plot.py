@@ -180,7 +180,7 @@ for idx, frequency in enumerate(ev_Sv_filename):
 
     #  plot up a single Sv ping
     fig2 = plt.figure()
-    plt.plot(ev_Sv_data[-1], ev_Sv_data.range, label='Echoview', color='blue', linewidth=1)
+    plt.plot(ev_Sv_data[-1], ev_Sv_data.range, label='Echoview', color='blue', linewidth=1.5)
     plt.plot( ek80_Sv[-1], ek80_Sv.range, label='Echolab', color='red', linewidth=1)
     plt.gca().invert_yaxis()
     fig2.suptitle("Ping " + str(ev_Sv_data.n_pings) + " comparison EV vs Echolab2")

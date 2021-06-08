@@ -74,7 +74,6 @@ for idx, frequency in enumerate(ev_Sv_filename):
     #  your raw_data, modify values as needed, and then pass that to your
     #  conversion method(s).
     calibration = raw_data.get_calibration()
-    calibration.sound_speed = 1500.0
 
     #  Convert the raw data. Some computed conversion parameters are cached
     #  in the calibration object during conversion. Normally they are

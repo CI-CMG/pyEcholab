@@ -186,7 +186,7 @@ for idx, frequency in enumerate(ev_Sv_filename):
     diff = alongship - ev_alongship
     fig = plt.figure()
     eg = echogram.Echogram(fig, diff, threshold=diff_threshold, cmap=diff_cmap)
-    eg.add_colorbar(fig)
+    eg.add_colorbar(fig, units='deg')
     eg.axes.set_title("Echolog2 alongship - EV alongship " + str(frequency) + " kHz")
 
     #  compute the difference of EV and Echolab athwartship angles
@@ -197,12 +197,12 @@ for idx, frequency in enumerate(ev_Sv_filename):
     diff = athwartship - ev_athwartship
     fig = plt.figure()
     eg = echogram.Echogram(fig, diff, threshold=diff_threshold, cmap=diff_cmap)
-    eg.add_colorbar(fig)
+    eg.add_colorbar(fig, units='deg')
     eg.axes.set_title("Echolog2 athwartship - EV athwartship " + str(frequency) + " kHz")
 
     #  plot up a single Sv ping
     fig2 = plt.figure()
-    plt.plot(ev_Sv_data[-1], ev_Sv_data.range, label='Echoview', color='blue', linewidth=1)
+    plt.plot(ev_Sv_data[-1], ev_Sv_data.range, label='Echoview', color='blue', linewidth=1.5)
     plt.plot( ek60_Sv[-1], ek60_Sv.range, label='Echolab2', color='red', linewidth=1)
     plt.gca().invert_yaxis()
     fig2.suptitle("Ping " + str(ev_Sv_data.n_pings) + " comparison EV vs Echolab2")

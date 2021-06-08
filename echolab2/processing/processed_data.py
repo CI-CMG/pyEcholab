@@ -662,7 +662,7 @@ class processed_data(ping_data):
             # iterate through the returned data and add or update it
             for attr_name in attr_names:
                 #  check if we had data for this attribute
-                if data[attr_name]:
+                if data[attr_name] is not None:
                     #  yes - add or update it
                     if hasattr(self, attr_name):
                         #  update existing attribute

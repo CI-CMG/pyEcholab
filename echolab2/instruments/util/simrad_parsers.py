@@ -32,10 +32,10 @@
 
 """
 
-import numpy as np
-import logging
+import sys
 import struct
 import re
+import numpy as np
 from collections import OrderedDict
 from lxml import etree as ET
 from .date_conversion import nt_to_unix
@@ -44,8 +44,6 @@ from .date_conversion import nt_to_unix
 __all__ = ['SimradNMEAParser', 'SimradDepthParser', 'SimradBottomParser',
             'SimradAnnotationParser', 'SimradConfigParser', 'SimradRawParser',
             'SimradFILParser', 'SimradXMLParser', 'SimradMRUParser']
-
-log = logging.getLogger(__name__)
 
 
 class _SimradDatagramParser(object):
@@ -77,6 +75,11 @@ class _SimradDatagramParser(object):
             version   = int(data['type'][3])
 
         elif isinstance(data, str):
+            type_ = data[:3]
+            version   = int(data[3])
+
+        elif isinstance(data, unicode):
+            data = str(data)
             type_ = data[:3]
             version   = int(data[3])
 
@@ -341,7 +344,11 @@ class SimradAnnotationParser(_SimradDatagramParser):
         data['bytes_read'] = bytes_read
 
         if version == 0:
-            data['text'] = str(raw_string[self.header_size(version):].strip(b'\x00'), 'ascii', errors='replace')
+
+            if (sys.version_info.major > 2):
+                data['text'] = str(raw_string[self.header_size(version):].strip(b'\x00'), 'ascii', errors='replace')
+            else:
+                data['text'] = unicode(raw_string[self.header_size(version):].strip('\x00'), 'ascii', errors='replace')
 
         return data
 
@@ -434,7 +441,10 @@ class SimradNMEAParser(_SimradDatagramParser):
 
         if version == 0:
 
-            data['nmea_string'] = str(raw_string[self.header_size(version):].strip(b'\x00'), 'ascii', errors='replace')
+            if (sys.version_info.major > 2):
+                data['nmea_string'] = str(raw_string[self.header_size(version):].strip(b'\x00'), 'ascii', errors='replace')
+            else:
+                data['nmea_string'] = unicode(raw_string[self.header_size(version):].strip('\x00'), 'ascii', errors='replace')
 
             if self.nmea_head_re.match(data['nmea_string'][:7]) is not None:
                 data['nmea_talker'] = data['nmea_string'][1:3]

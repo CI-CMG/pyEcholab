@@ -34,6 +34,7 @@ $Id$
 '''
 
 import os
+import sys
 import numpy as np
 from scipy.interpolate import interp1d
 from .util.simrad_calibration import calibration
@@ -695,16 +696,17 @@ class EK80(object):
         return result
 
 
-    def get_channel_data(self, frequencies=None, channel_ids=None):
+    def get_channel_data(self, frequencies=None, channel_ids=None,  channel_numbers=None):
         """returns a dict containing lists of raw_data objects for the specified channel IDs,
-        or frequencies. Channel number isn't part of the EK80 raw file specification.
+        or frequencies, or channel numbers.
 
         This method returns a dictionary of lists that contain references to one or
         more raw_data objects containing the data that has been read. The dictionary keys
         and the raw_data object(s) returned depend on the argument(s) passed. You can
-        specify one or more frequencies and/or channel IDs and the dictionary will be
-        keyed by frequency and/or channel ID and the key values will be a list containing
-        the raw_data objects that correspond to that frequency or channel ID.
+        specify one or more frequencies, channel numbers, and/or channel IDs and the
+        dictionary will be keyed by frequency, channel number, and/or channel ID and
+        the key values will be a list containing the raw_data objects that correspond
+        to that frequency, channel number, or channel ID.
 
         If you specify one or more frequencies, this method will return a dict, keyed
         by frequency where the values are a lists containing one or more raw_data objects
@@ -715,6 +717,12 @@ class EK80(object):
         by channel ID where the values are a lists containing one or more raw_data objects
         associated with the specified channel ID. The length of the list is equal to the
         number of unique channel + datatype combinations sharing that channel ID.
+
+        And, as you've already guessed, if you specify one or more channel numbers, this
+        method will return a dict, keyed by channel number where the values are a lists
+        containing one or more raw_data objects associated with the specified channel
+        number. The length of the list is equal to the number of unique channel + datatype
+        combinations sharing that channel number.
 
         If called without arguments, it returns a dictionary, keyed by channel ID, that
         contains all channels read. The values are a lists containing one or more raw_data
@@ -731,7 +739,9 @@ class EK80(object):
         Args:
             frequencies (float, list): Specify one or more frequencies in a list to return
                     data objects associated with that frequency.
-            channel_number (int, list): Specify one or more channel numbers in a list to
+            channel_ids (str, list): Specify one or more channel IDs in a list to return
+                    data objects associated with that channel ID.
+            channel_numbers (int, list): Specify one or more channel numbers in a list to
                     return data objects associated with that channel number.
         Returns:
             Dictionary keyed by frequency/channel_id/channel_number. Values are lists
@@ -769,6 +779,26 @@ class EK80(object):
                 data_objs = self.frequency_map.get(freq, [None])
                 for id in data_objs:
                     channel_data[freq].extend(self.raw_data[id])
+
+        elif channel_numbers is not None:
+            # channel_number is specified.
+
+            # if we're passed a number, make it a list
+            if not isinstance(channel_numbers, list):
+                channel_numbers = [channel_numbers]
+
+            # and work through the numbers, adding if they exist
+            for num in channel_numbers:
+                if (sys.version_info.major > 2):
+                    ids = list(self.raw_data.keys())
+                else:
+                    ids = self.raw_data.keys()
+
+                try:
+                    id = ids[num]
+                    channel_data[num] = self.raw_data.get(id, None)
+                except:
+                    pass
 
         else:
             # No keywords specified - return all in a dict keyed by channel ID
@@ -3182,10 +3212,6 @@ class raw_data(ping_data):
 
         # Create the processed_data object we will return.
         f = self.get_frequency(unique=True)[0]
-#        if hasattr(self, 'frequency'):
-#            f = self.frequency[0]
-#        else:
-#            f = (self.frequency_start[0] + self.frequency_end[0]) / 2.0
 
         # Get references to the data we're operating on. With the
         # introduction of complex data where power and angle data are combined
@@ -3309,12 +3335,6 @@ class raw_data(ping_data):
                                 bounds_error=False, fill_value=np.nan, assume_sorted=True)
                         output[pings_to_interp,:] = interp_f(resample_range)
 
-#                for ping in pings_to_interp:
-#                    # Resample using the provided sound speed.
-#                    resample_range = get_range_vector(output.shape[1], sample_interval,
-#                            cal_parms['sound_speed'][ping], min_sample_offset)
-#                    output[ping,:] = np.interp(range, resample_range, output[ping, :])
-
             else:
                 # We have a fixed sound speed and only need to calculate a single
                 # range vector.
@@ -3343,7 +3363,10 @@ class raw_data(ping_data):
             p_data.sample_interval = sample_interval
 
             # Add the transducer draft attribute
-            if cal_parms['transducer_mounting'] is not None:
+            # If no transudcer mounting parameters are included in the data file, the
+            # resulting cal_parms data will be nan. Otherwise
+            if (cal_parms['transducer_mounting'] is not None and
+                    cal_parms['transducer_mounting'].dtype == 'O'):
                 # First check if we apply the drop keel offset
                 add_drop_keel = cal_parms['transducer_mounting'] == 'DropKeel'
                 # Zero out offset where the mounting isn't DropKeel
@@ -3426,8 +3449,9 @@ class raw_data(ping_data):
 
         # Get the range for TVG calculation.  The method used depends on the
         # hardware used to collect the data.
-        c_range = np.empty(power_data.shape[0:2], dtype=power_data.sample_dtype)
-        c_range [:,:] = power_data.range.copy()
+        c_range = np.zeros(power_data.shape[0:2], dtype=power_data.sample_dtype)
+        c_range += power_data.range
+
         if tvg_correction:
             if self.transceiver_type == 'GPT':
                 # For the Ex60 hardware, the corrected range is computed as:
@@ -3902,7 +3926,7 @@ class ek80_calibration(calibration):
 
         elif param_name in ['angle_offset_alongship', 'angle_offset_athwartship',
                             'beam_width_alongship', 'beam_width_athwartship']:
-            # Gain needs to be handled differently depending on if the data are FM or CW.
+            # beamwidths and offsets need to be handled differently depending too.
             new_data = np.empty((return_indices.shape[0]), dtype=np.float32)
 
             # Get the frequencies - this returns the center freq for FM

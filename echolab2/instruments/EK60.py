@@ -238,7 +238,7 @@ class EK60(object):
         self._file_channel_map = {}
 
 
-    def read_bot(self, *args, nmea=False, **kwargs):
+    def read_bot(self, read_nmea=False,  *args, **kwargs):
         """Reads .bot and .out formatted bottom detection files. ER60 Mk 1 systems
         and ES60 and ES70 systems output .out files that contain bottom detections
         and a copy of the NMEA data that is also wrtten to the .raw files. ER60 Mk II
@@ -263,7 +263,7 @@ class EK60(object):
         """
 
         # Update the kwargs with the read_nmea argument.
-        kwargs['nmea'] = nmea
+        kwargs['nmea'] = read_nmea
 
         # .bot and .out files share the same format as .raw files and are read
         # using the same methods.
@@ -3111,10 +3111,9 @@ class raw_data(ping_data):
             gains = 10 * np.log10((cal_parms['transmit_power'] * (10**(
                 cal_parms['gain']/10.0))**2 * wavelength**2) / (16 * np.pi**2))
 
-        # Get the range for TVG calculation.  The method used depends on the
-        # hardware used to collect the data.
-        c_range = np.empty(power_data.shape, dtype=power_data.sample_dtype)
-        c_range += power_data.range.copy()
+        # Get the range for TVG calculation.
+        c_range = np.zeros(power_data.shape, dtype=power_data.sample_dtype)
+        c_range += power_data.range
         c_range += power_data.sample_thickness
 
         if tvg_correction:

@@ -35,8 +35,8 @@ $Id$
 '''
 
 import os
-from echolab2.instruments import EK80
-from echolab2.instruments import EK60
+from . import EK80
+from . import EK60
 
 
 SIMRAD_EK60 = 0
@@ -45,7 +45,7 @@ SIMRAD_EK80 = 1
 
 def read(files, **kwargs):
 
-    # if we're given a string, wrapt it in a list
+    # if we're given a string, wrap it in a list
     if not isinstance(files, list):
             files = [files]
 

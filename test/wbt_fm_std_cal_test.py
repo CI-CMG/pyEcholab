@@ -92,7 +92,7 @@ class wbt_fm_std_cal_test(unittest.TestCase):
             raw_data = self.ek80.raw_data[chan][0]
 
             # Get the frequency of this channel.
-            this_freq = raw_data.frequency[0]
+            this_freq = raw_data.get_frequency()[0]
 
             ev_file = ev_TS_filename.get(this_freq, None)
             if ev_file is not None:
@@ -123,7 +123,7 @@ class wbt_fm_std_cal_test(unittest.TestCase):
             raw_data = self.ek80.raw_data[chan][0]
 
             # Get the frequency of this channel.
-            this_freq = raw_data.frequency[0]
+            this_freq = raw_data.get_frequency()[0]
 
             ev_file = ev_power_filename.get(this_freq, None)
             if ev_file is not None:
@@ -154,7 +154,7 @@ class wbt_fm_std_cal_test(unittest.TestCase):
             raw_data = self.ek80.raw_data[chan][0]
 
             # Get the frequency of this channel.
-            this_freq = raw_data.frequency[0]
+            this_freq = raw_data.get_frequency()[0]
 
             ev_file = ev_Sv_filename.get(this_freq, None)
             if ev_file is not None:
@@ -187,7 +187,7 @@ class wbt_fm_std_cal_test(unittest.TestCase):
 
             # Get the frequency of this channel. CW data will
             # have the frequency property
-            this_freq = raw_data.frequency[0]
+            this_freq = raw_data.get_frequency()[0]
 
             ev_file = ev_angles_filename.get(this_freq, None)
             if ev_file is not None:
@@ -239,7 +239,7 @@ class wbt_fm_std_cal_test(unittest.TestCase):
             raw_data = ek80rewrite.raw_data[chan][0]
 
             # Get the frequency of this channel.
-            this_freq = raw_data.frequency[0]
+            this_freq = raw_data.get_frequency()[0]
 
             ev_file = ev_power_filename.get(this_freq, None)
             if ev_file is not None:
