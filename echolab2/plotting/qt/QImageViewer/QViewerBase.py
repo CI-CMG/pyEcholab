@@ -153,6 +153,7 @@ class QViewerBase(QGraphicsView):
         self.name = 'QViewerBase'
         self.defaultCursor = Qt.CrossCursor
         self.backgroundColor = QColor(50,50,50,255)
+        self.stickyScale = (1, 1)
 
         #  define the default modifier keys
         self.panKey = Qt.Key_Alt
@@ -508,7 +509,7 @@ class QViewerBase(QGraphicsView):
     def addPolygon(self, verts, color=[220,0,0], thickness=1.0, alpha=255,
             linestyle='=', fill=None, selectable=True, movable=False,
             selectThickness=2.0, selectColor=None, closed=True,
-            name='QIVPolygon', noadd=False):
+            name='QIVPolygon', noadd=False, isCosmetic=False):
         """
         Add an arbitrary polygon to the scene. Polygons can be open and unfilled,
         closed and unfilled, or closed and filled.
@@ -551,7 +552,7 @@ class QViewerBase(QGraphicsView):
         #  create the polygon object
         polygon = QIVPolygon(verts, color=color, thickness=thickness,
                  alpha=alpha, linestyle=linestyle, fill=fill, selectable=selectable,
-                 movable=movable, closed=closed, view=self, name=name)
+                 movable=movable, closed=closed, view=self, name=name,isCosmetic=isCosmetic)
 
         if (not noadd):
             #  add the polygon to the scene
@@ -564,7 +565,7 @@ class QViewerBase(QGraphicsView):
 
 
     def addLine(self, verts, color=[220,0,0], thickness=1.0, alpha=255,
-            linestyle='=', selectable=True, movable=True):
+            linestyle='=', selectable=True, movable=True, isCosmetic=False):
         """
         Add an arbitrary line to the scene.
 
@@ -589,7 +590,7 @@ class QViewerBase(QGraphicsView):
         #  addLine is just a simplified interface to addPolygon
         return QViewerBase.addPolygon(self, verts, color=color, thickness=thickness, alpha=alpha,
                     linestyle=linestyle, selectable=selectable, movable=movable,
-                    closed=False)
+                    closed=False, isCosmetic=isCosmetic)
 
 
     def addMark(self, position, style='+', color=[220,0,0], selectColor=[5,220,250],
@@ -774,17 +775,23 @@ class QViewerBase(QGraphicsView):
         self.isZooming = False
 
 
-    def scale(self, x, y):
+    def scale(self, x, y, sticky=False):
+        """
+        scales the scene. Set sticky to True to set a scaling ratio that persists
+        between subsequent calls.
+        """
 
-        self.isZooming = True
-        QGraphicsView.scale(self, x, y)
-        self.isZooming = False
+        if sticky:
+            self.stickyScale = (x, y)
+            QGraphicsView.scale(self, x, y)
+        else:
+            QGraphicsView.scale(self, x * self.stickyScale[0], y * self.stickyScale[1])
 
 
     def zoomToMark(self, mark, zoomLevel):
         """
         Zooms the view so it is centered on a marker given the marker object and a
-        zoom level (int).
+        zoom level.
         """
 
         #  get the center of the mark

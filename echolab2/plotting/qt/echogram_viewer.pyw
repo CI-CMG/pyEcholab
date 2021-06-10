@@ -7,11 +7,15 @@ from .ui import ui_echogram_viewer
 
 class echogram_viewer(QtWidgets.QMainWindow, ui_echogram_viewer.Ui_echogram_viewer):
 
-    def __init__(self, p_data, plot_attribute='Sv', parent=None):
+    def __init__(self, p_data=None, plot_attribute='Sv', h_scale=None, parent=None):
         super(echogram_viewer, self).__init__(parent)
         self.setupUi(self)
 
         self.echogramLabel = None
+        if h_scale:
+            self.h_scale = h_scale
+        else:
+            self.h_scale = 6.0
 
         #  connect the echogram signals
         self.QEchogramViewer.mousePress.connect(self.echogramClick)
@@ -52,7 +56,8 @@ class echogram_viewer(QtWidgets.QMainWindow, ui_echogram_viewer.Ui_echogram_view
         except:
             pass
 
-        self.update_echogram(p_data, plot_attribute)
+        if p_data:
+            self.update_echogram(p_data, plot_attribute)
 
 
     @pyqtSlot(object, object, int, object, list)
@@ -83,7 +88,7 @@ class echogram_viewer(QtWidgets.QMainWindow, ui_echogram_viewer.Ui_echogram_view
             self.QEchogramViewer.viewport().update()
 
 
-    def update_echogram(self, p_data, plot_attribute='Sv'):
+    def update_echogram(self, p_data, plot_attribute='Sv', h_scale=None):
         """
         update_echogram updates the echogram image using data from the provided
         processed_data object
@@ -91,6 +96,9 @@ class echogram_viewer(QtWidgets.QMainWindow, ui_echogram_viewer.Ui_echogram_view
 
         #  clear out the echogram viewer
         self.QEchogramViewer.clearViewer()
+
+        if h_scale:
+            self.h_scale = h_scale
 
         if hasattr(p_data, 'range'):
             y_axis = p_data.range
@@ -106,14 +114,43 @@ class echogram_viewer(QtWidgets.QMainWindow, ui_echogram_viewer.Ui_echogram_view
                 '', color=[0,250,0], alpha=200, halign='right', valign='bottom')
         self.echogramLabel.setBackground([0,0,0], 250)
 
+        #TODO: scaling should be done in QEchogramViewer since is is applicable
+        #      to all echograms, not just ones created with this simple app.
+
+        #  scale the echogram, setting the sticky keyword to True to keep this
+        #  relative scale when zooming. Echograms tend to look a bit better when
+        #  scaled horizontally. Here we apply a "sticky" horizontal scaling which
+        #  will maintain the scaling when zooming.
+        self.QEchogramViewer.scale(self.h_scale, 1, sticky=True)
+
         #  fill the echogram window - vertical extent only
         self.QEchogramViewer.fillExtent(verticalOnly=True)
 
 
-
     def add_line(self, line, **kwargs):
+        '''
+        Add a echolab2.processing.line object to the echogram. The color
+        style, and width of the line is defined in the line object.
+        '''
 
-        self.QEchogramViewer.addLine([line.ping_time, line.data], **kwargs)
+        #TODO: Setting isCosmetic and moveBy should be done in
+        #      QEchogramViewer since they are applicable to all echograms,
+        #      not just ones created with this simple app.
+
+        #  add the cosmetic properties to the arguments. Note that we
+        #  explicitly set the line as cosmetic so it is not scaled when
+        #  drawn. This is especially important with Echograms where we
+        #  normally scale the X:Y axis in a 2:1 or 4:1 ratio to reduce
+        #  vertical exxageration.
+        kwargs = dict(kwargs, color=line.color, linestyle=line.linestyle,
+                thickness=line.thickness, isCosmetic=True)
+
+        line=self.QEchogramViewer.addLine([line.ping_time, line.data],
+            **kwargs)
+
+        #  shift the line so the vertexes are horizontally centered on
+        #  the samples
+        line.moveBy(0.5,0)
 
     def closeEvent(self, event):
 

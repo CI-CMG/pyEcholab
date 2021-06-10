@@ -270,7 +270,6 @@ class QEchogramViewer(QViewerBase):
         if (not useXY):
             verts = self.axesToPixels(verts)
 
-        #return super(QEchogramViewer, self).addLine([verts[0][0], verts[0][1], verts[1][0], verts[1][1]], **kwargs)
         return super(QEchogramViewer, self).addLine(verts, **kwargs)
 
 

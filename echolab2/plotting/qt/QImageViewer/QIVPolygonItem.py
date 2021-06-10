@@ -39,7 +39,7 @@ class QIVPolygonItem(QGraphicsItem):
                 selectColor=None, alpha=255, linestyle='=', fill=None,
                 selectable=False, selectThickness=2.0, movable=False,
                 ignoresTransforms=False, closed=True, parent=None,
-                name='QIVPolygonItem'):
+                name='QIVPolygonItem',isCosmetic=False):
 
         #  call the parent class init
         super(QIVPolygonItem, self).__init__(parent)
@@ -54,6 +54,7 @@ class QIVPolygonItem(QGraphicsItem):
         self.selected = False
         self.selectColor = selectColor
         self.color = color
+        self.isCosmetic = isCosmetic
 
         #  create the pen
         self.pen = self.getPen(self.color, self.alpha, self.linestyle, self.thickness)
@@ -365,6 +366,11 @@ class QIVPolygonItem(QGraphicsItem):
             pen.setStyle(Qt.DotLine)
         else:
             pen.setStyle(Qt.SolidLine)
+
+        #  If we're a "cosmetic" line (non-scaling) set the cosmetic
+        #  property of the pen.
+        if self.isCosmetic:
+            pen.setCosmetic(True)
 
         return pen
 

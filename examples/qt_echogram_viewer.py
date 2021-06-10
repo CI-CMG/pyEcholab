@@ -80,17 +80,26 @@ bot_detector = afsc_bot_detector.afsc_bot_detector(search_min=2,
         backstep=35)
 detected_bottom = bot_detector.detect(Sv_38)
 
-# Create an application instance.
+#  set our bottom line cosmetic properties
+detected_bottom.color = [225,200,0]
+detected_bottom.thickness = 2
+
+
 print('Plotting...')
+
+# Create an application instance.
 app = QtWidgets.QApplication([])
 
-# Create the main application window, pass our Sv data
-eg_viewer = echogram_viewer.echogram_viewer(Sv_38)
+# Create the main application window and show it
+eg_viewer = echogram_viewer.echogram_viewer()
+
+# Set the echogram data
+eg_viewer.update_echogram(Sv_38)
 
 # Add our bottom line
-eg_viewer.add_line(detected_bottom, color=[255,255,0])
+eg_viewer.add_line(detected_bottom)
 
-# And show our window
+#  show the application window
 eg_viewer.show()
 
 # Start event processing.

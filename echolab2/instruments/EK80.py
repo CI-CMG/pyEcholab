@@ -3929,7 +3929,7 @@ class ek80_calibration(calibration):
             # beamwidths and offsets need to be handled differently depending too.
             new_data = np.empty((return_indices.shape[0]), dtype=np.float32)
 
-            # Get the frequencies - this returns the center freq for FM
+            # Get the frequency - this returns the center freq for FM
             frequency = raw_data.get_frequency()
 
             # Work thru the pings, extracting the params

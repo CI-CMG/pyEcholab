@@ -32,8 +32,7 @@ import numpy as np
 from ..ping_data import ping_data
 
 
-def empty_like(obj, name=None, color=None, linestyle=None,
-        linewidth=None):
+def empty_like(obj, name=None, color=None, linestyle=None, thickness=None):
     """Creates an empty line object.
 
     empty_like creates an empty line (where data values are NaN) that
@@ -48,7 +47,7 @@ def empty_like(obj, name=None, color=None, linestyle=None,
         name (str): Optional name for the new line object.
         color (): Optional color for the new line object.
         linestyle(str): Optional linestyle is a string that defines the style of the line.
-        linewidth(float): Optional linewidth is a float the defines the width of the line.
+        thickness(float): Optional thickness is a float the defines the width of the line.
 
     Returns:
         New empty instance of line object with name and color ether
@@ -74,11 +73,11 @@ def empty_like(obj, name=None, color=None, linestyle=None,
     else:
         if isinstance(obj, line):
             new_line.linestyle = obj.linestyle
-    if linewidth:
-        new_line.linewidth = linewidth
+    if thickness:
+        new_line.thickness = thickness
     else:
         if isinstance(obj, line):
-            new_line.linewidth = obj.linewidth
+            new_line.thickness = obj.thickness
 
     # Set the data array to NaNs.
     new_line.data = np.full(new_line.ping_time.shape[0], np.nan)
@@ -100,11 +99,11 @@ class line(ping_data):
         color: color is a list which defines the color of the line.
         name (string): name or label for the line is a string.
         linestyle: linestyle is a string that defines the style of the line.
-        linewidth: linewidth is a float the defines the width of the line.
+        thickness: thickness is a float the defines the width of the line.
     """
 
     def __init__(self, ping_time=None, data=None, color=[0.58, 0.0, 0.83],
-                 name='line', linestyle='solid', linewidth=1.0, **_):
+                 name='line', linestyle='solid', thickness=1.0, **_):
         """Initializes line class object.
 
         Creates and sets several internal properties.
@@ -141,7 +140,7 @@ class line(ping_data):
         self.color = color
         self.name = name
         self.linestyle = linestyle
-        self.linewidth = linewidth
+        self.thickness = thickness
 
         # Update out data_attributes list, adding the "data" attribute.
         self._data_attributes += ['data']
