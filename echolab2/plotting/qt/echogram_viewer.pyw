@@ -127,6 +127,27 @@ class echogram_viewer(QtWidgets.QMainWindow, ui_echogram_viewer.Ui_echogram_view
         self.QEchogramViewer.fillExtent(verticalOnly=True)
 
 
+    def save_image(self, filename, **kwargs):
+        '''
+        save_image saves the echogram image including any marks, lines, etc. This
+        saves the full echogram, regardless of the current view at the resolution of
+        the echogram. You can specify a width and height if you want to override the
+        default resolution.
+        '''
+        self.QEchogramViewer.saveImage(filename, **kwargs)
+
+
+    def save_view(self, filename, **kwargs):
+        '''
+        save_image saves the current view of the echogram image including any marks,
+        lines, etc. The view is what is rendered on screen in the current window and
+        the resolution is always the size of the current view.
+
+        This is a work in progress, currently the
+        '''
+        self.QEchogramViewer.saveImage(filename, **kwargs)
+
+
     def add_line(self, line, **kwargs):
         '''
         Add a echolab2.processing.line object to the echogram. The color

@@ -271,16 +271,52 @@ class QViewerBase(QGraphicsView):
         del self.scene, self.imgPixmapItem
 
 
-    def saveImage(self, filename):
+    def saveView(self, filename):
         """
-        save the rendered image to a file. You must provide the full path and
-        file name. The image type will be inferred from the file extension. Typical
-        values would be "jpg", "jpeg", or "png".
+        save the rendered *view* to a file. This is not the whole image, only the visible
+        portion as rendered in the view. The resolution of the saved image will be the same
+        as the window dimensions. You must provide the full path and file name. The image
+        type will be inferred from the file extension. Typical values would be "jpg", "jpeg",
+        or "png".
         """
 
-        pixmap = QPixmap()
-        pixmap.grabWidget(self)
+        pixmap = self.grab();
         ok = pixmap.save(filename)
+        if not ok:
+            raise IOError('Unable to save image ' + filename)
+
+
+    def saveImage(self, filename, width=None, height=None):
+        """
+        save the rendered scene to a file. This saves the entire image, marks, and lines
+        regardless of the current view. The saved image resolution will be defined by the
+        scene size but you can override that by passing a width and height. You must
+        provide the full path and file name. The image type will be inferred from the file
+        extension. Typical values would be "jpg", "jpeg", or "png".
+
+        """
+
+        if width is None:
+            width = self.scene.width()
+        if height is None:
+            height = self.scene.height()
+
+        #  create the empty image to render into and fill
+        image = QImage(width, height,QImage.Format_ARGB32)
+        image.fill(0)
+
+        #  create the painter to render the image
+        painter = QPainter(image)
+        painter.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
+
+        #  render it
+        self.scene.render(painter)
+
+        #TODO: Need to figure out how to apply "sticky" scaling from the view.
+        #      Render to a hidden view that's the same size as the scene?
+
+        #  and save
+        ok = image.save(filename)
         if not ok:
             raise IOError('Unable to save image ' + filename)
 
