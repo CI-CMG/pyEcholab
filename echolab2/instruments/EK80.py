@@ -4264,7 +4264,8 @@ class ek80_calibration(calibration):
                     # For now we assume that just like with gain, we use the pulse_duration table even
                     # though there is also a pulse_duration_fm table.
                     match_idx = np.where(config_obj['pulse_duration'] == raw_data.pulse_duration[idx])[0]
-                    new_data[idx] = param_data[match_idx][0]
+                    if(len(param_data[match_idx]) != 0):
+                        new_data[idx] = param_data[match_idx][0]
                 else:
                     if param_data.ndim == 1:
                         new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
@@ -4309,7 +4310,10 @@ class ek80_calibration(calibration):
                         # for FM data without BB cal even though the 'pulse_duration_fm' table exists.
                         # https://www.echoview.com/products-services/news/echoview-bug-fix-correction-to-transducer-gain-calculations-in-simrad-ek80-wideband-data
                         match_idx = np.where(config_obj['pulse_duration'] == raw_data.pulse_duration[idx])[0]
-                        gain = param_data[match_idx][0]
+                        if(len(param_data[match_idx]) == 0):
+                            gain = 0
+                        else:
+                            gain = param_data[match_idx][0]
 
                         new_data[idx] = gain + (20 * np.log10(frequency[idx] / config_obj['transducer_frequency']))
                 else:
