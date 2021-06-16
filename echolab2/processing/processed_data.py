@@ -1947,7 +1947,7 @@ def read_ev_csv(channel_id, frequency, ev_csv_filename, data_type='Ts',
 
 def read_evl(channel_id, frequency, evl_filename, data_type='ctd',
         sample_dtype=np.float32):
-    '''read_evl will read a .csv file exported by Echoview and
+    '''read_evl will read a .evl file exported by Echoview and
     return a processed data object containing the depth data and
     sample times.
     '''
@@ -1967,11 +1967,11 @@ def read_evl(channel_id, frequency, evl_filename, data_type='ctd',
         evl_data = infile.readlines()
     evl_data = evl_data[2:] # remove two headers
 
-    n_samples = len(evl_data)
+    n_pings = len(evl_data)
     p_data = processed_data(channel_id, frequency, data_type)
-    data = np.empty((n_samples), dtype=sample_dtype)
+    data = np.empty((n_pings), dtype=sample_dtype)
     p_data.add_data_attribute('data', data)
-    ping_time = np.empty((n_samples), dtype='datetime64[ms]')
+    ping_time = np.empty((n_pings), dtype='datetime64[ms]')
     p_data.add_data_attribute('ping_time', ping_time)
 
     idx = 0
@@ -1979,9 +1979,10 @@ def read_evl(channel_id, frequency, evl_filename, data_type='ctd',
         rows.rstrip()
         # Pull out the date, time, and depth (one additional variable-EV outputs column of '3s'-ignored) -  all strings
         (d, t, depth, tmpVars) = rows.split(maxsplit=3)
-        ping_time[idx] = np.datetime64(datetime.strptime(d + t, "%Y%m%d%H%M%S%f")) # use date and time strings to make datetime object
+        # use date and time strings to make numpy datetime object
+        ping_time[idx] = np.datetime64(datetime.strptime(d + t, "%Y%m%d%H%M%S%f"))
         data[idx] = convert_float(depth)
         idx += 1
 
-    p_data.is_log = False
+    p_data.is_log = False # depth is not on log scale
     return p_data
