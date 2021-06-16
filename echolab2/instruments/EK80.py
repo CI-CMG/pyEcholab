@@ -3362,19 +3362,31 @@ class raw_data(ping_data):
             p_data.sample_offset = min_sample_offset
             p_data.sample_interval = sample_interval
 
-            # Add the transducer draft attribute
-            # If no transudcer mounting parameters are included in the data file, the
-            # resulting cal_parms data will be nan. Otherwise
+            # Add the transducer draft attribute. This attribute is intended to be the ultimate
+            # vertical transducer position relative to the surface. It is a combination of the
+            # transducer mounting information and transducer z offset.
+
+            #  Start with no draft
+            xdcr_draft = np.full((output.shape[0]), 0.0, dtype=np.float32)
+
+            # Add the transducer_offset_z
+            has_param = np.isfinite(cal_parms['transducer_offset_z'])
+            xdcr_draft[has_param] += cal_parms['transducer_offset_z'][has_param]
+
+            # Add the draft from the mounting - first we need to check if the data
+            # has the transducer_mounting parameter
             if (cal_parms['transducer_mounting'] is not None and
                     cal_parms['transducer_mounting'].dtype == 'O'):
-                # First check if we apply the drop keel offset
-                add_drop_keel = cal_parms['transducer_mounting'] == 'DropKeel'
-                # Zero out offset where the mounting isn't DropKeel
-                cal_parms['drop_keel_offset'][np.invert(add_drop_keel)] = 0.0
-                # Compute the draft and add the attribute
-                xdcr_draft = cal_parms['transducer_offset_z'] + cal_parms['drop_keel_offset']
-            else:
-                xdcr_draft = np.full((output.shape[0]), 0.0, dtype=np.float32)
+
+                # It does, find where the mounting is drop keel and add it
+                has_param = cal_parms['transducer_mounting'] == 'DropKeel'
+                xdcr_draft[has_param] += cal_parms['drop_keel_offset'][has_param]
+
+                # Then find where the mounting is hull mounted and add it
+                has_param = cal_parms['transducer_mounting'] == 'HullMounted'
+                xdcr_draft[has_param] += cal_parms['water_level_draft'][has_param]
+
+            # Finally, add the transducer_draft attribute to the processed data object
             p_data.add_data_attribute('transducer_draft', xdcr_draft)
 
             #data = p_data
