@@ -538,7 +538,7 @@ class processed_data(ping_data):
         If the primary axis is already depth and heave_correct is set to
         True and heave compensation has not been applied, only heave
         compensation will be applied.If the primary axis is depth and
-        heave_correct is set and heave compensation HAS been applied
+        heave_correct is set and heave compensation has been applied
         nothing happens.
 
         In order for heave correction to be applied, you must call the
