@@ -3044,8 +3044,8 @@ class raw_data(ping_data):
                         'data required to return angle data.')
 
         # Set the data type.
-        alongship.data_type = 'angles_alongship'
-        athwartship.data_type = 'angles_athwartship'
+        alongship.data_type = 'angles_alongship_e'
+        athwartship.data_type = 'angles_athwartship_e'
 
         # Apply depth and/or heave correction
         if return_depth:

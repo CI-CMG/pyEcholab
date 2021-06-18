@@ -122,7 +122,15 @@ venv.bak/
 
 # Mac .DS_Store files
 .DS_Store
-echolab2/instruments/resources/EK80_CreateTX.m
-echolab2/instruments/resources/EK80chirp.m
-echolab2/instruments/resources/EK80pulsecompress.m
+*.m
 examples/python code/rick_test.py
+*.csv
+examples/rht_debug.py
+test/data
+test/ek80_sector_change_test.py
+test/Ibrahim_test.py
+test/misc tests/ek60_multiple_pulse_length_test.py
+test/misc tests/
+test/create_test_data_snippets.py
+test/compare_main_vs_RHT-EK80.py
+test/create_pickles.py

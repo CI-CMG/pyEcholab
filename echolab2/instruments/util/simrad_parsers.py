@@ -152,6 +152,7 @@ class SimradDepthParser(_SimradDatagramParser):
                   }
         _SimradDatagramParser.__init__(self, "DEP", headers)
 
+
     def _unpack_contents(self, raw_string, bytes_read, version):
         '''
 
@@ -199,15 +200,17 @@ class SimradDepthParser(_SimradDatagramParser):
 
             if len(set(lengths)) != 1:
                 min_indx = min(lengths)
-                log.warning('Data lengths mismatched:  d:%d, r:%d, u:%d, t:%d',
-                    *lengths)
-                log.warning('  Using minimum value:  %d', min_indx)
+#                log.warning('Data lengths mismatched:  d:%d, r:%d, u:%d, t:%d',
+#                    *lengths)
+#                log.warning('  Using minimum value:  %d', min_indx)
                 data['transceiver_count'] = min_indx
 
             else:
                 min_indx = data['transceiver_count']
 
             for field in self.header_fields(version):
+                if isinstance(data[field], str):
+                    data[field] = data[field].encode('latin_1')
                 datagram_contents.append(data[field])
 
             datagram_fmt += '%df' % (3*data['transceiver_count'])
@@ -247,6 +250,7 @@ class SimradBottomParser(_SimradDatagramParser):
                 }
         _SimradDatagramParser.__init__(self, "BOT", headers)
 
+
     def _unpack_contents(self, raw_string, bytes_read, version):
         '''
 
@@ -270,7 +274,6 @@ class SimradBottomParser(_SimradDatagramParser):
             buf_indx     = self.header_size(version)
             data['depth'] = np.fromiter(struct.unpack(depth_fmt, raw_string[buf_indx:buf_indx + depth_size]), 'float')
 
-
         return data
 
     def _pack_contents(self, data, version):
@@ -281,12 +284,13 @@ class SimradBottomParser(_SimradDatagramParser):
         if version == 0:
 
             if len(data['depth']) != data['transceiver_count']:
-                log.warning('# of depth values %d does not match transceiver count %d',
-                    len(data['depth']), data['transceiver_count'])
-
+#                log.warning('# of depth values %d does not match transceiver count %d',
+#                    len(data['depth']), data['transceiver_count'])
                 data['transceiver_count'] = len(data['depth'])
 
             for field in self.header_fields(version):
+                if isinstance(data[field], str):
+                    data[field] = data[field].encode('latin_1')
                 datagram_contents.append(data[field])
 
             datagram_fmt += '%dd' % (data['transceiver_count'])
@@ -379,9 +383,7 @@ class SimradAnnotationParser(_SimradDatagramParser):
             datagram_fmt += '%ds' % (len(tmp_string))
             datagram_contents.append(tmp_string)
 
-
         return struct.pack(datagram_fmt, *datagram_contents)
-
 
 
 class SimradNMEAParser(_SimradDatagramParser):
@@ -1448,9 +1450,9 @@ class SimradConfigParser(_SimradDatagramParser):
                 transducer_header = self._transducer_headers[sounder_name]
                 _sounder_name_used = sounder_name
             except KeyError:
-                log.warning('Unknown sounder_name:  %s, (no one of %s)', sounder_name,
-                    list(self._transducer_headers.keys()))
-                log.warning('Will use ER60 transducer config fields as default')
+#                log.warning('Unknown sounder_name:  %s, (no one of %s)', sounder_name,
+#                    list(self._transducer_headers.keys()))
+#                log.warning('Will use ER60 transducer config fields as default')
 
                 transducer_header = self._transducer_headers['ER60']
                 _sounder_name_used = 'ER60'
