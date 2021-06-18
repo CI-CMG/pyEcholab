@@ -2087,10 +2087,8 @@ class raw_data(ping_data):
 
             # Convert from indexed to electrical angles.
             alongship_e = sample_datagram['angle'][start_sample:self.sample_count[this_ping], 1].astype(self.sample_dtype)
-            alongship_e[alongship_e > 127] -= 256
             alongship_e *= self.INDEX2ELEC
             athwartship_e = sample_datagram['angle'][start_sample:self.sample_count[this_ping], 0].astype(self.sample_dtype)
-            athwartship_e[athwartship_e > 127] -= 256
             athwartship_e *= self.INDEX2ELEC
 
             # Check if we need to pad or trim our sample data.

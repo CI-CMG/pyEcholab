@@ -316,10 +316,11 @@ class CustomTextTestResult(unittest.runner.TextTestResult):
         info = super(CustomTextTestResult, self)._exc_info_to_string(err, test)
 
         if self.showAll:
-            info = 'Test number: {index}\n{info}'.format(
-                index=test.progress_index,
-                info=info
-            )
+            if hasattr(test, 'progress_index'):
+                info = 'Test number: {index}\n{info}'.format(index=test.progress_index,
+                        info=info)
+            else:
+                info = 'Error in Setup:\n{info}'.format(info=info)
 
         return info
 
