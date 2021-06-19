@@ -516,3 +516,83 @@ class line(ping_data):
                                                              self.ping_time[-1])
 
         return msg
+
+
+def read_evl(evl_filename, name='evl_line', ignore_status=False, **kwargs):
+    '''read_evl will read a .evl file exported by Echoview and return a line object
+    containing the Echoview line data. Vertices that have a status other than 3 ("good")
+    will be assigned NaN.
+
+    evl_filename (string): The full path to the Echoview .evl file to read
+    name (string): name or label for the line.
+    ignore_status (bool): Set to True to ignore the .evl vertex status. Vertices in
+        Echoview .evl files are assigned a status where:
+            0 = no status
+            1 = unverified
+            2 = bad
+            3 = good
+        By default, status values less than 3 are assigned a value of NaN. Set this
+        keyword to True to assign depth values to the vertices regardeless of status.
+        Note that vertices with the special value of -10000.99 are always assigned NaN
+    color: color is a list which defines the color of the line.
+    linestyle: linestyle is a string that defines the style of the line.
+    thickness: thickness is a float the defines the width of the line.
+
+    '''
+
+    import os
+    from datetime import datetime
+
+    def convert_float(val):
+        try:
+            val = float(val)
+        except:
+            val = np.nan
+        return val
+
+    # Normalize filename and read the file
+    evl_filename = os.path.normpath(evl_filename)
+    with open(evl_filename, 'r') as infile:
+        evl_data = infile.readlines()
+
+    # Discard the file headers
+    evl_data = evl_data[2:]
+
+    #  determine the number of line vertices
+    n_pings = len(evl_data)
+
+    # Echoview .evl files contain ping time, depth, and line status data.
+    # Create the time and depth arrays. Status is used to determine if the
+    # depth data is valid or a Nan is inserted instead
+    depth_data = np.empty((n_pings), dtype=np.float32)
+    ping_time = np.empty((n_pings), dtype='datetime64[ms]')
+
+    # Loop thru the rows of data, parsing each line
+    for idx, row in enumerate(evl_data):
+        #  strip the trailing whitespace
+        row.rstrip()
+
+        # Parse the elements
+        (d, t, depth, status) = row.split(maxsplit=3)
+
+        # Use date and time strings to make numpy datetime object
+        ping_time[idx] = np.datetime64(datetime.strptime(d + t, "%Y%m%d%H%M%S%f"))
+
+        # Convert depth and status to floats
+        depth = convert_float(depth)
+        status = convert_float(status)
+
+        # Assign the depth value based on the status. For our purposes, any status
+        # less than 3 in an .evl file will be considered "bad" and assigned NaN. Also,
+        # .evl files have a special value (-10000.99000 ) used to indicate an invalid
+        # sounder detected bottom vertex and these will also be assigned NaN.
+        if status < 3 or depth < -10000.0:
+            # This is an invalid vertex
+            depth_data[idx] = np.nan
+        else:
+            depth_data[idx] = depth
+
+    # Create the line object to return
+    ev_line = line(ping_time=ping_time, data=depth_data, name=name, **kwargs)
+
+    return ev_line
