@@ -286,7 +286,7 @@ class EK80(object):
                  max_sample_count=None, start_time=None, end_time=None,
                  start_ping=None, end_ping=None, frequencies=None,
                  channel_ids=None, incremental=None, start_sample=None,
-                 end_sample=None, progress_callback=None):
+                 end_sample=None, progress_callback=None, nmea=True):
         """Reads one or more Simrad EK80 .raw files and appends the data to any
         existing data. The data are ordered as read.
 
@@ -297,6 +297,7 @@ class EK80(object):
             power (bool): Controls whether power data is stored
             angles (bool): Controls whether angle data is stored
             complex (bool): Controls whether complex data is stored
+            nmea (bool): Set to True to store NMEA data
             max_sample_count (int): Specify the max sample count to read
                 if your data of interest is less than the total number of
                 samples contained in the instrument files.
@@ -399,7 +400,7 @@ class EK80(object):
             #  and read datagrams until we're done
             while not finished:
                 #  read a datagram - method returns some basic info
-                dg_info = self._read_datagram(fid)
+                dg_info = self._read_datagram(fid, nmea=nmea)
 
                 #  call progress callback if supplied
                 if (progress_callback):
@@ -486,7 +487,7 @@ class EK80(object):
         return config_datagram
 
 
-    def _read_datagram(self, fid):
+    def _read_datagram(self, fid, nmea=True):
         """Reads the next raw file datagram
 
         This method reads the next datagram from the file, storing the
@@ -527,6 +528,11 @@ class EK80(object):
         result['timestamp'] = new_datagram['timestamp']
         result['bytes_read'] = new_datagram['bytes_read']
         result['type'] = new_datagram['type']
+
+        # If this is a NMEA datagram and we're not storing them, bail
+        if not nmea and new_datagram['type'].startswith('NME'):
+            # This is a NMEA datagram and we're skipping them
+            return result
 
         # We have to process all XML parameter and environment datagrams
         # regardless of time/ping bounds. This ensures all pings have fresh

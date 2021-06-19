@@ -6,6 +6,13 @@ files and plot echograms of the data. It demonstrates the basics of reading
 raw and bottom data, getting a calibration object, altering a cal parameter,
 then getting Sv and bottom data in displaying it in various ways.
 
+The EK60.read_bot() and EK60.read_out() methods are really syntactic surgar.
+Simrad .bot and .out files utilize the same general format as .raw files
+and they are ultimately read by calling the EK60.read_raw() method. But, if
+you are reading .out files, it is recommended that you call EK60.read_out()
+as it will by default ignore the duplicate NMEA data that exists in those
+files.
+
 The key takeaways:
 
  1) Bottom data must be read *after* its corresponding raw data. Bottom
@@ -46,9 +53,12 @@ ek60 = EK60.EK60()
 print('reading raw files...')
 ek60.read_raw(rawfiles, frequencies=[38000, 120000])
 
-# Read the .bot files.
+# Read the .bot files. The EK60 class can red
 print('reading bot files...')
 ek60.read_bot(botfiles)
+
+# The EK60 class has
+
 
 # Get a reference to the raw_data objects for our two frequencies.
 # Calling get_channel_data while specifying the frequency or

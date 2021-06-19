@@ -238,12 +238,16 @@ class EK60(object):
         self._file_channel_map = {}
 
 
-    def read_bot(self, read_nmea=False,  *args, **kwargs):
-        """Reads .bot and .out formatted bottom detection files. ER60 Mk 1 systems
+
+    def read_out(self, read_nmea=False,  *args, **kwargs):
+        """Reads .out formatted bottom detection files. ER60 Mk 1 systems
         and ES60 and ES70 systems output .out files that contain bottom detections
-        and a copy of the NMEA data that is also wrtten to the .raw files. ER60 Mk II
-        systems record bottom detections in .bot files which do not contain the
-        copy of NMEA data.
+        and a copy of the NMEA data that is also wrtten to the .raw files.
+
+        Because the NMEA data is replicated at it is assumed that the user will
+        also be reading .raw data, the read_nmea keyword by default is set to
+        False. If you will only be reading .out file data, you will probably
+        want to set read_nmea to True.
 
         This method will read these files and insert the bottom detection data in
         the appropriate raw_data object based on channel ID and data type. You can
@@ -264,6 +268,30 @@ class EK60(object):
 
         # Update the kwargs with the read_nmea argument.
         kwargs['nmea'] = read_nmea
+
+        # .bot and .out files share the same format as .raw files and are read
+        # using the same methods.
+        self.append_raw(*args, **kwargs)
+
+
+    def read_bot(self, *args, **kwargs):
+        """Reads .bot formatted bottom detection files created by ER60 Mk II systems.
+
+        This method will read .bot files and insert the bottom detection data in
+        the appropriate raw_data object based on channel ID and data type. You can
+        use the raw_data.get_bottom() method to get a pyEcholab2 line object
+        representing the bottom detections. If you work with the bottom detection
+        data directly, remember that the depths are computed using the sound speed
+        at the time of collection. If you are using a different sound speed for
+        processing, you will need to adjust the raw bottom depths accordingly.
+
+        Args:
+            bot_files (list): A list of .bot files to be read.
+
+        """
+
+        # .bot files don't have NMEA data but it can't hurt to set this
+        kwargs['nmea'] = False
 
         # .bot and .out files share the same format as .raw files and are read
         # using the same methods.
@@ -430,7 +458,7 @@ class EK60(object):
             #  and read datagrams until we're done
             while not finished:
                 #  read a datagram - method returns some basic info
-                dg_info = self._read_datagram(fid)
+                dg_info = self._read_datagram(fid, nmea=nmea)
 
                 #  call progress callback if supplied
                 if (progress_callback):
@@ -532,7 +560,7 @@ class EK60(object):
         return config_datagram
 
 
-    def _read_datagram(self, fid):
+    def _read_datagram(self, fid, nmea=True):
         """Reads the next raw file datagram
 
         This method reads the next datagram from the file, storing the
@@ -573,6 +601,11 @@ class EK60(object):
         result['timestamp'] = new_datagram['timestamp']
         result['bytes_read'] = new_datagram['bytes_read']
         result['type'] = new_datagram['type']
+
+        # If this is a NMEA datagram and we're not storing them, bail
+        if not nmea and new_datagram['type'].startswith('NME'):
+            # This is a NMEA datagram and we're skipping them
+            return result
 
         # Check if data should be stored based on time bounds.
         if self.read_start_time is not None:

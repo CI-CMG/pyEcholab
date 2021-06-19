@@ -93,7 +93,7 @@ class nmea_data(object):
                                              'fields': ['trip_distance_nmi']}
 
 
-    def add_datagram(self, time, text, allow_duplicates=False):
+    def add_datagram(self, time, text, allow_duplicates=True):
         """
         Add NMEA datagrams to this object.
 
@@ -106,8 +106,9 @@ class nmea_data(object):
             text (str): The raw NMEA string.
             allow_duplicates (bool): When False, NMEA datagrams that share
                 the same timestamp, talker ID, and message ID with an
-                existing datagram will be discarded.
-
+                existing datagram will be discarded. The duplicate checking
+                is rather inefficient so it is advised that you filter out
+                duplicates before calling this method if possible.
         """
         # Parse the NMEA message header
         header = str(text[1:6].upper())
@@ -117,6 +118,12 @@ class nmea_data(object):
 
             #  check if we're allowing duplicates and if this is one. We need
             #  to do this since .out files can contain duplicate NMEA data.
+            #
+            #  6-17-21: This code block is *super* inefficient and because it was
+            #           far easier to not generate duplicates (i.e. ignore potential
+            #           duplicates when reading) I have changed the default behavior
+            #           to allow duplicates so it isn't executed. It is advised that
+            #           duplicates be removed prior to calling add_datagram.
             if (not allow_duplicates):
                 dup_idx = (self.nmea_times == time)
                 if (np.any(dup_idx)):
