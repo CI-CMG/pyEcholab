@@ -1054,11 +1054,11 @@ class SimradXMLParser(_SimradDatagramParser):
                             for chan_xdcr_node in channel_node.findall('./Transducer[@TransducerName="' + chan_data['transducer_name'] + '"]'):
                                 update_xml(chan_xdcr_node, self.channel_xdcr_xml_map, chan_data)
 
-                # Now update the transducers section
-                transducers_node = root_node.find('./Transducers')
-                for xdcr_node in transducers_node.findall('./Transducer[@TransducerCustomName="' +
-                        chan_data['transducer_custom_name'] + '"]'):
-                    update_xml(xdcr_node, self.xdcrs_xdcr_xml_map, chan_data)
+                    # Now update the transducers section
+                    transducers_node = root_node.find('./Transducers')
+                    for xdcr_node in transducers_node.findall('./Transducer[@TransducerCustomName="' +
+                            chan_data['transducer_custom_name'] + '"]'):
+                        update_xml(xdcr_node, self.xdcrs_xdcr_xml_map, chan_data)
 
             elif data['subtype'] == 'parameter':
 

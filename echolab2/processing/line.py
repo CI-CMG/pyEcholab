@@ -611,7 +611,11 @@ def read_evl(evl_filename, name='evl_line', ignore_status=False, **kwargs):
 
         # Convert depth and status to floats
         depth = convert_float(depth)
-        status = convert_float(status)
+        if ignore_status:
+            # Assume all points are valid
+            status = 3
+        else:
+            status = convert_float(status)
 
         # Assign the depth value based on the status. For our purposes, any status
         # less than 3 in an .evl file will be considered "bad" and assigned NaN. Also,

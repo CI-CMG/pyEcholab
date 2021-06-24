@@ -3370,12 +3370,11 @@ class raw_data(ping_data):
             # vertical transducer position relative to the surface. It is a combination of the
             # transducer mounting information and transducer z offset.
 
-            #  Start with no draft
+            # Start with no draft
             xdcr_draft = np.full((output.shape[0]), 0.0, dtype=np.float32)
 
-            # Add the transducer_offset_z
-            has_param = np.isfinite(cal_parms['transducer_offset_z'])
-            xdcr_draft[has_param] += cal_parms['transducer_offset_z'][has_param]
+            # Find the pings that have a transducer mounting z offset
+            has_z_param = np.isfinite(cal_parms['transducer_offset_z'])
 
             # Add the draft from the mounting - first we need to check if the data
             # has the transducer_mounting parameter
@@ -3383,12 +3382,34 @@ class raw_data(ping_data):
                     cal_parms['transducer_mounting'].dtype == 'O'):
 
                 # It does, find where the mounting is drop keel and add it
-                has_param = cal_parms['transducer_mounting'] == 'DropKeel'
-                xdcr_draft[has_param] += cal_parms['drop_keel_offset'][has_param]
+                has_dk_param = cal_parms['transducer_mounting'] == 'DropKeel'
+                xdcr_draft[has_dk_param] += cal_parms['drop_keel_offset'][has_dk_param]
+
+                # For EK80 versions up to and including 2.0.0, if the transducer z offset
+                # is set to zero in the EK80 application, the drop_keel_offset will be
+                # written into the transducer z offset configuration parameter. This
+                # will result in a final draft that is 2x the actual draft if one simply
+                # adds the z offset to the drop keel offset. To compensate for this
+                # I am going to assume that if the transducer Z offset is equal to the
+                # drop keel offset, the transducer Z offset should be zeroed out. This
+                # may be wrong in some cases and you're welcome to take a stab at
+                # resolving this is a more robust fashion. I am awaiting a response from
+                # Simrad explaining this behavior.
+                has_param = np.logical_and(has_dk_param, has_z_param)
+                zero_idxs = (cal_parms['drop_keel_offset'][has_param] ==
+                    cal_parms['transducer_offset_z'][has_param])
+                cal_parms['transducer_offset_z'][zero_idxs] = 0
 
                 # Then find where the mounting is hull mounted and add it
                 has_param = cal_parms['transducer_mounting'] == 'HullMounted'
                 xdcr_draft[has_param] += cal_parms['water_level_draft'][has_param]
+
+                # It is unknown at this time if the same issue exists with a hull mounted
+                # transducer and the water level draft value.
+
+
+            # Add the transducer z offset
+            xdcr_draft[has_z_param] += cal_parms['transducer_offset_z'][has_z_param]
 
             # Finally, add the transducer_draft attribute to the processed data object
             p_data.add_data_attribute('transducer_draft', xdcr_draft)
@@ -3891,7 +3912,10 @@ class ek80_calibration(calibration):
                     match_idx = np.where(config_obj['pulse_duration'] == raw_data.pulse_duration[idx])[0]
                     new_data[idx] = param_data[match_idx][0]
                 else:
-                    new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
+                    if param_data.ndim == 1:
+                        new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
+                    else:
+                       new_data[idx] = param_data[idx, config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
 
             param_data = new_data
 
@@ -3936,8 +3960,10 @@ class ek80_calibration(calibration):
                         new_data[idx] = gain + (20 * np.log10(frequency[idx] / config_obj['transducer_frequency']))
                 else:
                     # CW gain is obtained from the gain table that is indexed by pulse duration
-                    new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
-
+                    if param_data.ndim == 1:
+                        new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
+                    else:
+                        new_data[idx] = param_data[idx, config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
             param_data = new_data
 
         elif param_name in ['angle_offset_alongship', 'angle_offset_athwartship',
@@ -3998,7 +4024,6 @@ class ek80_calibration(calibration):
             else:
                 # EK60 hardware power conversion does not require this parameter
                 param_data = None
-
 
         return param_data
 
