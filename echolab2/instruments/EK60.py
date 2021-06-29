@@ -3181,7 +3181,7 @@ class raw_data(ping_data):
         if linear:
             # Convert to linear units
             data /= 10.00
-            data **= 10.0
+            data = 10.0 ** data
 
         # Return the result.
         return data
