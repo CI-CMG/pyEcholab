@@ -31,6 +31,7 @@
 import copy
 from future.utils import implements_iterator
 import numpy as np
+from scipy import sparse
 from ..ping_data import ping_data
 from ..processing import mask
 
@@ -256,7 +257,7 @@ class processed_data(ping_data):
         Args:
             obj_to_insert: an instance of echolab2.processed_data that
                 contains the data you are inserting. If required the object's
-                sample data will be regriddedto the vertical axis of this
+                sample data will be regridded to the vertical axis of this
                 object.
             ping_number: The ping number specifying the insertion point.
             ping_time: The ping time specifying the insertion point. If you
@@ -286,7 +287,7 @@ class processed_data(ping_data):
 
         # Regrid the object we're inserting to our vertical axis (if the
         # vertical axes are the same regrid will return w/o doing anything).
-        obj_to_insert.regrid(self)
+        obj_to_insert.match_samples(self)
 
         # We are now coexisting in harmony - call parent's insert.
         super(processed_data, self).insert(obj_to_insert,
@@ -813,17 +814,19 @@ class processed_data(ping_data):
         self.is_log = True
 
 
-    def regrid(self, other_obj, _return_data=False):
-        '''regrid adjusts the vertical axis of this object to match the vertical
-        axis of the provided processed_data object. The regridding is a linear
-        combination of the inputs based on the fraction of the source bins to the
-        range bins.
+    def match_samples(self, other_obj, _return_data=False):
+        '''match_samples adjusts the vertical axis of this object to match the vertical
+        axis of the provided processed_data object. The regridding is a linear combination
+        of the inputs based on the fraction of the source bins to the range bins.
 
-        This method performs the same function as the Echoview Match Geometry operator
-        though it does not output the exact same results.
+        This method performs the same function as the Echoview Match Geometry operator.
 
         Original code by: Nils Olav Handegard, Alba Ordonez, Rune Øyerhamn
         https://github.com/CRIMAC-WP4-Machine-learning/CRIMAC-preprocessing/blob/NOH_pyech/regrid.py
+
+        Args:
+            other_obj (processed_data): Pass a reference to the processed_data object
+                    with the vertical axis you would like this object to match.
 
         '''
 
@@ -841,7 +844,7 @@ class processed_data(ping_data):
             bin_r_s = np.append(bin_r_s, r_s[-1]+(r_s[-1] - r_s[-2])/2)
 
             # Initialize W matrix
-            W = np.empty((len(r_t), len(r_s)+1), dtype=self.sample_dtype)
+            W = sparse.lil_matrix((len(r_t), len(r_s)+1), dtype=self.sample_dtype)
 
             # Loop over the target bins
             for i, rt in enumerate(r_t):
@@ -852,7 +855,7 @@ class processed_data(ping_data):
                     drt = bin_r_t[i+1] - bin_r_t[i]
 
                     # find the indices in source that overlap this target bin
-                    j0 = np.searchsorted(bin_r_s, bin_r_t[i], side='right')-1
+                    j0 = np.searchsorted(bin_r_s, bin_r_t[i], side='right') - 1
                     j1 = np.searchsorted(bin_r_s, bin_r_t[i+1], side='right')
 
                     # CASE 1: Target higher resolution, overlapping 1 source bin
@@ -906,7 +909,6 @@ class processed_data(ping_data):
 
             return W
 
-
         # Get the vertical axes for the source and target objects
         this_v_axis, this_axis_type = self.get_v_axis()
         target_v_axis, other_axis_type = other_obj.get_v_axis()
@@ -921,7 +923,7 @@ class processed_data(ping_data):
         # Check if they share the same axis type - we'll not allow
         # regridding if the axis types are different.
         if this_axis_type != other_axis_type:
-            raise AttributeError("The provided data object's vertical axis is type (" +
+            raise AttributeError("The provided data object's vertical axis type (" +
                     other_axis_type +  ") does not match this object's type (" +
                     this_axis_type + "). The axes types " + "must match.")
 
@@ -935,10 +937,11 @@ class processed_data(ping_data):
         weights = resample_weights(target_v_axis, this_v_axis)
 
         # Normally we'll update this object's attributes but internal methods
-        # that call this method just want the regridded data only.
+        # that call this method just want the regridded data only. If _return_data
+        # is set, we'll just return the data.
         if not _return_data:
             # Compute the regridded values - update shape and sample count
-            self.data = np.rot90(np.matmul(weights, sv_s_mod), k=-1)
+            self.data = np.rot90(weights.dot(sv_s_mod), k=-1)
             self.shape = self.data.shape
             self.n_samples = self.data.shape[1]
 
@@ -948,6 +951,35 @@ class processed_data(ping_data):
             # Return the gridded data only
             sv_s_mod = np.rot90(np.matmul(weights, sv_s_mod), k=-1)
             return sv_s_mod
+
+
+    def match_pings(self, other_data, match_to='cs'):
+        """Matches the ping times in this object to the ping times in the
+        processed_data object provided. It does this by matching times, inserting
+        and/or deleting pings as needed. It does not interpolate. Ping times in
+        the other object that aren't in this object are inserted. Ping times in
+        this object that aren't in the other object are deleted. If the time axes
+        do not intersect at all, all of the data in this object will be deleted and
+        replaced with empty pings for the ping times in the other object.
+
+
+        This method performs a similar function to the Echoview Match Pings operator.
+
+        Args:
+            other_data (processed_data): A processed_data object that this object
+                will be matched to.
+
+            match_to (str): Set to a string defining the precision of the match.
+
+                cs : Match to a 100th of a second
+                ds : Match to a 10th of a second
+                s  : Match to the second
+        Returns:
+            A dictionary with the keys 'inserted' and 'removed' containing the
+            indices of the pings inserted and removed.
+
+        """
+        return super(processed_data, self).match_pings(other_data, match_to='cs')
 
 
     def resize(self, new_ping_dim, new_sample_dim):
@@ -1795,33 +1827,6 @@ class processed_data(ping_data):
 
         # Return the result.
         return op_result
-
-
-    def match_pings(self, other_data, match_to='cs'):
-        """Matches the ping times in this object to the ping times in the
-        processed_data object provided. It does this by matching times, inserting
-        and/or deleting pings as needed. It does not interpolate. Ping times in
-        the other object that aren't in this object are inserted. Ping times in
-        this object that aren't in the other object are deleted. If the time axes
-        do not intersect at all, all of the data in this object will be deleted and
-        replaced with empty pings for the ping times in the other object.
-
-
-        Args:
-            other_data (ping_data): A ping_data type object that this object
-            will be matched to.
-
-            match_to (str): Set to a string defining the precision of the match.
-
-                cs : Match to a 100th of a second
-                ds : Match to a 10th of a second
-                s  : Match to the second
-        Returns:
-            A dictionary with the keys 'inserted' and 'removed' containing the
-            indices of the pings inserted and removed.
-
-        """
-        return super(processed_data, self).match_pings(other_data, match_to='cs')
 
 
     def __str__(self):
