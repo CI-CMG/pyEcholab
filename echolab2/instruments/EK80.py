@@ -2850,7 +2850,7 @@ class raw_data(ping_data):
 
         # Check if we need to convert to depth
         if return_depth:
-            p_data.to_depth(calibration)
+            p_data.to_depth()
 
         # check if we're clearing the cached intermediate data in the cal object
         if clear_cache:
@@ -3053,7 +3053,7 @@ class raw_data(ping_data):
 
         # Check if we need to convert to depth or heave correct.
         if return_depth:
-            p_data.to_depth(calibration)
+            p_data.to_depth()
 
         # check if we're clearing the cached intermediate data in the cal object
         if clear_cache:
@@ -3298,8 +3298,8 @@ class raw_data(ping_data):
 
         # Apply depth and/or heave correction
         if return_depth:
-            alongship.to_depth(calibration)
-            athwartship.to_depth(calibration)
+            alongship.to_depth()
+            athwartship.to_depth()
 
         return alongship, athwartship, return_indices
 
@@ -3917,52 +3917,10 @@ class raw_data(ping_data):
         # Check if we're returning linear or log values.
         if linear:
             # Convert to linear units.
-            data /= 10.0
-            data **= 10.0
+            data[:] = 10 ** (data / 10.0)
 
         # Return the result.
         return data
-
-
-    def _to_depth(self, p_data, calibration, heave_correct, return_indices):
-        """Converts data to depth.
-
-        This is an internal method that converts data from range to depth and
-        optionally applies heave correction.
-
-        Args:
-            p_data: A processed data object containing data to convert.
-            calibration (calibration object): The calibration object where
-                calibration data will be retrieved.
-            heave_correct (bool): Set to True to apply heave correction.
-            return_indices (array): A numpy array of indices to return.
-        """
-
-        # Populate the calibration parameters required for this method.
-        # First, create a dictionary with key names that match the attribute
-        # names of the calibration parameters we require for this method.
-        cal_parms = {'transducer_depth':None,
-                     'heave':None}
-
-        # Next, iterate through the dictionary, calling the method to extract
-        # the values for each parameter.
-        for key in cal_parms:
-            cal_parms[key] = calibration.get_parameter(self, key,
-                    return_indices)
-
-        # Check if we're applying heave correction and/or returning depth by
-        # applying a transducer offset.
-        if heave_correct:
-            # Heave correction implies returning depth.  Determine the
-            # vertical shift per-ping.
-            vert_shift = cal_parms['heave'] + cal_parms['transducer_depth']
-        else:
-            # We're only converting to depth, determine the vertical shift
-            # per-ping only applying the transducer draft.
-            vert_shift = cal_parms['transducer_depth']
-
-        # Now shift the pings.
-        p_data.shift_pings(vert_shift, to_depth=True)
 
 
     def _create_arrays(self, n_pings, n_samples, initialize=False, create_power=False,

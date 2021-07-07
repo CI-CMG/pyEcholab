@@ -2414,7 +2414,7 @@ class raw_data(ping_data):
 
         # Check if we need to convert to depth
         if return_depth:
-            p_data.to_depth(calibration)
+            p_data.to_depth()
 
         return p_data
 
@@ -2574,7 +2574,7 @@ class raw_data(ping_data):
 
         # Check if we need to convert to depth or heave correct.
         if return_depth:
-            p_data.to_depth(calibration)
+            p_data.to_depth()
 
         return p_data
 
@@ -2828,8 +2828,8 @@ class raw_data(ping_data):
 
         # Covert to depth
         if return_depth:
-            alongship.to_depth(calibration)
-            athwartship.to_depth(calibration)
+            alongship.to_depth()
+            athwartship.to_depth()
 
         return alongship, athwartship
 
@@ -2940,8 +2940,8 @@ class raw_data(ping_data):
 
         # Apply depth and/or heave correction
         if return_depth:
-            alongship.to_depth(calibration)
-            athwartship.to_depth(calibration)
+            alongship.to_depth()
+            athwartship.to_depth()
 
         return alongship, athwartship, return_indices
 
@@ -3280,9 +3280,8 @@ class raw_data(ping_data):
 
         # Check if we're returning linear or log values.
         if linear:
-            # Convert to linear units
-            data /= 10.00
-            data **= 10.0
+            # Convert to linear units.
+            data[:] = 10 ** (data / 10.0)
 
         # Return the result.
         return data
