@@ -155,9 +155,9 @@ class QEchogramViewer(QViewerBase):
         be used if you want to pass vertices as ping number, sample number pairs.
 
               text (string)   - The text to add to the scene.
-          position (QPointF)  - The position of the text anchor point. If useXY is False, the
-                                position must be in lon/lat. If useXY is True the position will
-                                be in transformed x,y coordinates.
+          position (list)     - The position of the text anchor point. If useXY is False, the
+                                position must be in time, depth/range. If useXY is True the
+                                position must be in ping number, sample number coordinates.
               size (int)      - The text size, in point size
               font (string)   - A string containing the font family to use. Either stick
                                 to the basics with this (i.e. "times", "helvetica") or
@@ -179,6 +179,13 @@ class QEchogramViewer(QViewerBase):
             name (string)     - Set this to the name associated with the text object. The name
                                 can be used to differentiate between your text objects.
         """
+
+        #  the axesToPixels method assumes vertices will be passed as a list of
+        #  [x,y] lists. This isn't intuitive for items placed at a single coord
+        #  like text and marks so we check if this is a single [x,y] list and
+        #  wrap it in a list if so.
+        if not isinstance(position[0], list):
+            position = [position]
 
         if (not useXY):
             position = self.axesToPixels(position)
@@ -306,6 +313,13 @@ class QEchogramViewer(QViewerBase):
                 name (string) - A string specifying the name associated with this mark. You
                                 can use mark names to differentiate between your marks.
         """
+
+        #  the axesToPixels method assumes vertices will be passed as a list of
+        #  [x,y] lists. This isn't intuitive for items placed at a single coord
+        #  like text and marks so we check if this is a single [x,y] list and
+        #  wrap it in a list if so.
+        if not isinstance(position[0], list):
+            position = [position]
 
         #  check if we need to convert the points
         if (not useXY):

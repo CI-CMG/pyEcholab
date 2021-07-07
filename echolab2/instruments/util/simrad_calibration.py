@@ -396,10 +396,6 @@ class calibration(object):
         # Since we can have "empty" pings where the array of dicts we're unpacking
         # may contain NaNs, we can't assume the first (or any) ping will contain
         # data and have to search for the first dict in the array.
-
-        if param_name == 'sound_speed':
-            print()
-
         found_data = False
         for idx in return_indices:
             # Check if this attribute is a dict

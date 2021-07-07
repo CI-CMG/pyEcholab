@@ -460,6 +460,7 @@ class RawSimradFile(BufferedReader):
 
     def _find_next_datagram(self):
         old_file_pos = self._tell_bytes()
+
         log.warning('Attempting to find next valid datagram...')
 
         while self.peek()['type'][:3] not in list(self.DGRAM_TYPE_KEY.keys()):

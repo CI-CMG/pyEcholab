@@ -106,6 +106,10 @@ class EK60(object):
             read. An empty list will result in all channels being read.
     """
 
+    # Specify the default raw data allocation size (in pings) that is used
+    # when .idx files are not available.
+    DEFAULT_CHUNK_SIZE = 1000
+
     def __init__(self):
         """Initializes EK60 class object.
 
@@ -155,6 +159,11 @@ class EK60(object):
         # channel_ids of the channels to read. An empty list will result in all
         # channels being read.
         self.read_channel_ids = []
+
+        # raw_data_width defines the allocation chunk size (in pings) used by
+        # the raw data objects. If .idx files are availble, this will be modified
+        # on a per file basis based on the number of pings in the .idx file.
+        self.raw_data_width = EK60.DEFAULT_CHUNK_SIZE
 
         #  initialize the data arrays
         self._init()
@@ -227,16 +236,11 @@ class EK60(object):
         #  initialize the ping time - used to group "pings"
         self._this_ping_time = np.datetime64('1000-02')
 
-        #  _last_progress stores the last reported progess through the current
-        #  file in percent as integer.
-        self._last_progress = -1
-
         # _config stores a reference to the current file's configuration datagram.
         self._config = None
 
         # file_channel_map maps channel number to channel ID for the current file.
         self._file_channel_map = {}
-
 
 
     def read_out(self, read_nmea=False,  *args, **kwargs):
@@ -346,7 +350,7 @@ class EK60(object):
                 end_time=None, start_ping=None, end_ping=None, frequencies=None,
                 channel_ids=None, time_format_string='%Y-%m-%d %H:%M:%S',
                 incremental=None, start_sample=None, end_sample=None,
-                progress_callback=None):
+                progress_callback=None, callback_ref=None):
 
         """Reads one or more Simrad Ex60/ES70/ME70 .raw files and appends the data to any
         existing data. The data are ordered as read.
@@ -378,11 +382,15 @@ class EK60(object):
             end_sample (int): Specify ending sample number if not
                 reading to last sample.
             progress_callback (function reference): Pass a reference to a
-                function that accepts three arguments:
-                    (filename, cumulative_pct, cumulative_bytes)
+                function that accepts four arguments:
+                    (filename, cumulative_pct, cumulative_bytes, callback_ref)
                 This function will be periodicaly called, passing the
                 current file name that is being read, the percent read,
-                and the bytes read.
+                the bytes read and the callback_userref.
+            callback_ref (user defined): Set this to a reference you want
+                passed to your callback. This same reference will be passed as
+                the last argument of the callback function. This can be used to
+                pass a reference to a state variable or
         """
 
         # Update the reader state variables.
@@ -421,15 +429,38 @@ class EK60(object):
             self._config = None
             self._file_channel_map = {}
             self._file_channels = 0
-
-            #  get the total file size
-            total_bytes = os.stat(filename).st_size
+            last_progress = -1
 
             #  normalize the file path and split out the parts
             filename = os.path.normpath(filename)
             file_parts = filename.split(os.path.sep)
             current_filename = file_parts[-1]
             current_filepath = os.path.sep.join(file_parts[0:-1])
+
+            #  get the total file size
+            try:
+                total_bytes = os.stat(filename).st_size
+            except:
+                raise IOError('Unable to open raw file ' + filename + ' for reading.')
+
+            # Check if there is an .idx file for this raw file
+            try:
+                # assume the .idx file is colocated with the .raw file
+                idx_filename = filename[:-3] + 'idx'
+                # read the .idx file
+                idx_data = self.read_idx(idx_filename)
+                # determine the number of pings
+                file_n_pings = len(idx_data)
+                # make sure the index file is valid
+                if file_n_pings == 0:
+                    # The index file is invalid
+                    self.raw_data_width = EK60.DEFAULT_CHUNK_SIZE
+                else:
+                    # set the raw data allocation size to the number of pings+1
+                    self.raw_data_width = file_n_pings + 1
+            except:
+                # Default to an allocation size of 500 pings
+                self.raw_data_width = EK60.DEFAULT_CHUNK_SIZE
 
             # open the raw file
             fid = RawSimradFile(filename, 'r')
@@ -464,15 +495,16 @@ class EK60(object):
                 if (progress_callback):
                     #  determine the progress as an integer percent.
                     cumulative_bytes += dg_info['bytes_read']
-                    cumulative_pct = round(cumulative_bytes / total_bytes * 100.)
+                    cumulative_pct = int(round(float(cumulative_bytes) / total_bytes * 100.))
 
                     #  call the callback when the percent changes
-                    if cumulative_pct != self._last_progress:
+                    if cumulative_pct != last_progress:
                         #  call the provided callback - the callback has 3 args,
                         #  the first is the full path to the current file and the
                         #  second is the percent read and the third is the bytes read.
-                        progress_callback(filename, cumulative_pct, cumulative_bytes)
-                        self._last_progress = cumulative_pct
+                        progress_callback(filename, cumulative_pct, cumulative_bytes,
+                                callback_ref)
+                        last_progress = cumulative_pct
 
                 #  update our finished state var - the file will be finished when
                 #  the reader hits the end of the file or if end time/ping are
@@ -489,6 +521,51 @@ class EK60(object):
         self.nmea_data.trim()
         self.motion_data.trim()
         self.annotations.trim()
+
+
+    def read_idx(self, idx_filename):
+        '''read_idx reads a Simrad EK60 .idx file.
+
+        Index files contain the ping number(starting at 1 from when the EK60 application was
+        started), the ping time, latitude, longitude, VLW distance, and file offset to the
+        first datagram of the ping ensemble for the referenced ping. There is one index datagram
+        for each ping and these should exist even if data from a ping was not recorded in the
+        raw file.
+
+        '''
+
+        idx_data = {}
+
+        try:
+            fid = RawSimradFile(idx_filename, 'r')
+        except:
+            raise IOError('Unable to open index file ' + idx_filename + ' for reading.')
+
+        # IDX files have a mostly empty config header
+        _ = fid.read(1)
+
+        try:
+            while True:
+                new_datagram = fid.read(1)
+
+                # Convert the timestamp to a datetime64 object.
+                # Check for NULL datagram date/time which is returned as datetime.datetime(1601, 1, 1, 0, 0)
+                if new_datagram['timestamp'].year < 1900:
+                    # This datagram has NULL date/time values
+                    new_datagram['timestamp'] = np.datetime64("NaT")
+                else:
+                    # We have a plausible date/time value
+                    new_datagram['timestamp'] = \
+                            np.datetime64(new_datagram['timestamp'], '[ms]')
+
+                idx_data[new_datagram['ping_number']] = {'distance':new_datagram['distance'],
+                        'latitude':new_datagram['latitude'], 'longitude':new_datagram['latitude'],
+                        'timestamp':new_datagram['timestamp'], 'file_offset':new_datagram['file_offset']}
+        except SimradEOF:
+            #  we're at the end of the file
+            pass
+
+        return idx_data
 
 
     def _read_config(self, fid):
@@ -693,11 +770,15 @@ class EK60(object):
                 this_raw_data = raw_data(new_datagram['channel_id'],
                         store_power=self.store_power,
                         store_angles=self.store_angles,
-                        max_sample_number=self.read_max_sample_count)
+                        max_sample_number=self.read_max_sample_count,
+                        n_pings=self.raw_data_width)
                 # Set the transceiver type
                 this_raw_data.transceiver_type = 'GPT'
                 #  and add it to this channel's list of raw_data objects
                 self.raw_data[new_datagram['channel_id']].append(this_raw_data)
+                # Set the motion_data and nmea_data references
+                this_raw_data.motion_data = self.motion_data
+                this_raw_data.nmea_data = self.nmea_data
 
             # Call this channel's append_ping method.
             this_raw_data.append_ping(new_datagram,
@@ -914,7 +995,7 @@ class EK60(object):
                  channel_ids=None,start_sample=None, end_sample=None, progress_callback=None,
                  overwrite=False, async_window=5, raw_index_array=None,
                  nmea_index_array=None, annotation_index_array=None,
-                 strip_padding=True):
+                 strip_padding=True, callback_ref=None):
         """Writes one or more Simrad Ex60/ES70/ME70 .raw files.
 
 
@@ -992,6 +1073,20 @@ class EK60(object):
                 that contain no data.) Padded pings are always removed before writing
                 because they lack not only sample data, but all synchronous ping
                 attributes. The default value is True.
+
+            progress_callback (function reference): Pass a reference to a
+                function that accepts four arguments:
+                    (filename, cumulative_pct, cumulative_bytes, callback_ref)
+                This function will be periodicaly called, passing the
+                current file name that is being read, the percent read,
+                the bytes read and the callback_userref.
+
+            callback_ref (user defined): Set this to a reference you want
+                passed to your callback. This reference will be passed as the
+                last argument to the callback function. This can be used, for
+                example, to pass a reference to a state variable shared with
+                your main application thread allowing the application to
+                display the read progress.
 
             The following keywords are for advanced indexing and writing of the
             data. This can allow you to easily write subsets of data where the
@@ -1386,7 +1481,7 @@ class EK60(object):
                     dgram_dict['pulse_length'] = dg_objects[idx].pulse_length[dg_obj_idx[idx]]
                     dgram_dict['bandwidth'] = dg_objects[idx].bandwidth[dg_obj_idx[idx]]
                     dgram_dict['sample_interval'] = dg_objects[idx].sample_interval[dg_obj_idx[idx]]
-                    dgram_dict['sound_velocity'] = dg_objects[idx].sound_velocity[dg_obj_idx[idx]]
+                    dgram_dict['sound_velocity'] = dg_objects[idx].sound_speed[dg_obj_idx[idx]]
                     dgram_dict['absorption_coefficient'] = dg_objects[idx].absorption_coefficient[dg_obj_idx[idx]]
                     dgram_dict['heave'] = this_heave
                     dgram_dict['roll'] = this_roll
@@ -1480,7 +1575,8 @@ class EK60(object):
                         # the first is the full path to the current file and the
                         # second is the percent written and the third is the bytes
                         # written.
-                        progress_callback(outfile_name, pct_progress, bytes_written)
+                        progress_callback(outfile_name, pct_progress, bytes_written,
+                                callback_ref)
                         cumulative_pct = pct_progress
 
                 # Increment our datagram counter - do this after the progress callback
@@ -1649,6 +1745,18 @@ class raw_data(ping_data):
         # GPT.
         self.transceiver_type = 'GPT'
 
+        # motion_data stores a reference to the motion_data object created by
+        # the EK80 class when data are read. The motion_data object stores the
+        # heading, pitch, roll, and heave data recorded by the EK80 system if
+        # the motion sensor was installed.
+        self.motion_data = None
+
+        # nmea_data stores a reference to the nmea_data object created by
+        # the EK80 class when data are read. The nmea_data object stores the
+        # asyncronous NMEA-0183 data input into the EK80 system such as GPS,
+        # Gyro, vessel distance log, etc.
+        self.nmea_data = None
+
         # Data_attributes is an internal list that contains the names of all
         # of the class's "data" properties. The echolab2 package uses this
         # attribute to generalize various functions that manipulate these
@@ -1660,7 +1768,7 @@ class raw_data(ping_data):
                                   'pulse_length',
                                   'bandwidth',
                                   'sample_interval',
-                                  'sound_velocity',
+                                  'sound_speed',
                                   'absorption_coefficient',
                                   'temperature',
                                   'transmit_mode',
@@ -1675,7 +1783,9 @@ class raw_data(ping_data):
                                 'store_angles',
                                 'max_sample_number',
                                 'data_type',
-                                'transceiver_type']
+                                'transceiver_type',
+                                'motion_data',
+                                'nmea_data']
 
 
     def empty_like(self, n_pings, empty_times=True, no_data=False):
@@ -1889,7 +1999,7 @@ class raw_data(ping_data):
         self.pulse_length[this_ping] = sample_datagram['pulse_length']
         self.bandwidth[this_ping] = sample_datagram['bandwidth']
         self.sample_interval[this_ping] = sample_datagram['sample_interval']
-        self.sound_velocity[this_ping] = sample_datagram['sound_velocity']
+        self.sound_speed[this_ping] = sample_datagram['sound_velocity']
         self.absorption_coefficient[this_ping] = sample_datagram['absorption_coefficient']
         self.temperature[this_ping] = sample_datagram['temperature']
         self.transmit_mode[this_ping] = sample_datagram['transmit_mode']
@@ -2469,8 +2579,7 @@ class raw_data(ping_data):
         return p_data
 
 
-    def get_bottom(self, calibration=None, return_indices=None,
-            return_depth=False, **kwargs):
+    def get_bottom(self, calibration=None, return_indices=None, **kwargs):
         """Gets a echolab2 line object containing the sounder detected bottom
         depths.
 
@@ -2495,10 +2604,6 @@ class raw_data(ping_data):
                 you want to use when transforming to Sv/sv. If no calibration
                 object is provided, the values will be extracted from the raw
                 data.
-
-            return_depth (bool): Set to True to return a line object with a
-                with a depth axis. When False, the line object has a range axis.
-                Default: False
 
             start_time (datetime64): Set to a numpy datetime64 oject specifying
                 the start time of the data to convert. All data between the start
@@ -2553,10 +2658,10 @@ class raw_data(ping_data):
             calibration = ek60_calibration()
 
         # Extract the recorded sound velocity.
-        sv_recorded = self.sound_velocity[return_indices]
+        sv_recorded = self.sound_speed[return_indices]
 
         # Get the calibration params required for detected depth conversion.
-        cal_parms = {'sound_velocity':None,
+        cal_parms = {'sound_speed':None,
                      'transducer_depth':None}
 
         # Next, iterate through the dict, calling the method to extract the
@@ -2566,20 +2671,26 @@ class raw_data(ping_data):
                     return_indices)
 
         # Check if we have to adjust the depth due to a change in sound speed.
-        if np.all(np.isclose(sv_recorded, cal_parms['sound_velocity'])):
+        if np.all(np.isclose(sv_recorded, cal_parms['sound_speed'])):
             converted_depths = self.detected_bottom[return_indices]
         else:
-            cf = cal_parms['sound_velocity'].astype('float') / sv_recorded
+            cf = cal_parms['sound_speed'].astype('float') / sv_recorded
             converted_depths = cf * self.detected_bottom[return_indices]
-
-        # Check if we're returning range by subtracting a transducer offset.
-        if return_depth == False:
-            # Data is recorded as depth - convert to range.
-            converted_depths -= cal_parms['transducer_depth'][return_indices]
 
         # Create a line object to return with our adjusted data.
         bottom_line = line.line(ping_time=self.ping_time[return_indices],
                 data=converted_depths, **kwargs)
+
+        # Get the transducer offset attribute.
+        xdcr_draft = cal_parms['transducer_depth'][return_indices]
+
+        # Get the heave attribute if available and add to the xdcr draft
+        _, heave_data = self.motion_data.interpolate(bottom_line, 'heave')
+        if heave_data['heave'] is not None:
+            xdcr_draft += heave_data['heave']
+
+        # and then add the transducer_draft attribute to our line
+        bottom_line.add_data_attribute('transducer_draft', xdcr_draft)
 
         return bottom_line
 
@@ -2962,7 +3073,7 @@ class raw_data(ping_data):
         # First, create a dict with key names that match the attributes names
         # of the calibration parameters we require for this method.
         cal_parms = {'sample_interval':None,
-                     'sound_velocity':None,
+                     'sound_speed':None,
                      'sample_offset':None,
                      'pos_z':None,
                      'transducer_depth':None}
@@ -3007,7 +3118,7 @@ class raw_data(ping_data):
             sample_interval = unique_sample_interval[0]
 
         # Check if we have a fixed sound speed.
-        unique_sound_velocity = np.unique(cal_parms['sound_velocity'][~np.isnan(cal_parms['sound_velocity'])])
+        unique_sound_velocity = np.unique(cal_parms['sound_speed'][~np.isnan(cal_parms['sound_speed'])])
         if unique_sound_velocity.shape[0] > 1:
             # There are at least 2 different sound speeds in the data or
             # provided calibration data.  Interpolate all data to the most
@@ -3016,7 +3127,7 @@ class raw_data(ping_data):
             n = 0
             for speed in unique_sound_velocity:
                 # Determine the sound speed with the most pings.
-                if np.count_nonzero(cal_parms['sound_velocity'] == speed) > n:
+                if np.count_nonzero(cal_parms['sound_speed'] == speed) > n:
                    sound_velocity = speed
 
             # Calculate the target range.
@@ -3029,27 +3140,16 @@ class raw_data(ping_data):
                 if speed != sound_velocity:
 
                     # Get an array of indexes in the output array to interpolate.
-                    pings_to_interp = np.where(cal_parms['sound_velocity'] == speed)[0]
+                    pings_to_interp = np.where(cal_parms['sound_speed'] == speed)[0]
 
                     # Compute this data's range
                     resample_range = get_range_vector(output.shape[1], sample_interval,
-                        cal_parms['sound_velocity'][pings_to_interp[0]], min_sample_offset)
+                        cal_parms['sound_speed'][pings_to_interp[0]], min_sample_offset)
 
                     # Interpolate samples to target range
                     interp_f = interp1d(resample_range, output[pings_to_interp,:], axis=1,
                             bounds_error=False, fill_value=np.nan, assume_sorted=True)
                     output[pings_to_interp,:] = interp_f(resample_range)
-
-#            # Get an array of indexes in the output array to interpolate.
-#            pings_to_interp = np.where(cal_parms['sound_velocity'] != sound_velocity)[0]
-#
-#            # Iterate through this list of pings to change.  Interpolating each
-#            # ping.
-#            for ping in pings_to_interp:
-#                # Resample using the provided sound speed.
-#                resample_range = get_range_vector(output.shape[1], sample_interval,
-#                        cal_parms['sound_velocity'][ping], min_sample_offset)
-#                output[ping,:] = np.interp(range, resample_range, output[ping, :])
 
         else:
             # We have a fixed sound speed and only need to calculate a single
@@ -3067,19 +3167,20 @@ class raw_data(ping_data):
         # Now assign range, sound_velocity, sample thickness and offset to
         # the processed_data object.
         p_data.add_data_attribute('range', range)
-        p_data.sound_velocity = sound_velocity
+        p_data.sound_speed = sound_velocity
         p_data.sample_thickness = sample_thickness
         p_data.sample_offset = min_sample_offset
         p_data.sample_interval = sample_interval
 
-        # Add the transducer draft attribute - We're going to assume that
-        # if pos_z is set, that transducer_depth is relative to that. This
-        # may not always be true. Also making the assumption that the Z
-        # axis is positive out of the water.
+        # Add the transducer offset attribute
+        xdcr_offset = cal_parms['pos_z'] + cal_parms['transducer_depth']
+        p_data.add_data_attribute('transducer_offset', xdcr_offset)
 
-        # Compute the draft and add the attribute
-        xdcr_draft =  -cal_parms['pos_z'] + cal_parms['transducer_depth']
-        p_data.add_data_attribute('transducer_draft', xdcr_draft)
+        # Add the heave attribute is available.
+        _, heave_data = self.motion_data.interpolate(p_data, 'heave')
+        if  heave_data['heave'] is not None:
+            p_data.add_data_attribute('heave', heave_data['heave'])
+
 
         # Return the processed_data object containing the requested data.
         return p_data, return_indices
@@ -3122,21 +3223,21 @@ class raw_data(ping_data):
             cal_parms[key] = calibration.get_parameter(self, key,
                     return_indices)
 
-        # Get sound_velocity from the power data since get_power might have
+        # Get sound_speed from the power data since get_power might have
         # manipulated this value. Remember that we're operating on a
         # processed_data object so all pings share the same sound speed.
-        cal_parms['sound_velocity'] = np.empty((return_indices.shape[0]),
+        cal_parms['sound_speed'] = np.empty((return_indices.shape[0]),
                 dtype=self.sample_dtype)
-        cal_parms['sound_velocity'].fill(power_data.sound_velocity)
+        cal_parms['sound_speed'].fill(power_data.sound_speed)
 
         # For EK60 hardware use pulse duration when computing gains
         effective_pulse_duration = cal_parms['pulse_length']
 
         # Calculate the system gains.
-        wavelength = cal_parms['sound_velocity'] / power_data.frequency
+        wavelength = cal_parms['sound_speed'] / power_data.frequency
         if convert_to in ['sv','Sv']:
             gains = 10 * np.log10((cal_parms['transmit_power'] * (10**( cal_parms['gain'] / 10.0))**2 *
-                    wavelength**2 * cal_parms['sound_velocity'] * effective_pulse_duration *
+                    wavelength**2 * cal_parms['sound_speed'] * effective_pulse_duration *
                 10**(cal_parms['equivalent_beam_angle']/10.0)) / (32 * np.pi**2))
         else:
             gains = 10 * np.log10((cal_parms['transmit_power'] * (10**(
@@ -3215,7 +3316,7 @@ class raw_data(ping_data):
         self.pulse_length = np.empty((n_pings), np.float32)
         self.bandwidth = np.empty((n_pings), np.float32)
         self.sample_interval = np.empty((n_pings), np.float32)
-        self.sound_velocity = np.empty((n_pings), np.float32)
+        self.sound_speed = np.empty((n_pings), np.float32)
         self.absorption_coefficient = np.empty((n_pings), np.float32)
         self.temperature = np.empty((n_pings), np.float32)
         self.transmit_mode = np.empty((n_pings), np.uint8)
@@ -3250,7 +3351,7 @@ class raw_data(ping_data):
             self.pulse_length.fill(np.nan)
             self.bandwidth.fill(np.nan)
             self.sample_interval.fill(np.nan)
-            self.sound_velocity.fill(np.nan)
+            self.sound_speed.fill(np.nan)
             self.absorption_coefficient.fill(np.nan)
             self.temperature.fill(np.nan)
             self.transmit_mode.fill(0)
@@ -3336,7 +3437,7 @@ class ek60_calibration(calibration):
 
         #  these attributes are properties of the raw_data class
         self._raw_attributes = ['transducer_depth', 'frequency', 'transmit_power', 'pulse_length',
-                'bandwidth' ,'sample_interval' ,'sound_velocity' ,'absorption_coefficient', 'temperature',
+                'bandwidth' ,'sample_interval' ,'sound_speed' ,'absorption_coefficient', 'temperature',
                 'transmit_mode','sample_offset','sample_count']
         self._init_attributes(self._raw_attributes)
 

@@ -28,7 +28,7 @@ import matplotlib.pyplot as plt
 
 
 
-def read_write_callback(filename, cumulative_pct, cumulative_bytes):
+def read_write_callback(filename, cumulative_pct, cumulative_bytes, userref):
     '''
     read_write_callback is a simple example of using the progress_callback
     functionality of the EK60.read_raw and EK60.write_raw methods.

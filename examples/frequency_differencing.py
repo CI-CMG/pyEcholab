@@ -158,7 +158,7 @@ subplots_adjust(left=0.1, bottom=.1, right=0.98, top=.90, wspace=None,
 
 # Plot the original data.
 ax = fig.add_subplot(4, 1, 1)
-# Use the view method to return a ProcessedData object that is a view into
+# Use the view method to return a processed_data object that is a view into
 # our original data. We will plot all pings and samples 0-2000.
 v_data = Sv_data[18000].view((None, None, None),(0, 2000, None))
 eg = echogram.Echogram(ax, v_data, threshold=[-70, -34])

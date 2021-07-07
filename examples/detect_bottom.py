@@ -60,8 +60,9 @@ ek60.read_bot(botfiles)
 
 
 
-# Get a reference to the RawData object for specified channels.
+# Get a reference to the raw_data object for specified channels.
 raw_data = ek60.get_channel_data(frequencies=frequencies_to_read)
+
 # Grab the first raw_data object for each frequency
 raw_data_38 = raw_data[38000][0]
 raw_data_120 = raw_data[120000][0]
@@ -70,57 +71,53 @@ raw_data_120 = raw_data[120000][0]
 cal_obj_38 = raw_data_38.get_calibration()
 cal_obj_120 = raw_data_120.get_calibration()
 
-
 # Get Sv data.
-Sv_38_as_depth = raw_data_38.get_Sv(calibration=cal_obj_38,
-        return_depth=True)
-Sv_120_as_depth = raw_data_120.get_Sv(calibration=cal_obj_120,
-        return_depth=True)
+Sv_38 = raw_data_38.get_Sv(calibration=cal_obj_38)
+Sv_120 = raw_data_120.get_Sv(calibration=cal_obj_120)
 
-# Apply heave correction to the Sv data
-Sv_38_as_depth.heave_correct(cal_obj_38)
-Sv_120_as_depth.heave_correct(cal_obj_120)
+# Apply heave correction to the Sv data. This will also transform the
+# vertical axis from range to depth since heave correction implies a
+# depth grid.
+Sv_38.heave_correct()
+Sv_120.heave_correct()
 
-# Get the sounder detected bottom data.  The astute observer would wonder why
-# we're applying heave correction to the sounder detected bottom since you
-# shouldn't do this (you only correct the underlying sample data which
-# defines the axes).  We have chosen to allow the heave_correct keyword in this
-# context to maintain a consistent interface with the get_* methods.  When
-# set, no heave correction is applied, but it ensures that get_bottom returns
-# *depth*.  You could achieve the same thing by setting the return_depth
-# keyword to True.
-bottom_38 = raw_data_38.get_bottom(calibration=cal_obj_38,
-        return_depth=True)
-bottom_120 = raw_data_120.get_bottom(calibration=cal_obj_120,
-        return_depth=True)
+# Get the sounder detected bottom data. Sounder deteced bottom as recorded
+# in .bot, .out, and .xyz files are always on a depth grid and they always
+# contain heave correction if heave data were input into the EK60/EK80
+# system when the data were recorded.
+bottom_38 = raw_data_38.get_bottom(calibration=cal_obj_38)
+bottom_120 = raw_data_120.get_bottom(calibration=cal_obj_120)
 
 #  now use our simple bottom detector to pick a bottom line for the 38. The bottom
 #  detector class returns a pyEcholab2 Line object representing the bottom.
-bottom_38_detected = bot_detector.detect(Sv_38_as_depth)
-#  Give the line a nice gold color (since we're using Matplotlib, our colors must
-#  be in the range of 0-1)
-bottom_38_detected.color = [244./255, 200./255, 66/255.]
+bottom_38_detected = bot_detector.detect(Sv_38)
 
-#  and pick the 120 and give it a gold color
-bottom_120_detected = bot_detector.detect(Sv_120_as_depth)
-bottom_120_detected.color = [244./255, 200./255, 66/255.]
+#  Set this line's color to purple
+bottom_38_detected.color = [1,1,0]
 
+#  and pick the 120 and give it a purple color
+bottom_120_detected = bot_detector.detect(Sv_120)
+bottom_120_detected.color = [1, 1, 0]
 
-print(bottom_38.data[0])
-print(bottom_38_detected.data[0])
 
 # Create matplotlib figures and display the results.
 fig_38 = figure()
-eg = echogram.Echogram(fig_38, Sv_38_as_depth, threshold=[-70, -34])
-eg.axes.set_title("Heave Corrected with Two Detected Bottoms - 38kHz")
-eg.plot_line(bottom_38, linewidth=1.5)
-eg.plot_line(bottom_38_detected, linewidth=1.5)
+eg = echogram.Echogram(fig_38, Sv_38, threshold=[-70, -34])
+fig_38.suptitle("Heave Corrected - 38kHz", fontsize=14)
+eg.axes.set_title("With sounder detected (yellow) and software detected " +
+        "(purple) bottom lines", fontsize=10)
+eg.add_colorbar(fig_38)
+eg.plot_line(bottom_38, linewidth=2)
+eg.plot_line(bottom_38_detected, linewidth=2)
 
 fig_120 = figure()
-eg = echogram.Echogram(fig_120, Sv_120_as_depth, threshold=[-70, -34])
-eg.axes.set_title("Heave Corrected with Two Detected Bottoms - 120kHz")
-eg.plot_line(bottom_120, linewidth=1.5)
-eg.plot_line(bottom_120_detected, linewidth=1.5)
+eg = echogram.Echogram(fig_120, Sv_120, threshold=[-70, -34])
+fig_120.suptitle("Heave Corrected - 120kHz", fontsize=14)
+eg.axes.set_title("With sounder detected (yellow) and software detected " +
+        "(purple) bottom lines", fontsize=10)
+eg.add_colorbar(fig_120)
+eg.plot_line(bottom_120, linewidth=2)
+eg.plot_line(bottom_120_detected, linewidth=2)
 
 show()
 

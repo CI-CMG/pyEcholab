@@ -34,7 +34,6 @@ $Id$
 '''
 
 import os
-import sys
 import numpy as np
 from scipy.interpolate import interp1d
 from .util.simrad_calibration import calibration
@@ -47,6 +46,7 @@ from .util import date_conversion
 from .util import simrad_parsers
 from ..ping_data import ping_data
 from ..processing.processed_data import processed_data
+from ..processing import line
 
 
 class EK80(object):
@@ -111,6 +111,10 @@ class EK80(object):
             read. An empty list will result in all channels being read.
     """
 
+    # Specify the default raw data allocation size (in pings) that is used
+    # when .idx files are not available.
+    DEFAULT_CHUNK_SIZE = 1000
+
     def __init__(self):
         """Initializes EK80 class object.
 
@@ -165,6 +169,11 @@ class EK80(object):
         # channels being read.
         self.read_channel_ids = []
 
+        # raw_data_width defines the allocation chunk size (in pings) used by
+        # the raw data objects. If .idx files are availble, this will be modified
+        # on a per file basis based on the number of pings in the .idx file.
+        self.raw_data_width = EK80.DEFAULT_CHUNK_SIZE
+
         #  initialize the data arrays
         self._init()
 
@@ -201,6 +210,9 @@ class EK80(object):
         # with that channel.
         self.raw_data = {}
 
+        # channel_number_map maps channel number to channel ID.
+        self.channel_number_map = {}
+
         # frequency_map maps frequency in Hz to channel ID.
         self.frequency_map = {}
 
@@ -231,15 +243,13 @@ class EK80(object):
         #  initialize the ping time - used to group "pings"
         self._this_ping_time = np.datetime64('1000-02')
 
-        #  _last_progress stores the last reported progess through the current
-        #  file in percent as integer.
-        self._last_progress = -1
-
         #  initialize some internal attributes
         self._config = None
         self._filters = {}
         self._tx_params = {}
         self._environment = None
+        self._file_n_channels = 0
+        self._file_channel_number_map = {}
 
 
     def read_raw(self, *args, **kwargs):
@@ -282,11 +292,80 @@ class EK80(object):
         self.append_raw(*args, **kwargs)
 
 
+    def read_bot(self, bot_files):
+        """Reads .bot formatted bottom detection files created by EK80 systems starting
+        with version 2.0.0. Previous versions did not generate .bot files.
+
+              *** You must read the corresponding .raw files first. ***
+
+        This method will read .bot files and insert the bottom detection data in
+        the appropriate raw_data object based on channel ID and data type. You can
+        use the raw_data.get_bottom() method to get a pyEcholab2 line object
+        representing the bottom detections. If you work with the bottom detection
+        data directly, remember that the depths are computed using the sound speed
+        at the time of collection. If you are using a different sound speed for
+        processing, you will need to adjust the raw bottom depths accordingly.
+
+        There are a few caveats and pitfalls that can arise when working with
+        .bot data files.
+
+        First, EK80 .bot files lack the a configuration header so it is impossible
+        to map bottom detections to a channel ID. Bot file detections are assumed to
+        be in the same order as the channels in their corresponding .raw files.
+        This means that all of the files you read must have the same channel
+        configuration. pyEcholab does not enforce this so
+
+        There is not always a 1:1 relationship between pings in a .bot file
+        and pings in a .raw file as was the case with EK60. The bottom detection
+        for the first or last ping may be in the previous or next .bot file.
+
+        If heave is being recorded, it is possible that the heave value applied
+        to the XYZ bottom detection for a particular ping will be different than
+        the heave value recorded in the XML environment datagram for that same
+        ping. This will result in a different bottom depth value for that ping.
+        It's probable that the heave recording rate plays a roll here.
+
+        Args:
+            bot_files (list): A list of .bot files to be read.
+
+        """
+
+        # Ensure that the bot_files argument is a list.
+        if isinstance(bot_files, str):
+            bot_files = [bot_files]
+
+        # Iterate through the list of .bot files to read.
+        for filename in bot_files:
+
+            #  normalize the file path and split out the parts
+            filename = os.path.normpath(filename)
+
+            # open the raw file
+            fid = RawSimradFile(filename, 'r')
+
+            #  create a variable to track when we're done reading.
+            finished = False
+
+            #  and read datagrams until we're done
+            while not finished:
+                #  read a datagram - method returns some basic info
+                dg_info = self._read_datagram(fid, False)
+
+                #  update our finished state var - the file will be finished when
+                #  the reader hits the end of the file or if end time/ping are
+                #  set and we hit that point.
+                finished = dg_info['finished']
+
+        #  close the file
+        fid.close()
+
+
     def append_raw(self, raw_files, power=None, angles=None, complex=None,
                  max_sample_count=None, start_time=None, end_time=None,
                  start_ping=None, end_ping=None, frequencies=None,
                  channel_ids=None, incremental=None, start_sample=None,
-                 end_sample=None, progress_callback=None, nmea=True):
+                 end_sample=None, progress_callback=None, nmea=True,
+                 callback_ref=None):
         """Reads one or more Simrad EK80 .raw files and appends the data to any
         existing data. The data are ordered as read.
 
@@ -319,17 +398,32 @@ class EK80(object):
             end_sample (int): Specify ending sample number if not
                 reading to last sample.
             progress_callback (function reference): Pass a reference to a
-                function that accepts three arguments:
-                    (filename, cumulative_pct, cumulative_bytes)
+                function that accepts four arguments:
+                    (filename, cumulative_pct, cumulative_bytes, callback_ref)
                 This function will be periodicaly called, passing the
                 current file name that is being read, the percent read,
-                and the bytes read.
+                the bytes read and the callback_userref.
+            callback_ref (user defined): Set this to a reference you want
+                passed to your callback. This reference will be passed as the
+                last argument to the callback function. This can be used, for
+                example, to pass a reference to a state variable shared with
+                your main application thread allowing the application to
+                display the read progress.
         """
+
+        def check_list(val):
+            if not isinstance(val, list):
+                val = [val]
+            return val
 
         # Update the reader state variables.
         if start_time:
+            if not isinstance(start_time, np.datetime64):
+                raise TypeError("start_time must be an instance of numpy.datetime64")
             self.read_start_time = start_time
         if end_time:
+            if not isinstance(end_time, np.datetime64):
+                raise TypeError("end_time must be an instance of numpy.datetime64")
             self.read_end_time = end_time
         if start_ping:
             self.read_start_ping = start_ping
@@ -348,13 +442,12 @@ class EK80(object):
         if max_sample_count:
             self.read_max_sample_count = max_sample_count
         if frequencies:
-            self.read_frequencies = frequencies
+            self.read_frequencies = check_list(frequencies)
         if channel_ids:
-            self.read_channel_ids = channel_ids
+            self.read_channel_ids = check_list(channel_ids)
 
         # Ensure that the raw_files argument is a list.
-        if isinstance(raw_files, str):
-            raw_files = [raw_files]
+        raw_files = check_list(raw_files)
 
         # Iterate through the list of .raw files to read.
         for filename in raw_files:
@@ -364,15 +457,41 @@ class EK80(object):
             self._filters = {}
             self._tx_params = {}
             self._environment = None
-
-            #  get the total file size
-            total_bytes = os.stat(filename).st_size
+            self._file_channel_number_map = {}
+            self._file_n_channels = 0
+            last_progress = -1
 
             #  normalize the file path and split out the parts
             filename = os.path.normpath(filename)
             file_parts = filename.split(os.path.sep)
             current_filename = file_parts[-1]
             current_filepath = os.path.sep.join(file_parts[0:-1])
+
+            #  get the total file size
+            try:
+                total_bytes = os.stat(filename).st_size
+            except:
+                raise IOError('Unable to open raw file ' + filename + ' for reading.')
+
+            # Check if there is an .idx file for this raw file
+            try:
+                # assume the .idx file is colocated with the .raw file
+                idx_filename = filename[:-3] + 'idx'
+                # read the .idx file
+                idx_data = self.read_idx(idx_filename)
+                # determine the number of pings
+                file_n_pings = len(idx_data)
+                # make sure the index file is valid
+                if file_n_pings == 0:
+                    # The index file is invalid - EK80 can generate
+                    # empty index files due to a bug?
+                    self.raw_data_width = EK80.DEFAULT_CHUNK_SIZE
+                else:
+                    # set the raw data allocation size to the number of pings+1
+                    self.raw_data_width = file_n_pings + 1
+            except:
+                # Default to an allocation size of 500 pings
+                self.raw_data_width = EK80.DEFAULT_CHUNK_SIZE
 
             # open the raw file
             fid = RawSimradFile(filename, 'r')
@@ -406,15 +525,18 @@ class EK80(object):
                 if (progress_callback):
                     #  determine the progress as an integer percent.
                     cumulative_bytes += dg_info['bytes_read']
-                    cumulative_pct = round(cumulative_bytes / total_bytes * 100.)
+                    cumulative_pct = int(round(float(cumulative_bytes) / total_bytes * 100.))
 
                     #  call the callback when the percent changes
-                    if cumulative_pct != self._last_progress:
+                    if cumulative_pct != last_progress:
                         #  call the provided callback - the callback has 3 args,
                         #  the first is the full path to the current file and the
-                        #  second is the percent read and the third is the bytes read.
-                        progress_callback(filename, cumulative_pct, cumulative_bytes)
-                        self._last_progress = cumulative_pct
+                        #  second is the percent read and the third is the bytes read
+                        #  and the last is a generic reference that can be set bu the
+                        #  caller.
+                        progress_callback(filename, cumulative_pct, cumulative_bytes,
+                                callback_ref)
+                        last_progress = cumulative_pct
 
                 #  update our finished state var - the file will be finished when
                 #  the reader hits the end of the file or if end time/ping are
@@ -433,6 +555,51 @@ class EK80(object):
         self.annotations.trim()
 
 
+    def read_idx(self, idx_filename):
+        '''read_idx reads a Simrad EK80 .idx file.
+
+        Index files contain the ping number(starting at 1 from when the EK80 application was
+        started), the ping time, latitude, longitude, VLW distance, and file offset to the
+        first datagram of the ping ensemble for the referenced ping. There is one index datagram
+        for each ping and these should exist even if data from a ping was not recorded in the
+        raw file.
+
+        '''
+
+        idx_data = {}
+
+        try:
+            fid = RawSimradFile(idx_filename, 'r')
+        except:
+            raise IOError('Unable to open index file ' + idx_filename + ' for reading.')
+
+        # IDX files have a mostly empty XML config header
+        _ = fid.read(1)
+
+        try:
+            while True:
+                new_datagram = fid.read(1)
+
+                # Convert the timestamp to a datetime64 object.
+                # Check for NULL datagram date/time which is returned as datetime.datetime(1601, 1, 1, 0, 0)
+                if new_datagram['timestamp'].year < 1900:
+                    # This datagram has NULL date/time values
+                    new_datagram['timestamp'] = np.datetime64("NaT")
+                else:
+                    # We have a plausible date/time value
+                    new_datagram['timestamp'] = \
+                            np.datetime64(new_datagram['timestamp'], '[ms]')
+
+                idx_data[new_datagram['ping_number']] = {'distance':new_datagram['distance'],
+                        'latitude':new_datagram['latitude'], 'longitude':new_datagram['latitude'],
+                        'timestamp':new_datagram['timestamp'], 'file_offset':new_datagram['file_offset']}
+        except SimradEOF:
+            #  we're at the end of the file
+            pass
+
+        return idx_data
+
+
     def _read_config(self, fid):
         '''
         _read_config reads the raw file configuration datagram. It then checks if
@@ -440,30 +607,37 @@ class EK80(object):
         raw_data objects for those channels and updates some attributes.
         '''
 
-        #  read the configuration datagram - this is the first datagram
-        #  in an EK80 file.
+        #  read the configuration datagram - this is the first datagram in an EK80 file.
         config_datagram = fid.read(1)
         config_datagram['timestamp'] = \
                 np.datetime64(config_datagram['timestamp'], '[ms]')
 
-        # check for any new channels and add them if required
+        # check for any new channels and add them if required - remove
+        # any we aren't reading.
         file_channels = config_datagram['configuration'].keys()
+        remove_channels = []
         for channel_id in file_channels:
+
+            # increment the file channel counter and add this channel to the
+            # file's channel number map.
+            self._file_n_channels += 1
+            self._file_channel_number_map[self._file_n_channels] = channel_id
+
             #  check if we're reading this channel
             if (not self.read_channel_ids or channel_id in self.read_channel_ids):
                 #  check if we're reading this frequency
                 frequency = config_datagram['configuration'][channel_id]['transducer_frequency']
                 if (self.read_frequencies and frequency not in self.read_frequencies):
                     # There are specific frequencies specified and this
-                    # is NOT one of them. Remove this channel from the config_datagram
-                    # dictionary and continue.
-                    config_datagram['configuration'].pop(channel_id)
+                    # is NOT one of them. Mark the channel for removal from
+                    # config_datagram dictionary and continue. We can't remove
+                    # it inside this loop.
+                    remove_channels.append(channel_id)
                     continue
 
                 #  we're reading this channel - check if it's new to us
                 if channel_id not in self.raw_data:
-                    # This is a new channel, create a list to store this
-                    # channel's raw_data objects
+                    # This is a new channel, create a list to store this channel's raw_data objects
                     self.raw_data[channel_id] = []
 
                     #  add the channel to our list of channel IDs
@@ -471,6 +645,9 @@ class EK80(object):
 
                     #  and increment the channel counter
                     self.n_channels += 1
+
+                    # populate the channel number map
+                    self.channel_number_map[self.n_channels] = channel_id
 
                     # and populate the frequency map
                     if frequency in self.frequency_map:
@@ -482,6 +659,10 @@ class EK80(object):
                 if channel_id not in self._filters:
                     #  and an empty dict to store this channel's filters
                     self._filters[channel_id] = {}
+
+        # Now remove any channels marked for removal
+        for channel_id in remove_channels:
+            config_datagram['configuration'].pop(channel_id)
 
         # Return the configuration datagram dict
         return config_datagram
@@ -502,6 +683,11 @@ class EK80(object):
             fid (file object): Pointer to currently open file object. This is a
                 RawSimradFile file object and not the standard Python file
                 object.
+
+            nmea (bool): Set to True to read NMEA datagrams. If False, NMEA
+                datagrams will be discarded. This is primarily used with ES60
+                and Mk1 EK60 .bot files that contain a copy of NMEA which is
+                also recorded in the .raw file.
         """
         #  create the return dict that provides feedback on progress
         result = {'bytes_read':0, 'timestamp':None, 'type':None, 'finished':False}
@@ -658,10 +844,15 @@ class EK80(object):
                             store_power=self.store_power,
                             store_angles=self.store_angles,
                             store_complex=self.store_complex,
-                            max_sample_number=self.read_max_sample_count)
+                            max_sample_number=self.read_max_sample_count,
+                            n_pings=self.raw_data_width)
                     # Set the transceiver type
                     this_raw_data.transceiver_type = \
                             self._config[new_datagram['channel_id']]['transceiver_type']
+                    # Set the motion_data and nmea_data references
+                    this_raw_data.motion_data = self.motion_data
+                    this_raw_data.nmea_data = self.nmea_data
+
                     #  and add it to this channel's list of raw_data objects
                     self.raw_data[new_datagram['channel_id']].append(this_raw_data)
 
@@ -692,6 +883,35 @@ class EK80(object):
             self.motion_data.add_datagram(new_datagram['timestamp'],
                     new_datagram['heave'], new_datagram['pitch'],
                     new_datagram['roll'], new_datagram['heading'])
+
+        # BOT datagrams contain bottom detections
+        elif new_datagram['type'].startswith('BOT'):
+            # iterate through the channels in this .bot file
+            for idx, depth in enumerate(new_datagram['depth']):
+                # Get this detection's channel ID
+                # Note that this only works if the channels in the .raw file(s)
+                # read match the channels in the .bot file. EK80 bot files provide
+                # no channel ID information so a more robust mapping is not possible.
+                this_chan = self._file_channel_number_map.get(idx+1, None)
+
+                # Check if we have data for this channel
+                if this_chan in self.raw_data:
+                    # This is hokey, but there is no way to know which data object
+                    # this depth applies to so we just try for all data objects.
+                    for data in self.raw_data[this_chan]:
+                        # In order to avoid checking the index array below for every
+                        # chan/datatype, we'll check for and add if needed the
+                        # bottom detection attribute to alldata objects if any
+                        # bottom data is read.
+                        if not hasattr(data, 'detected_bottom'):
+                            # This data object doesn't have the detected_bottom attribute.
+                            # Create and add it.
+                            new_attr = np.full((data.ping_time.shape), np.nan, np.float32)
+                            data.add_data_attribute('detected_bottom', new_attr)
+
+                        # Get the index of this detection and insert into data object
+                        ping_idx = data.ping_time == new_datagram['timestamp']
+                        data.detected_bottom[ping_idx] = new_datagram['depth'][idx]
 
         else:
             #  report an unknown datagram type
@@ -793,15 +1013,10 @@ class EK80(object):
             if not isinstance(channel_numbers, list):
                 channel_numbers = [channel_numbers]
 
-            # and work through the numbers, adding if they exist
+            # iterate thru the list of channel numbers, extracting the data
             for num in channel_numbers:
-                if (sys.version_info.major > 2):
-                    ids = list(self.raw_data.keys())
-                else:
-                    ids = self.raw_data.keys()
-
                 try:
-                    id = ids[num]
+                    id = self.channel_number_map[num]
                     channel_data[num] = self.raw_data.get(id, None)
                 except:
                     pass
@@ -818,7 +1033,7 @@ class EK80(object):
                  end_time=None, start_ping=None, end_ping=None, frequencies=None,
                  channel_ids=None, start_sample=None, end_sample=None, progress_callback=None,
                  overwrite=False, async_window=5, reduce_complex_precision=False,
-                 raw_index_array=None, nmea_index_array=None,
+                 raw_index_array=None, nmea_index_array=None, callback_ref=None,
                  annotation_index_array=None, strip_padding=True):
         """Writes one or more Simrad EK80 .raw files.
 
@@ -905,6 +1120,20 @@ class EK80(object):
                 that contain no data.) Padded pings are always removed before writing
                 because they lack not only sample data, but all synchronous ping
                 attributes. The default value is True.
+
+            progress_callback (function reference): Pass a reference to a
+                function that accepts four arguments:
+                    (filename, cumulative_pct, cumulative_bytes, callback_ref)
+                This function will be periodicaly called, passing the
+                current file name that is being read, the percent read,
+                the bytes read and the callback_userref.
+
+            callback_ref (user defined): Set this to a reference you want
+                passed to your callback. This reference will be passed as the
+                last argument to the callback function. This can be used, for
+                example, to pass a reference to a state variable shared with
+                your main application thread allowing the application to
+                display the read progress.
 
             The following keywords are for advanced indexing and writing of the
             data. This can allow you to easily write subsets of data where the
@@ -1475,7 +1704,8 @@ class EK80(object):
                         # the first is the full path to the current file and the
                         # second is the percent written and the third is the bytes
                         # written.
-                        progress_callback(outfile_name, pct_progress, bytes_written)
+                        progress_callback(outfile_name, pct_progress, bytes_written,
+                                callback_ref)
                         cumulative_pct = pct_progress
 
                 # Increment our datagram counter - do this after the progress callback
@@ -1586,7 +1816,8 @@ class raw_data(ping_data):
 
         If rolling is True, and both the n_pings and n_samples arguments are
         provided, arrays of size (n_pings, n_samples) are created upon
-        instantiation. Otherwise, the data arrays are created
+        instantiation. Otherwise, the data arrays are created when the first
+        data are added.
 
 
         Args:
@@ -1670,6 +1901,18 @@ class raw_data(ping_data):
         #   SBT -
         self.transceiver_type = None
 
+        # motion_data stores a reference to the motion_data object created by
+        # the EK80 class when data are read. The motion_data object stores the
+        # heading, pitch, roll, and heave data recorded by the EK80 system if
+        # the motion sensor was installed.
+        self.motion_data = None
+
+        # nmea_data stores a reference to the nmea_data object created by
+        # the EK80 class when data are read. The nmea_data object stores the
+        # asyncronous NMEA-0183 data input into the EK80 system such as GPS,
+        # Gyro, vessel distance log, etc.
+        self.nmea_data = None
+
         # Data_attributes is an internal list that contains the names of all
         # of the class's "data" properties. The echolab2 package uses this
         # attribute to generalize various functions that manipulate these
@@ -1695,7 +1938,9 @@ class raw_data(ping_data):
                                 'max_sample_number',
                                 'data_type',
                                 'transceiver_type',
-                                'file_complex_dtype']
+                                'file_complex_dtype',
+                                'motion_data',
+                                'nmea_data']
 
 
     def empty_like(self, n_pings, no_data=False):
@@ -2287,7 +2532,7 @@ class raw_data(ping_data):
             Zet = raw_data.ZTRANSDUCER
         Zer = kwargs.pop('Zer', None)
         if Zer is None:
-            if calibration.impedance:
+            if calibration.impedance and not np.isnan(calibration.impedance):
                 Zer = calibration.impedance
             else:
                 # default receiver impedance (Demer et. al 2017 ICRR #336)
@@ -3059,6 +3304,135 @@ class raw_data(ping_data):
         return alongship, athwartship, return_indices
 
 
+    def get_bottom(self, calibration=None, return_indices=None, **kwargs):
+        """Gets a echolab2 line object containing the sounder detected bottom
+        depths.
+
+        Use this method to get a line object representing bottom detections that
+        have been read from EK80 .bot files. This method is only used if you
+        have previously read .bot files using EK80.read_bot(). If you want to read
+        bottom detections from .xyz files, you use the processing.line.read_xyz()
+        method.
+
+        The sounder detected bottom depths are computed using the sound speed
+        setting at the time of recording. If you are applying a different sound
+        speed setting via the calibration argument when getting the converted
+        sample data, you must also pass the same calibration object to this method
+        to ensure that the sounder detected bottom depths align with your sample
+        data.
+
+        Bottom detections are always in depth with heave corrections applied if
+        heave data were input into and enabled in the EK80 software. You can use
+        th
+
+        Args:
+            return_indices (np.array uint32): Set this to a numpy array that contains
+                the index values to return in the processed data object. This can be
+                used for more advanced anipulations where start/end ping/time are
+                inadequate.
+
+            calibration (EK80.ek80_calibration): Set to an instance of
+                EK80.ek80_calibration containing the calibration parameters
+                you used when transforming to Sv/sv. The shound speed value in
+                the calibration object will be used to shift the bottom detections
+                if the sound speed used during data recording is different than
+                the sound speed specified in this object.
+
+            start_time (datetime64): Set to a numpy datetime64 oject specifying
+                the start time of the data to return. All data between the start
+                and end time will be returned. If set to None, the start time is
+                the first ping.
+                Default: None
+
+            end_time (datetime64): Set to a numpy datetime64 oject specifying
+                the end time of the data to return. All data between the start
+                and end time will be returned. If set to None, the end time is
+                the last ping.
+                Default: None
+
+            start_ping (int): Set to an integer specifying the first ping number
+                to return. All bottom detections between the start and end ping
+                will be returned. If set to None, the first ping is set as the
+                start ping.
+                Default: None
+
+            end_ping (int): Set to an integer specifying the end ping number
+                to return. All bottom detections between the start and end ping
+                will be returned. If set to None, the last ping is set as the
+                end ping.
+                Default: None
+
+            Note that you can set a start/end time OR a start/end ping. If you
+            set both, one will be ignored.
+
+
+        Raises:
+            ValueError: The return indices exceed the number of pings in
+                the raw data object
+
+        Returns:
+            A line object containing the sounder detected bottom depths.
+
+        """
+
+        # Check if the user supplied an explicit list of indices to return.
+        if isinstance(return_indices, np.ndarray):
+            if max(return_indices) > self.ping_time.shape[0]:
+                raise ValueError("One or more of the return indices provided " +
+                        "exceeds the number of pings in the raw_data object")
+        else:
+            # Get an array of index values to return.
+            return_indices = self.get_indices(**kwargs)
+
+        # Check if user provided a cal object
+        if calibration is None:
+            # No - create an empty one - all cal values will come from the raw data
+            calibration = ek80_calibration()
+
+        # Extract the recorded sound velocity. Do this by creating an empty
+        # cal object and getting the sound_speed parameter. This ensures
+        # we get the sound speed as recorded.
+        rec_sv_cal = ek80_calibration()
+        sv_recorded = rec_sv_cal.get_parameter(self, 'sound_speed', return_indices)
+
+        # Get the calibration params required for detected depth conversion.
+        cal_parms = {'sound_speed':None,
+                     'transducer_mounting':None,
+                     'drop_keel_offset': None,
+                     'transducer_offset_z': None,
+                     'water_level_draft': None}
+
+        # Next, iterate through the dict, calling the method to extract the
+        # values for each parameter.
+        for key in cal_parms:
+            cal_parms[key] = calibration.get_parameter(self, key,
+                    return_indices)
+
+        # Check if we have to adjust the depth due to a change in sound speed.
+        if np.all(np.isclose(sv_recorded, cal_parms['sound_speed'])):
+            converted_depths = self.detected_bottom[return_indices]
+        else:
+            cf = cal_parms['sound_speed'].astype('float') / sv_recorded
+            converted_depths = cf * self.detected_bottom[return_indices]
+
+        # Create a line object to return with our adjusted data.
+        bottom_line = line.line(ping_time=self.ping_time[return_indices],
+                data=converted_depths, **kwargs)
+
+        # Get the transducer offset attribute.
+        xdcr_draft = self._get_transducer_offset(cal_parms)
+
+        # Get the heave attribute if available and add to the xdcr draft
+        _, heave_data = self.motion_data.interpolate(bottom_line, 'heave')
+        if heave_data['heave'] is not None:
+            xdcr_draft += heave_data['heave']
+
+        # and then add the transducer_draft attribute to our line
+        bottom_line.add_data_attribute('transducer_draft', xdcr_draft)
+
+        return bottom_line
+
+
 # The following 3 methods are probbaly more complicated than they need to be
 # considering that normally mixed CW and FM data (or in the case of the
 # get_frequency method mixed frequencies) can't occur in a normal raw file
@@ -3340,8 +3714,7 @@ class raw_data(ping_data):
                         output[pings_to_interp,:] = interp_f(resample_range)
 
             else:
-                # We have a fixed sound speed and only need to calculate a single
-                # range vector.
+                # We have a fixed sound speed and only need to calculate a single range vector.
                 sound_velocity = unique_sound_velocity[0]
                 range = get_range_vector(output.shape[1], sample_interval,
                         sound_velocity, min_sample_offset)
@@ -3361,65 +3734,79 @@ class raw_data(ping_data):
             # Now assign range, sound_velocity, sample thickness and offset to
             # the processed_data object.
             p_data.add_data_attribute('range', range)
-            p_data.sound_velocity = sound_velocity
+            p_data.sound_speed = sound_velocity
             p_data.sample_thickness = sample_thickness
             p_data.sample_offset = min_sample_offset
             p_data.sample_interval = sample_interval
 
-            # Add the transducer draft attribute. This attribute is intended to be the ultimate
-            # vertical transducer position relative to the surface. It is a combination of the
-            # transducer mounting information and transducer z offset.
+            # Add the transducer offset attribute.
+            xdcr_draft = self._get_transducer_offset(cal_parms)
+            p_data.add_data_attribute('transducer_offset', xdcr_draft)
 
-            # Start with no draft
-            xdcr_draft = np.full((output.shape[0]), 0.0, dtype=np.float32)
+            # Add the heave attribute is available.
+            _, heave_data = self.motion_data.interpolate(p_data, 'heave')
+            if  heave_data['heave'] is not None:
+                p_data.add_data_attribute('heave', heave_data['heave'])
 
-            # Find the pings that have a transducer mounting z offset
-            has_z_param = np.isfinite(cal_parms['transducer_offset_z'])
-
-            # Add the draft from the mounting - first we need to check if the data
-            # has the transducer_mounting parameter
-            if (cal_parms['transducer_mounting'] is not None and
-                    cal_parms['transducer_mounting'].dtype == 'O'):
-
-                # It does, find where the mounting is drop keel and add it
-                has_dk_param = cal_parms['transducer_mounting'] == 'DropKeel'
-                xdcr_draft[has_dk_param] += cal_parms['drop_keel_offset'][has_dk_param]
-
-                # For EK80 versions up to and including 2.0.0, if the transducer z offset
-                # is set to zero in the EK80 application, the drop_keel_offset will be
-                # written into the transducer z offset configuration parameter. This
-                # will result in a final draft that is 2x the actual draft if one simply
-                # adds the z offset to the drop keel offset. To compensate for this
-                # I am going to assume that if the transducer Z offset is equal to the
-                # drop keel offset, the transducer Z offset should be zeroed out. This
-                # may be wrong in some cases and you're welcome to take a stab at
-                # resolving this is a more robust fashion. I am awaiting a response from
-                # Simrad explaining this behavior.
-                has_param = np.logical_and(has_dk_param, has_z_param)
-                zero_idxs = (cal_parms['drop_keel_offset'][has_param] ==
-                    cal_parms['transducer_offset_z'][has_param])
-                cal_parms['transducer_offset_z'][zero_idxs] = 0
-
-                # Then find where the mounting is hull mounted and add it
-                has_param = cal_parms['transducer_mounting'] == 'HullMounted'
-                xdcr_draft[has_param] += cal_parms['water_level_draft'][has_param]
-
-                # It is unknown at this time if the same issue exists with a hull mounted
-                # transducer and the water level draft value.
-
-
-            # Add the transducer z offset
-            xdcr_draft[has_z_param] += cal_parms['transducer_offset_z'][has_z_param]
-
-            # Finally, add the transducer_draft attribute to the processed data object
-            p_data.add_data_attribute('transducer_draft', xdcr_draft)
-
-            #data = p_data
             data_refs[idx] = p_data
 
         # Return the processed_data object containing the requested data.
         data_refs.append(return_indices)
         return data_refs
+
+
+    def _get_transducer_offset(self, cal_parms):
+        """Computes the transducer offset given the z offset, hull draft, drop keel offset
+        and or tow body depth. Transducer offset is one component of transducer draft.
+        Transducer draft = transducer offset + heave
+
+        This is an internal method.
+        """
+
+        # Start with no draft
+        xdcr_draft = np.full((cal_parms['transducer_offset_z'].shape[0]),
+                0.0, dtype=np.float32)
+
+        # Apply the transducer z offset
+        has_z_param = np.isfinite(cal_parms['transducer_offset_z'])
+        xdcr_draft[has_z_param] += cal_parms['transducer_offset_z'][has_z_param]
+
+        # Add the draft from the mounting - first we need to check if the data
+        # has the transducer_mounting parameter
+        if (cal_parms['transducer_mounting'] is not None and
+                cal_parms['transducer_mounting'].dtype == 'O'):
+
+            # It does, find where the mounting is drop keel
+            has_d_param = cal_parms['transducer_mounting'] == 'DropKeel'
+
+            # Add the drop keel offsets. This is not done in an obvious way.
+            # The z offset written in the configuration header is the total
+            # transducer draft at the time the EK80 program is started which
+            # includes the individual transducer z ofsets + the initial drop
+            # keel offset(and I would assume water level draft or tow body depth)
+            # so the drop keel offset we add here is relative to that starting
+            # point.
+            has_param = np.logical_and(has_d_param, has_z_param)
+            if np.any(has_param):
+                xdcr_draft[has_param] += cal_parms['transducer_offset_z'][has_param] + \
+                        (cal_parms['drop_keel_offset'][has_param] -
+                        cal_parms['transducer_offset_z'][has_param])
+
+            # Then find where the mounting is hull mounted and add the water level
+            # draft. I would assume the same logic applies here...
+            has_d_param = cal_parms['transducer_mounting'] == 'HullMounted'
+            has_param = np.logical_and(has_d_param, has_z_param)
+            if np.any(has_param):
+                xdcr_draft[has_param] += cal_parms['transducer_offset_z'][has_param] + \
+                        (cal_parms['water_level_draft'][has_param] -
+                        cal_parms['transducer_offset_z'][has_param])
+
+
+            # I believe the tow body transducer mounting and tow body depth were
+            # introduced in EK80 v2.0.0? I would assume the same logic applies
+            # but I'm not implementing that at this time.
+
+        return xdcr_draft
 
 
     def _convert_power(self, power_data, calibration, convert_to, linear,
@@ -3464,7 +3851,7 @@ class raw_data(ping_data):
         # processed_data object so all pings share the same sound speed.
         cal_parms['sound_speed'] = np.empty((return_indices.shape[0]),
                 dtype=np.float32)
-        cal_parms['sound_speed'].fill(power_data.sound_velocity)
+        cal_parms['sound_speed'].fill(power_data.sound_speed)
 
         # For EK60 hardware use pulse duration when computing gains
         # but for EK80 hardware use effectve pulse duration.
@@ -3497,7 +3884,7 @@ class raw_data(ping_data):
             else:
                 # For the Ex80 WBT style hardware corrected range is computed as:
                 #    c_range = range - (sound speed * transmitted pulse length / 4)
-                c_range -= (power_data.sound_velocity * cal_parms['pulse_duration'] / 4.0)[:,np.newaxis]
+                c_range -= (power_data.sound_speed * cal_parms['pulse_duration'] / 4.0)[:,np.newaxis]
 
             #  zero out negative ranges
             c_range[c_range < 0] = 0
@@ -3875,7 +4262,7 @@ class ek80_calibration(calibration):
         # info in the file header. The EK80 software used 1000 ohms so we're going
         # to assume that's what we should use here.
         if param_name == 'impedance':
-            if param_data is None:
+            if param_data is None or np.isnan(param_data):
                 param_data = raw_data.ZTRANSCEIVER
 
         # rx_sample_frequency is a special case because it is a parameter

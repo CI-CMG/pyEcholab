@@ -7,7 +7,7 @@ import numpy as np
 from echolab2.instruments import EK80
 
 
-raw_file = 'C:/EK80 Test Data/EK80/FM/FM_-_70_KHZ_2MS_CAL-Phase0-D20190531-T194722-0.raw'
+raw_file = 'C:/EK Test Data/EK80/FM/FM_-_70_KHZ_2MS_CAL-Phase0-D20190531-T194722-0.raw'
 
 start_time=np.datetime64('2019-05-31T19:48:35', 'ms')
 end_time=np.datetime64('2019-05-31T19:55:00', 'ms')

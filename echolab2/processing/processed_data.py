@@ -28,6 +28,7 @@
 
 """
 
+import copy
 from future.utils import implements_iterator
 import numpy as np
 from ..ping_data import ping_data
@@ -53,7 +54,7 @@ class processed_data(ping_data):
             'angles_alongship_e', 'angles_athwartship_e', 'power'
 
             User specified data types are allowed and can be used to identify
-            "synthetic" channels.
+            synthetic or derived channels.
 
         is_log: a boolean which is set True when the data is in log form and
             False when it is in linear form. This is handled automatically
@@ -148,13 +149,13 @@ class processed_data(ping_data):
         self._data_attributes += ['data']
 
         #  create a list that stores the scalar object attributes
-        self._obj_attributes = ['sample_thickness',
-                                'sample_offset',
-                                'sound_velocity',
-                                'frequency',
-                                'data_type',
-                                'is_log',
-                                'is_heave_corrected']
+        self._object_attributes += ['sample_thickness',
+                                    'sample_offset',
+                                    'sound_velocity',
+                                    'frequency',
+                                    'data_type',
+                                    'is_log',
+                                    'is_heave_corrected']
 
 
     def replace(self, obj_to_insert, ping_number=None, ping_time=None,
@@ -254,8 +255,8 @@ class processed_data(ping_data):
 
         Args:
             obj_to_insert: an instance of echolab2.processed_data that
-                contains the data you are inserting. The object's sample data
-                will be vertically interpolated to the vertical axis of this
+                contains the data you are inserting. If required the object's
+                sample data will be regriddedto the vertical axis of this
                 object.
             ping_number: The ping number specifying the insertion point.
             ping_time: The ping time specifying the insertion point. If you
@@ -283,15 +284,9 @@ class processed_data(ping_data):
                     obj_to_insert.data_type + ' data into an object that ' +
                     'contains ' + self.data_type + ' data.')
 
-        # Get our range/depth vector.
-        if hasattr(self, 'range'):
-            this_vaxis = getattr(self, 'range')
-        else:
-            this_vaxis = getattr(self, 'depth')
-
-        # Interpolate the object we're inserting to our vertical axis (if the
-        # vertical axes are the same interpolate will return w/o doing anything).
-        obj_to_insert.interpolate(this_vaxis)
+        # Regrid the object we're inserting to our vertical axis (if the
+        # vertical axes are the same regrid will return w/o doing anything).
+        obj_to_insert.regrid(self)
 
         # We are now coexisting in harmony - call parent's insert.
         super(processed_data, self).insert(obj_to_insert,
@@ -458,15 +453,19 @@ class processed_data(ping_data):
         p_data._data_attributes = list(self._data_attributes)
         p_data._object_attributes  = list(self._object_attributes)
 
-        # Copy object attributes - this is simple as there are no
-        # size or type checks.
+        # Copy object attributes
         for attr_name in self._object_attributes:
             attr = getattr(self, attr_name)
-            if isinstance(attr, str):
+            # check if this attribute is a numpy array
+            if isinstance(attr, np.ndarray):
+                # it is - use ndarray's copy method
+                setattr(p_data, attr_name, attr.copy())
+            elif isinstance(attr, str):
                 # Strings are imutable and thus are always copies
                 setattr(p_data, attr_name, attr)
             else:
-                setattr(p_data, attr_name, attr.copy())
+                # it's not - use the copy module
+                setattr(p_data, attr_name, copy.deepcopy(attr))
 
         # Work through the data attributes, slicing them and adding to the new
         # processed_data object.
@@ -530,26 +529,30 @@ class processed_data(ping_data):
         self.data[:,0:n_samples] = np.nan
 
 
-    def to_depth(self, cal_object, heave_correct=False):
+    def to_depth(self, heave_correct=False):
         """to_depth converts the vertical axis to depth by applying the
         transducer offset vertically shifting each ping. If heave_correct
         is set to True, heave correction will be applied as well.
 
         If the primary axis is already depth and heave_correct is set to
         True and heave compensation has not been applied, only heave
-        compensation will be applied.If the primary axis is depth and
+        compensation will be applied. If the primary axis is depth and
         heave_correct is set and heave compensation has been applied
         nothing happens.
 
-        In order for heave correction to be applied, you must call the
-        processed_data.get_motion() method to
-
+        NOTE! HEAVE CORRECTION  PERFORMS LINEAR INTERPOLATION OF THE SAMPLE DATA.
+        IT IS NOT ADVISED TO APPLY HEAVE CORRECTION AND THEN USE THE DATA FOR
+        QUANTITATIVE PURPOSES AT THIS TIME. I have not been able to write a
+        performant regridding method that shifts data on a per-ping basis and
+        doing so is a low priority at this time. You are welcome to add this
+        feature if you need it.
         """
+
         # Check if vert axis is range or depth
         if not hasattr(self, 'depth'):
             # Get the transducer depth
-            if hasattr(self, 'transducer_draft'):
-                vert_shift = self.transducer_draft
+            if hasattr(self, 'transducer_offset'):
+                vert_shift = self.transducer_offset
             else:
                 vert_shift = 0
             # note that we're converting from range
@@ -569,7 +572,7 @@ class processed_data(ping_data):
         # Now shift the pings if required.
         if np.any(vert_shift):
             #  we have at least 1 ping to shift
-            new_axis = self.shift_pings(vert_shift)
+            new_axis = self._shift_pings(vert_shift)
 
             #  update attribute(s) with new axis values
             if from_range:
@@ -588,7 +591,7 @@ class processed_data(ping_data):
                 self.remove_data_attribute('range')
 
 
-    def to_range(self, cal_object):
+    def to_range(self):
         """to_range converts the vertical axis to range by removing the
         transducer offset vertically shifting each ping. If heave correction.
         has been applied, it will be backed out.
@@ -602,8 +605,8 @@ class processed_data(ping_data):
         # Check if vert axis is range or depth
         if hasattr(self, 'depth'):
             # Get the transducer depth
-            if hasattr(self, 'transducer_draft'):
-                vert_shift = -self.transducer_draft
+            if hasattr(self, 'transducer_offset'):
+                vert_shift = -self.transducer_offset
             else:
                 vert_shift = 0
             # note that we're converting from range
@@ -622,12 +625,13 @@ class processed_data(ping_data):
             else:
                 # is_heave_corrected is set, but we don't have heave data anymore
                 AttributeError('Cannot convert to range. Heave correction is applied ' +
-                        'but heave attribute is not present. No way to back out heave.')
+                        'but the heave attribute is not present so there is ' +
+                        'no way to back out heave.')
 
         # Now shift the pings if required.
         if np.any(vert_shift):
             #  we have at least 1 ping to shift
-            new_axis = self.shift_pings(vert_shift)
+            new_axis = self._shift_pings(vert_shift)
 
             #  update attribute(s) with new axis values
             if from_depth:
@@ -646,15 +650,24 @@ class processed_data(ping_data):
                 self.remove_data_attribute('depth')
 
 
-    def heave_correct(self, cal_object, motion_obj=None):
+    def heave_correct(self, motion_obj=None):
         """heave_correct applies heave correction. Since heave correction implies
-        conversion to depth, we simply call to_depth with heave_correct set.
-
+        conversion to depth, we call to_depth with heave_correct set.
 
         This method will replace the range attribute with depth and apply heave
         correction, shifting samples vertically based on the heave attribute.
 
+        NOTE! THIS METHOD PERFORMS LINEAR INTERPOLATION OF THE SAMPLE DATA. IT IS
+        NOT ADVISED TO APPLY HEAVE CORRECTION AND THEN USE THE DATA FOR QUANTITATIVE
+        PURPOSES AT THIS TIME. I have not been able to write a performant regridding
+        method that shifts data on a per-ping basis and doing so is a low priority
+        at this time. You are welcome to add this feature if you need it.
+
         """
+
+        # Since we're now adding the transducer_offset and heave values to
+        # the processed_data object during creation in the EKx0 classes, the
+        # motion object is only needed if you need to change the heave data
         if motion_obj is not None:
             #  if the motion_obj is provided, get/update heave
             attr_names, data = motion_obj.interpolate(self, 'heave')
@@ -673,19 +686,40 @@ class processed_data(ping_data):
 
         #  call to_depth, setting heave_correct. If our vert axis already is
         #  depth, to_depth will not apply the transducer draft again.
-        self.to_depth(cal_object, heave_correct=True)
+        self.to_depth(heave_correct=True)
 
 
     def shift_pings(self, vert_shift):
-        """Shifts sample data vertically.
+        """Shifts sample data vertically by an arbitrary amount.
 
-        This method shifts sample data vertically by an arbitrary amount,
-        interpolating sample data to the new vertical axis.
+        If the shift is constant, the vertical axis is changed but the sample
+        data remains unchaned.
+
+        If the shift is not constant for all pings, the sample data is interpolated
+        to the new vertical axis on a per ping basis.
+
+        NOTE! THE CURRENT IMPLEMENTATION USES LINEAR INTERPOLATION WHEN APPLYING
+        A NON-CONSTANT SHIFT. THIS IS NOT IDEAL.
 
         Args:
-            vert_shift (int): A scalar or vector n_pings long that contains the
+            vert_shift (float): A scalar or vector n_pings long that contains the
                 constant shift for all pings or a per-ping shift respectively.
+        """
 
+        #  get the vertical axis
+        _, axis_attr = self.get_v_axis()
+
+        #  compute the new axis (sample data is updated if required)
+        new_axis = self._shift_pings(vert_shift)
+
+        #  update the vertical axis
+        setattr(self, axis_attr, new_axis)
+
+
+    def _shift_pings(self, vert_shift):
+        """_shift_pings is an internal method that implents interpolated ping
+        shifts. If you need to shift data by an arbitrary amount, use the
+        processed_data.shift_pings method.
         """
         # Determine the vertical extent of the shift.
         min_shift = np.min(vert_shift)
@@ -779,57 +813,141 @@ class processed_data(ping_data):
         self.is_log = True
 
 
-    def interpolate(self, new_vaxis):
-        """Interpolates our sample data to a new vertical axis.
+    def regrid(self, other_obj, _return_data=False):
+        '''regrid adjusts the vertical axis of this object to match the vertical
+        axis of the provided processed_data object. The regridding is a linear
+        combination of the inputs based on the fraction of the source bins to the
+        range bins.
 
-        If the new vertical axis has more samples than the existing
-        vertical axis, the sample data array will be resized.
+        This method performs the same function as the Echoview Match Geometry operator
+        though it does not output the exact same results.
 
-        Args:
-            new_vaxis (array): A numpy array that will be the new vertical
-                axis for the sample data.
+        Original code by: Nils Olav Handegard, Alba Ordonez, Rune Øyerhamn
+        https://github.com/CRIMAC-WP4-Machine-learning/CRIMAC-preprocessing/blob/NOH_pyech/regrid.py
 
-        Raises:
-            AttributeError: Range and depth missing.
-        """
+        '''
 
-        # Get the existing vertical axis.
-        if hasattr(self, 'range'):
-            old_vaxis = getattr(self, 'range').copy()
-        elif hasattr(self, 'depth'):
-            old_vaxis = getattr(self, 'depth').copy()
-        else:
-            raise AttributeError('The data object has neither'
-                                 ' a range nor depth attribute.')
+        def resample_weights(r_t, r_s):
+            """Generates the weights used for resampling
+            Original code by: Nils Olav Handegard, Alba Ordonez, Rune Øyerhamn
+            """
 
-        # Check if we need to vertically resize our sample data.
-        if new_vaxis.shape[0] != self.n_samples:
-            self.resize(self.n_pings, new_vaxis.shape[0])
-        else:
-            # They are the same length.  Check if they are identical.
-            if np.all(np.isclose(old_vaxis, new_vaxis)):
+            # Create target bins from target range
+            bin_r_t = np.append(r_t[0]-(r_t[1] - r_t[0])/2, (r_t[0:-1] + r_t[1:])/2)
+            bin_r_t = np.append(bin_r_t, r_t[-1]+(r_t[-1] - r_t[-2])/2)
+
+            # Create source bins from source range
+            bin_r_s = np.append(r_s[0]-(r_s[1] - r_s[0])/2, (r_s[0:-1] + r_s[1:])/2)
+            bin_r_s = np.append(bin_r_s, r_s[-1]+(r_s[-1] - r_s[-2])/2)
+
+            # Initialize W matrix
+            W = np.empty((len(r_t), len(r_s)+1), dtype=self.sample_dtype)
+
+            # Loop over the target bins
+            for i, rt in enumerate(r_t):
+
+                # Check that this is not an edge case
+                if bin_r_t[i] > bin_r_s[0] and bin_r_t[i+1] < bin_r_s[-1]:
+                    # Compute the size of the target bin
+                    drt = bin_r_t[i+1] - bin_r_t[i]
+
+                    # find the indices in source that overlap this target bin
+                    j0 = np.searchsorted(bin_r_s, bin_r_t[i], side='right')-1
+                    j1 = np.searchsorted(bin_r_s, bin_r_t[i+1], side='right')
+
+                    # CASE 1: Target higher resolution, overlapping 1 source bin
+                    # target idx     i    i+1
+                    # target    -----[-----[-----
+                    # source    --[-----------[--
+                    # source idx  j0          j1
+
+                    if j1-j0 == 1:
+                        W[i, j0] = 1
+
+                    # CASE 2: Target higher resolution, overlapping 1 source bin
+                    # target idx      i   i+1
+                    # target    --[---[---[---[-
+                    # source    -[------[------[-
+                    # source idx j0            j1
+
+                    elif j1-j0 == 2:
+                        W[i, j0] = (bin_r_s[j0+1]-bin_r_t[i])/drt
+                        W[i, j1-1] = (bin_r_t[i+1]-bin_r_s[j1-1])/drt
+
+                    # CASE 3: Target lower resolution
+                    # target idx    i       i+1
+                    # target    ----[-------[----
+                    # source    --[---[---[---[--
+                    # source idx  j0          j1
+
+                    elif j1-j0 > 2:
+                        for j in range(j0, j1):
+                            if j == j0:
+                                W[i, j] = (bin_r_s[j+1]-bin_r_t[i])/drt
+                            elif j == j1-1:
+                                W[i, j] = (bin_r_t[i+1]-bin_r_s[j])/drt
+                            else:
+                                W[i, j] = (bin_r_s[j+1]-bin_r_s[j])/drt
+
+                #  Edge case 1
+                # target idx    i       i+1
+                # target    ----[-------[----
+                # source        #end# [---[---[
+                # source idx          j0  j1
+
+                #  Edge case 2
+                # target idx    i       i+1
+                # target    ----[-------[----
+                # source    --[---[ #end#
+                # source idx  j0  j1
+                else:
+                    # Edge case (NaN must be in W, not in sv_s. Or else np.dot failed)
+                    W[i, -1] = np.nan
+
+            return W
+
+
+        # Get the vertical axes for the source and target objects
+        this_v_axis, this_axis_type = self.get_v_axis()
+        target_v_axis, other_axis_type = other_obj.get_v_axis()
+
+        # Check if the new axis is the the same length.
+        if len(this_v_axis) == len(target_v_axis):
+            # Now check if they are identical.
+            if np.all(np.isclose(this_v_axis, target_v_axis)):
                 # They are identical.  Nothing to do.
                 return
 
-        # Update our sample thickness.
-        self.sample_thickness = np.mean(np.ediff1d(new_vaxis))
+        # Check if they share the same axis type - we'll not allow
+        # regridding if the axis types are different.
+        if this_axis_type != other_axis_type:
+            raise AttributeError("The provided data object's vertical axis is type (" +
+                    other_axis_type +  ") does not match this object's type (" +
+                    this_axis_type + "). The axes types " + "must match.")
 
-        # Convert to linear units if required.
-        if self.is_log:
-            is_log = True
-            self.to_linear()
+        # crate the output array, add a row of at the bottom to be used in edge cases
+        sv_s_mod = np.full((self.data.shape[1]+1, self.data.shape[0]), 1e-30,
+                    dtype=self.sample_dtype)
+        sv_s_mod[0:self.data.shape[1],0:self.data.shape[0]] = \
+                np.rot90(self.data[0:self.data.shape[0], 0:self.data.shape[1]])
+
+        # Generate the weights
+        weights = resample_weights(target_v_axis, this_v_axis)
+
+        # Normally we'll update this object's attributes but internal methods
+        # that call this method just want the regridded data only.
+        if not _return_data:
+            # Compute the regridded values - update shape and sample count
+            self.data = np.rot90(np.matmul(weights, sv_s_mod), k=-1)
+            self.shape = self.data.shape
+            self.n_samples = self.data.shape[1]
+
+            # Update this object's vertical axis
+            setattr(self, this_axis_type, target_v_axis)
         else:
-            is_log = False
-
-        # Interpolate sample data.
-        for ping in range(self.n_pings):
-            self.data[ping, :] = np.interp(
-                new_vaxis, old_vaxis, self.data[ping,:old_vaxis.shape[0]],
-                left=np.nan, right=np.nan)
-
-        # Convert back to log units if required.
-        if is_log:
-            self.to_log()
+            # Return the gridded data only
+            sv_s_mod = np.rot90(np.matmul(weights, sv_s_mod), k=-1)
+            return sv_s_mod
 
 
     def resize(self, new_ping_dim, new_sample_dim):
@@ -854,8 +972,7 @@ class processed_data(ping_data):
         # Generate the new vertical axis.
         vaxis = np.arange(new_sample_dim) * self.sample_thickness + vaxis[0]
 
-        # Call the parent method to resize the arrays (n_samples is updated
-        # here).
+        # Call the parent method to resize the arrays (n_samples is updated here).
         super(processed_data, self).resize(new_ping_dim, new_sample_dim)
 
         # Update n_pings.
@@ -1160,7 +1277,7 @@ class processed_data(ping_data):
         if hasattr(pd_object, 'range'):
             if hasattr(self, 'range'):
                 if not self.range.shape == pd_object.range.shape:
-                    raise ValueError("The processed_data object" + pd_object.channel_id +
+                    raise ValueError("The processed_data object " + pd_object.channel_id +
                             " has a different number of range values that this object.")
                 if not np.allclose(self.range, pd_object.range):
                     raise ValueError("The processed_data object " + pd_object.channel_id +

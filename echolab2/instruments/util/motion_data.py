@@ -25,6 +25,7 @@
 """
 
 import numpy as np
+from ...ping_data import ping_data
 
 
 class motion_data(object):
@@ -81,7 +82,7 @@ class motion_data(object):
         self.n_raw += 1
 
 
-    def interpolate(self, p_data, data_type, start_time=None, end_time=None):
+    def interpolate(self, p_data, data_type):
         """
         interpolate returns the requested motion data interpolated to the ping times
         that are present in the provided ping_data object.
@@ -90,10 +91,6 @@ class motion_data(object):
                     to interpolate to.
             data_type is a string pecifying the motion attribute to interpolate, valid
                     values are: 'pitch', 'heave', 'roll', and 'heading'
-            start_time is a datetime or datetime64 object defining the starting time of the data
-                    to return. If None, the start time is the earliest time.
-            end_time is a datetime or datetime64 object defining the ending time of the data
-                    to return. If None, the end time is the latest time.
             attributes is a string or list of strings specifying the motion attribute(s)
                     to interpolate and return. If None, all attributes are interpolated
                     and returned.
@@ -104,13 +101,6 @@ class motion_data(object):
         # Create the dictionary to return
         out_data = {}
 
-        # Return an empty dict if we don't contain any data
-        if self.n_raw < 1:
-            return out_data
-
-        # Get the index for all datagrams within the time span.
-        return_idxs = self.get_indices(start_time=start_time, end_time=end_time)
-
         # Check if we're been given specific attributes to interpolate
         if data_type is None:
             # No - interpolate all
@@ -119,15 +109,21 @@ class motion_data(object):
             # We have a string, put it in a list
             attributes = [data_type]
 
+        #  check if the times are to be grabbed from a ping_data object
+        if isinstance(p_data, ping_data):
+            new_times = p_data.ping_time
+        else:
+            # If not a ping_data object, assume we've just been given times
+            new_times = p_data
+
         # Work through the attributes and interpolate
         for attribute in attributes:
             try:
                 # Interpolate this attribute using the time vector in the
                 # provided ping_data object
-                i_data = np.interp(p_data.ping_time.astype('d'),
+                out_data[attribute] = np.interp(new_times.astype('d'),
                         self.times.astype('d'), getattr(self, attribute),
-                        left=np.nan, right=np.nan)
-                out_data[attribute] = i_data[return_idxs]
+                        left=0, right=0)
             except:
                 # Provided attribute doesn't exist
                 out_data[attribute] = None

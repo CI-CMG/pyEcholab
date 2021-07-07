@@ -50,6 +50,7 @@ class grid(object):
     trip_distance_nmi         trip_distance_nmi             nautical miles
      trip_distance_m          trip_distance_nmi                meters
         ping_time                 ping_time                  timedelta64
+       ping_number                 <none>                      pings
 
     When specifying interval length in time units, you must provide a Numpy timedelta64
     object defining the interval. For example, to specify a 30 minute interval:
@@ -123,12 +124,15 @@ class grid(object):
         # Echolab2 uses datetime64 objects with millisecond resolution and when you convert
         # the time to a float, it is the number of ms since the epoch.
 
-        # Get the horizontal axis data
-        if  hasattr(p_data, self.interval_axis):
-            axis_data = getattr(p_data, self.interval_axis).astype('float64')
+        # Get the horizontal axis data - ping_number is special since we have to create it
+        if self.interval_axis == 'ping_number':
+            axis_data = np.arange(p_data.n_pings)
         else:
-            raise AttributeError("The provided processed_data object lacks the specified " +
-                    "interval_axis attribute '" + self.interval_axis + "'.")
+            if  hasattr(p_data, self.interval_axis):
+                axis_data = getattr(p_data, self.interval_axis).astype('float64')
+            else:
+                raise AttributeError("The provided processed_data object lacks the specified " +
+                        "interval_axis attribute '" + self.interval_axis + "'.")
 
         # convert axis units if necessary
         if self.interval_axis == 'trip_distance_m':
@@ -145,9 +149,18 @@ class grid(object):
             else:
                 int_start = axis_data[0]
         else:
-            # this is a distance based interval
+            # This is a distance or ping number based interval
+
+            # Set the interval length
+            int_len = self.interval_length
+
+            # Set the interval start
             if self.interval_start:
-                int_start = self.interval_start
+                if self.interval_axis == 'ping_number' and self.interval_start > 0:
+                    # Ping number based intervals start at ping number 1
+                    int_start = self.interval_start - 1
+                else:
+                    int_start = self.interval_start
             else:
                 int_start = axis_data[0]
 

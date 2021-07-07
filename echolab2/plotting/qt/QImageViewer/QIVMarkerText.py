@@ -51,6 +51,10 @@ class QIVMarkerText(QGraphicsSimpleTextItem):
         self.font = font
         self.size = size
         self.alpha = alpha
+        #  check if the position was passed as a list
+        if isinstance(position[0], list):
+            #  it was, assume it is in the form [x,y]
+            position = QPointF(position[0][0], position[0][1])
         self.position = position
         self.halign = halign
         self.valign = valign
@@ -87,6 +91,11 @@ class QIVMarkerText(QGraphicsSimpleTextItem):
         as well as the text offset from that mark and a scaling factor based on
         the view zoom level.
         '''
+
+        #  check if the position was passed as a list
+        if isinstance(position, list):
+            #  it was, assume it is in the form [x,y]
+            position = QPointF(position[0], position[1])
 
         #  determine the text's X and Y location based on the specified mark position, the text
         #  alignment, and the text offset.

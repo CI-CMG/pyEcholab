@@ -96,12 +96,20 @@ class line(ping_data):
     def interpolate(self, new_times):
         """Interpolates the data values to the provided time vector.
 
-        Interpolate interpolates the data values to the provided time vector.
+        Interpolate interpolates the data values to the provided ping_data derived
+        object or a vector of datetime64 times.
 
         Args:
-            new_times (array): 1D numpy array of new dateTime64 times
+            new_times (ping_data or array): an instance of a ping_data object
+                (raw_data, processed_data) OR a 1D numpy array of new dateTime64
+                times
         """
 
+        #  check if the times are to be grabbed from a ping_data object
+        if isinstance(new_times, ping_data):
+            new_times = new_times.ping_time
+
+        #  and interpolate
         self.data[:] = np.interp(self.ping_time, new_times,
                     self.data, left=np.nan, right=np.nan)
         self.ping_time = new_times.copy()
@@ -631,3 +639,88 @@ def read_evl(evl_filename, name='evl_line', ignore_status=False, **kwargs):
     ev_line = line(ping_time=ping_time, data=depth_data, name=name, **kwargs)
 
     return ev_line
+
+
+def read_xyz(xyz_filename, name='xyz_line', as_range=False, calibration=None,
+        **kwargs):
+    '''read_xyz will read a Simrad EK80 .xyz file and return a line object
+    containing the bottom detection data.
+
+    xyz_filename (string): The full path to the .xyz file to read
+    name (string): name or label for the line.
+
+    calibration (EK80.ek80_calibration): Set to an instance of EK80.ek80_calibration
+                containing the calibration parameters
+                you used when transforming to Sv/sv. The shound speed value in
+                the calibration object will be used to shift the bottom detections
+                if the sound speed used during data recording is different than
+                the sound speed specified in this object.
+
+    color: color is a list which defines the color of the line.
+    linestyle: linestyle is a string that defines the style of the line.
+    thickness: thickness is a float the defines the width of the line.
+
+    '''
+
+    import os
+    from datetime import datetime
+
+    def convert_float(val):
+        try:
+            val = float(val)
+        except:
+            val = np.nan
+        return val
+
+    def dms_to_dec(dms):
+        try:
+            parts = dms.split('.')
+            val = float(parts[0]) + float(parts[1]) / 60.
+        except:
+            val = np.nan
+        return val
+
+    # Normalize filename and read the file
+    xyz_filename = os.path.normpath(xyz_filename)
+    with open(xyz_filename, 'r') as infile:
+        xyz_data = infile.readlines()
+
+    #  determine the number of line vertices
+    n_points = len(xyz_data)
+
+    # Simrad .xyz files contain Lat, Lon, depth, date, time, and transducer draft
+    depth_data = np.empty((n_points), dtype=np.float32)
+    lat_data = np.empty((n_points), dtype=np.float32)
+    lon_data = np.empty((n_points), dtype=np.float32)
+    draft_data = np.empty((n_points), dtype=np.float32)
+    ping_time = np.empty((n_points), dtype='datetime64[ms]')
+
+    # Loop thru the rows of data, parsing each line
+    for idx, row in enumerate(xyz_data):
+        # Parse the elements
+        (lat, lon, depth, date, time, draft) = row.split()
+
+        # Convert the time elements to datetime64
+        ping_time[idx] = np.datetime64(datetime.strptime(date + time, "%d%m%Y%H%M%S.%f"))
+
+        # Convert depth and draft to floats
+        draft_data[idx] = convert_float(draft)
+        if as_range:
+            depth_data[idx] = convert_float(depth) - draft_data[idx]
+        else:
+            depth_data[idx] = convert_float(depth)
+
+        # Convert lat, lon from DMS to decimal degrees
+        lat_data[idx] = dms_to_dec(lat)
+        lon_data[idx] = dms_to_dec(lon)
+
+    # Create the line object to return
+    xyz_line = line(ping_time=ping_time, data=depth_data, name=name, **kwargs)
+
+    # Add the additional data attributes
+    xyz_line.add_data_attribute('latitude', lat_data)
+    xyz_line.add_data_attribute('longitude', lon_data)
+    xyz_line.add_data_attribute('transducer_draft', draft_data)
+
+    return xyz_line
+

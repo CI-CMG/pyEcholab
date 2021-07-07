@@ -90,8 +90,8 @@ class ping_data(object):
         # contain all of the data attributes of that class that you want to
         # exist at instantiation (attributes can also be added later).
 
-        # For the base class, we only define ping_time, which is the only
-        # required attribute that all data objects must have.
+        # For the base class, we only define ping_time which is the only
+        # required attribut that all data objects must have.
         self._data_attributes = ['ping_time']
 
         # Attributes are added using the add_data_attribute method. You can add
@@ -200,7 +200,7 @@ class ping_data(object):
 
         # Add the name to our list of attributes if it doesn't already exist.
         if name not in self._object_attributes:
-            self._data_attributes.append(name)
+            self._object_attributes.append(name)
 
         # Add or update ourself.
         setattr(self, name, data)
@@ -212,8 +212,15 @@ class ping_data(object):
         Args:
             name (str): The attribute name to be removed from the class.
         """
-        #  we remove data and object attributes the same way
-        self.remove_data_attribute(name)
+
+        # Try to remove the attribute given the name.  Silently fail if the
+        # name is not in our list.
+        try:
+            self._object_attributes.remove(name)
+            delattr(self, name)
+        except:
+            pass
+
 
 
     def remove_data_attribute(self, name):
@@ -881,7 +888,7 @@ class ping_data(object):
                 array (vertical axis).
         """
 
-        def _resize2d(data, ping_dim, sample_dim):
+        def _resize2d(data, ping_dim, sample_dim, fill_value=np.nan):
             """
             _resize2d returns a new array of the specified dimensions with the
             data from the provided array copied into it. This function is
@@ -889,37 +896,44 @@ class ping_data(object):
             ndarray.resize and numpy.resize don't maintain the order of the
             data in these cases.
             """
-            # Create a new array.
+            # Create the new array.
             new_array = np.empty((ping_dim, sample_dim), dtype=self.sample_dtype)
 
-            if data.shape[0] > ping_dim:
-                n_pings = ping_dim
-            else:
-                n_pings = data.shape[0]
-                new_array.fill(np.nan)
-            if data.shape[1] > sample_dim:
-                n_samps = sample_dim
-            else:
-                n_samps = data.shape[1]
-                new_array.fill(np.nan)
+            #  determine the copy bounds and fill the edges if needed
+            n_pings = np.min((data.shape[0], ping_dim))
+            if n_pings == data.shape[0]:
+                new_array[n_pings:,:] = fill_value
+            n_samps = np.min((data.shape[1], sample_dim))
+            if n_samps == data.shape[1]:
+                new_array[:, n_samps:] = fill_value
+            new_array[n_pings:,:] = fill_value
 
             # Copy the data into our new array and return it.
             new_array[0:n_pings, 0:n_samps] = data[0:n_pings, 0:n_samps]
             return new_array
 
 
-        def _resize3d(data, ping_dim, sample_dim, sector_dim):
+        def _resize3d(data, ping_dim, sample_dim, sector_dim, fill_value=np.nan):
             """
             _resize3d returns a new array of the specified dimensions with the
             data from the provided array copied into it. Same reasoning as above.
             """
-            # Create a new array.
+            # Create the new array.
             new_array = np.empty((ping_dim, sample_dim, sector_dim), dtype=self.sample_dtype)
-            # Fill it with NaNs.
-            new_array.fill(np.nan)
+
+            #  determine the copy bounds and fill the edges if needed
+            n_pings = np.min((data.shape[0], ping_dim))
+            if n_pings == data.shape[0]:
+                new_array[n_pings:,:,:] = fill_value
+            n_samps = np.min((data.shape[1], sample_dim))
+            if n_samps == data.shape[1]:
+                new_array[:, n_samps:] = fill_value
+            new_array[n_pings:,:,:] = fill_value
+
             # Copy the data into our new array and return it.
-            new_array[0:data.shape[0], 0:data.shape[1],:] = data
+            new_array[0:n_pings, 0:n_samps, :] = data[0:n_pings, 0:n_samps, :]
             return new_array
+
 
         # Store the old sizes.
         old_sample_dim = self.n_samples

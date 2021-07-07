@@ -7,7 +7,7 @@ from .ui import ui_echogram_viewer
 
 class echogram_viewer(QtWidgets.QMainWindow, ui_echogram_viewer.Ui_echogram_viewer):
 
-    def __init__(self, p_data=None, plot_attribute='Sv', h_scale=None, parent=None):
+    def __init__(self, p_data=None, plot_attribute='Sv', h_scale=None, parent=None, maxZoom=40):
         super(echogram_viewer, self).__init__(parent)
         self.setupUi(self)
 
@@ -16,6 +16,8 @@ class echogram_viewer(QtWidgets.QMainWindow, ui_echogram_viewer.Ui_echogram_view
             self.h_scale = h_scale
         else:
             self.h_scale = 6.0
+
+        self.QEchogramViewer.maxZoom = maxZoom
 
         #  connect the echogram signals
         self.QEchogramViewer.mousePress.connect(self.echogramClick)
@@ -181,5 +183,10 @@ class echogram_viewer(QtWidgets.QMainWindow, ui_echogram_viewer.Ui_echogram_view
 
         event.accept()
 
+
+#    def _convertColor(self, color_val):
+#
+#        for c in color_val:
+#            if c <
 
 

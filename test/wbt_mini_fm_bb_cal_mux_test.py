@@ -47,7 +47,7 @@ start_sample = 13
 # Specify the data files for this test
 
 
-in_file = './data/EK80_WBAT_FM_std-cal_EV-55-90(4)_test.raw'
+in_file = './data/EK80_WBTmini_FM_bb-cal_67-90(4)_mux_test.raw'
 out_file = './data/test_write.raw'
 
 # Echoview power, Sv, TS, and angles data exports of above raw file
@@ -82,7 +82,7 @@ class wbt_fm_std_cal_test(unittest.TestCase):
         self.channels = list(self.ek80.raw_data.keys())
 
         print()
-        print('wbt_fm_std_cal_test')
+        print('wbt_mini_fm_bb_cal_mux_test')
 
 
     def test_TS_conversion(self):
@@ -92,7 +92,7 @@ class wbt_fm_std_cal_test(unittest.TestCase):
             raw_data = self.ek80.raw_data[chan][0]
 
             # Get the frequency of this channel.
-            this_freq = raw_data.frequency[0]
+            this_freq = raw_data.get_frequency()[0]
 
             ev_file = ev_TS_filename.get(this_freq, None)
             if ev_file is not None:
@@ -123,7 +123,7 @@ class wbt_fm_std_cal_test(unittest.TestCase):
             raw_data = self.ek80.raw_data[chan][0]
 
             # Get the frequency of this channel.
-            this_freq = raw_data.frequency[0]
+            this_freq = raw_data.get_frequency()[0]
 
             ev_file = ev_power_filename.get(this_freq, None)
             if ev_file is not None:
@@ -154,7 +154,7 @@ class wbt_fm_std_cal_test(unittest.TestCase):
             raw_data = self.ek80.raw_data[chan][0]
 
             # Get the frequency of this channel.
-            this_freq = raw_data.frequency[0]
+            this_freq = raw_data.get_frequency()[0]
 
             ev_file = ev_Sv_filename.get(this_freq, None)
             if ev_file is not None:
@@ -187,7 +187,7 @@ class wbt_fm_std_cal_test(unittest.TestCase):
 
             # Get the frequency of this channel. CW data will
             # have the frequency property
-            this_freq = raw_data.frequency[0]
+            this_freq = raw_data.get_frequency()[0]
 
             ev_file = ev_angles_filename.get(this_freq, None)
             if ev_file is not None:
@@ -239,7 +239,7 @@ class wbt_fm_std_cal_test(unittest.TestCase):
             raw_data = ek80rewrite.raw_data[chan][0]
 
             # Get the frequency of this channel.
-            this_freq = raw_data.frequency[0]
+            this_freq = raw_data.get_frequency()[0]
 
             ev_file = ev_power_filename.get(this_freq, None)
             if ev_file is not None:
