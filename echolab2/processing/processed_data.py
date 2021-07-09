@@ -230,7 +230,7 @@ class processed_data(ping_data):
                 ping_time=None, insert_after=True, index_array=None)
 
 
-    def get_v_axis(self):
+    def get_v_axis(self, return_copy=False):
         """Returns a reference to the vertical axis data along with the type in the form:
             [[vertical axis data], vertical axis type as string]]
         for example:
@@ -238,13 +238,21 @@ class processed_data(ping_data):
         """
         if hasattr(self, 'range'):
             #  this is range based data
-            return [getattr(self, 'range'), 'range']
+            attr = getattr(self, 'range')
+            if return_copy:
+                attr = attr.copy()
+            axis_data = [attr, 'range']
         elif hasattr(self, 'depth'):
-             #  this is depth based data
-            return [getattr(self, 'depth'), 'depth']
+            #  this is depth based data
+            attr = getattr(self, 'depth')
+            if return_copy:
+                attr = attr.copy()
+            axis_data = [attr, 'depth']
         else:
             #  we don't seem to have either range or depth
-            return [[], 'none']
+            axis_data = [[], 'none']
+
+        return axis_data
 
 
     def insert(self, obj_to_insert, ping_number=None, ping_time=None,
@@ -911,7 +919,7 @@ class processed_data(ping_data):
 
         # Get the vertical axes for the source and target objects
         this_v_axis, this_axis_type = self.get_v_axis()
-        target_v_axis, other_axis_type = other_obj.get_v_axis()
+        target_v_axis, other_axis_type = other_obj.get_v_axis(return_copy=True)
 
         # Check if the new axis is the the same length.
         if len(this_v_axis) == len(target_v_axis):
@@ -927,9 +935,9 @@ class processed_data(ping_data):
                     other_axis_type +  ") does not match this object's type (" +
                     this_axis_type + "). The axes types " + "must match.")
 
-        # crate the output array, add a row of at the bottom to be used in edge cases
+        # create the output array, add a row of zeros at the bottom to be used in edge cases
         sv_s_mod = np.full((self.data.shape[1]+1, self.data.shape[0]), 1e-30,
-                    dtype=self.sample_dtype)
+            dtype=self.sample_dtype)
         sv_s_mod[0:self.data.shape[1],0:self.data.shape[0]] = \
                 np.rot90(self.data[0:self.data.shape[0], 0:self.data.shape[1]])
 
