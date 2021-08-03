@@ -3781,7 +3781,7 @@ class raw_data(ping_data):
 
             # Add the drop keel offsets. This is not done in an obvious way.
             # The z offset written in the configuration header is the total
-            # transducer draft at the time the EK80 program is started which
+            # transducer offset at the time the EK80 program is started which
             # includes the individual transducer z ofsets + the initial drop
             # keel offset(and I would assume water level draft or tow body depth)
             # so the drop keel offset we add here is relative to that starting
@@ -4408,3 +4408,31 @@ class ek80_calibration(calibration):
                         msg += ' :: No value set\n'
 
         return msg
+
+
+def read_config(raw_file):
+    '''read_config reads the configuration header from a Simrad EK80 .raw file
+    and returns the parsed configuration datagram in a dictionary. This
+    method can be used to quickly read the configuration data when you don't
+    need to read any of the raw data.
+
+    Args:
+    raw_file (string): The full path to the raw file you want to read.
+
+    '''
+
+    #  normalize the file path
+    raw_file = os.path.normpath(raw_file)
+
+    # open the raw file
+    fid = RawSimradFile(raw_file, 'r')
+
+    #  read the configuration datagram
+    config_datagram = fid.read(1)
+
+    #  pack the datagram timestamp into the config dict
+    config_datagram['configuration']['timestamp'] = \
+            np.datetime64(config_datagram['timestamp'], '[ms]')
+
+    #  and return the config data dict
+    return config_datagram['configuration']

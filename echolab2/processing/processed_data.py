@@ -549,7 +549,7 @@ class processed_data(ping_data):
         heave_correct is set and heave compensation has been applied
         nothing happens.
 
-        NOTE! HEAVE CORRECTION  PERFORMS LINEAR INTERPOLATION OF THE SAMPLE DATA.
+        NOTE! HEAVE CORRECTION PERFORMS LINEAR INTERPOLATION OF THE SAMPLE DATA.
         IT IS NOT ADVISED TO APPLY HEAVE CORRECTION AND THEN USE THE DATA FOR
         QUANTITATIVE PURPOSES AT THIS TIME. I have not been able to write a
         performant regridding method that shifts data on a per-ping basis and

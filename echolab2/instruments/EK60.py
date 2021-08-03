@@ -243,7 +243,7 @@ class EK60(object):
         self._file_channel_map = {}
 
 
-    def read_out(self, read_nmea=False,  *args, **kwargs):
+    def read_out(self, *args, read_nmea=False, **kwargs):
         """Reads .out formatted bottom detection files. ER60 Mk 1 systems
         and ES60 and ES70 systems output .out files that contain bottom detections
         and a copy of the NMEA data that is also wrtten to the .raw files.
@@ -2657,8 +2657,9 @@ class raw_data(ping_data):
             # No - create an empty one - all cal values will come from the raw data
             calibration = ek60_calibration()
 
-        # Extract the recorded sound velocity.
+        # Extract the recorded sound velocity and transducer offset
         sv_recorded = self.sound_speed[return_indices]
+        offset_recorded = self.transducer_depth[return_indices]
 
         # Get the calibration params required for detected depth conversion.
         cal_parms = {'sound_speed':None,
@@ -2676,6 +2677,11 @@ class raw_data(ping_data):
         else:
             cf = cal_parms['sound_speed'].astype('float') / sv_recorded
             converted_depths = cf * self.detected_bottom[return_indices]
+
+        # Check if we have to adjust the depth due to a change in transducer draft
+        if not np.all(np.isclose(offset_recorded, cal_parms['transducer_depth'])):
+            converted_depths = converted_depths + (cal_parms['transducer_depth']-
+                    offset_recorded)
 
         # Create a line object to return with our adjusted data.
         bottom_line = line.line(ping_time=self.ping_time[return_indices],
@@ -3532,3 +3538,31 @@ class ek60_calibration(calibration):
                         msg += ' :: No value set\n'
 
         return msg
+
+
+def read_config(raw_file):
+    '''read_config reads the configuration header from a Simrad EK60 .raw file
+    and returns the parsed configuration datagram in a dictionary. This
+    method can be used to quickly read the configuration data when you don't
+    need to read any of the raw data.
+
+    Args:
+    raw_file (string): The full path to the raw file you want to read.
+
+    '''
+
+    #  normalize the file path
+    raw_file = os.path.normpath(raw_file)
+
+    # open the raw file
+    fid = RawSimradFile(raw_file, 'r')
+
+    #  read the configuration datagram
+    config_datagram = fid.read(1)
+
+    #  pack the datagram timestamp into the config dict
+    config_datagram['configuration']['timestamp'] = \
+            np.datetime64(config_datagram['timestamp'], '[ms]')
+
+    #  and return the config data dict
+    return config_datagram['configuration']

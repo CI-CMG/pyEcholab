@@ -55,7 +55,7 @@ print(ek60)
 # believe that they are always sorted by frequency from low to high and the
 # reader encounters them in this order so channel 1 should always be the lowest
 # frequency in the file. How channels are ordered if you have multiple GPTs
-# operating at the same frequency or if you're using ER60 multiplexing.
+# operating at the same frequency or if you're using ER60 multiplexing is unknown.
 #
 # Channel ID is the unique string that the ER60/EK80 software assigns the
 # channel. This usually includes a hardware ID (MAC address) and the
