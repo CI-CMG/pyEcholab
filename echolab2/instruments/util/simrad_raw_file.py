@@ -460,7 +460,6 @@ class RawSimradFile(BufferedReader):
 
     def _find_next_datagram(self):
         old_file_pos = self._tell_bytes()
-
         log.warning('Attempting to find next valid datagram...')
 
         while self.peek()['type'][:3] not in list(self.DGRAM_TYPE_KEY.keys()):
@@ -489,7 +488,7 @@ class RawSimradFile(BufferedReader):
         if dgram_header['type'].startswith('RAW0'):
             dgram_header['channel'] = struct.unpack('h', self._read_bytes(2))[0]
             self._seek_bytes(-18, SEEK_CUR)
-        elif dgram_header['type'].startswith('RAW3'):
+        elif dgram_header['type'].startswith('RAW3') or dgram_header['type'].startswith('RAW4'):
             chan_id = struct.unpack('128s', self._read_bytes(128))
             dgram_header['channel_id'] = chan_id.strip('\x00')
             self._seek_bytes(-(16 + 128), SEEK_CUR)

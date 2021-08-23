@@ -1668,6 +1668,15 @@ class SimradRawParser(_SimradDatagramParser):
                         ('spare', '2s'),
                         ('offset', 'l'),
                         ('count', 'l')
+                        ],
+                    4 : [('type', '4s'),
+                        ('low_date', 'L'),
+                        ('high_date', 'L'),
+                        ('channel_id', '128s'),
+                        ('data_type', 'h'),
+                        ('spare', '2s'),
+                        ('offset', 'l'),
+                        ('count', 'l')
                         ]
                     }
         _SimradDatagramParser.__init__(self, 'RAW', headers)
@@ -1709,7 +1718,7 @@ class SimradRawParser(_SimradDatagramParser):
                 data['power'] = np.empty((0,), dtype='int16')
                 data['angle'] = np.empty((0,), dtype='int8')
 
-        elif version == 3:
+        elif version == 3 or version == 4:
 
             #  clean up the channel ID
             data['channel_id'] = data['channel_id'].strip('\x00')
@@ -1798,7 +1807,7 @@ class SimradRawParser(_SimradDatagramParser):
                     data['angle'].shape=(n_angles,)
                     datagram_contents.extend(data['angle'])
 
-        elif version == 3:
+        elif version == 3 or version == 4:
 
             # Add the spare field
             data['spare'] = ''
