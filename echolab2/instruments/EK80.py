@@ -821,16 +821,25 @@ class EK80(object):
                         #  This raw_data object has no type so is empty and can store anything
                         this_raw_data = raw_obj
                         break
-                    if new_datagram['data_type'] <= 3 and raw_obj.data_type == 'power/angle':
-                        # This raw_data object contains power/angle data and this datagram
-                        # also contains power/angle data
+                    if (new_datagram['data_type'] == 1 and raw_obj.data_type == 'power'):
+                        # This raw_data object contains power data and so does this datagram
                         this_raw_data = raw_obj
                         break
-                    if new_datagram['data_type'] > 3:
-                        # first check if the number of sectors are the same
+                    elif (new_datagram['data_type'] == 2 and raw_obj.data_type == 'angle'):
+                        # This raw_data object contains angle data and so does this datagram
+                        this_raw_data = raw_obj
+                        break
+                    elif (new_datagram['data_type'] == 3 and raw_obj.data_type == 'power/angle'):
+                        # This raw_data object contains power/angle data and so does this datagram
+                        this_raw_data = raw_obj
+                        break
+                    elif new_datagram['data_type'] > 3:
+                        #  this will be a complex type
+                        #  first check if the number of sectors are the same
                         if new_datagram['n_complex'] == raw_obj.complex.shape[2]:
                             # Then make sure the data types are the same
                             is_fm = self._tx_params[new_datagram['channel_id']]['pulse_form'] > 0
+
                             if is_fm and raw_obj.data_type == 'complex-FM':
                                 this_raw_data = raw_obj
                             elif not is_fm and raw_obj.data_type == 'complex-CW':

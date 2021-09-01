@@ -38,6 +38,7 @@ $Id$
 from io import BufferedReader, FileIO, SEEK_SET, SEEK_CUR, SEEK_END
 import struct
 import logging
+import re
 from . import simrad_parsers
 
 __all__ = ['RawSimradFile']
@@ -109,7 +110,6 @@ class RawSimradFile(BufferedReader):
                       'MRU': simrad_parsers.SimradMRUParser(),
                       'IDX': simrad_parsers.SimradIDXParser(),
                       }
-
 
     def __init__(self, name, mode='rb', closefd=True, return_raw=False, buffer_size=1024*1024):
 
@@ -313,10 +313,8 @@ class RawSimradFile(BufferedReader):
 
         #  make sure they match
         if header['size'] != dgram_size_check:
-            # self._seek_bytes(old_file_pos, SEEK_SET)
             log.warning('Datagram failed size check:  %d != %d @ (%d, %d)',
                 header['size'], dgram_size_check, self._tell_bytes(), self.tell())
-            log.warning('Skipping to next datagram...')
             self._find_next_datagram()
 
             return self._read_next_dgram()
@@ -369,7 +367,8 @@ class RawSimradFile(BufferedReader):
         :raises: ValueError if self._total_dgram_count is not None (it has been set before)
         '''
         if self._total_dgram_count is not None:
-            raise ValueError('self._total_dgram_count has already been set.  Call .reset() first if you really want to recount')
+            raise ValueError('self._total_dgram_count has already been set. ' +
+                    'Call .reset() first if you really want to recount')
 
         #Save current position for later
         old_file_pos = self._tell_bytes()
@@ -459,14 +458,56 @@ class RawSimradFile(BufferedReader):
 
 
     def _find_next_datagram(self):
-        old_file_pos = self._tell_bytes()
+        '''
+        _find_next_datagram will read raw byte from the file and search for a known
+        datagram ID. It will set the file pointer to the beginning of the next valid
+        datagram and return. It will raise SimradEOF if it searches to the end of
+        the file.
+        '''
+
+        #  define the regex pattern used to search for datagrams
+        #  (don't search for non-repeating datagrams)
+        re_pattern = b'RAW|NME|TAG|BOT|DEP|XML|MRU'
+
+        #  Set the search buffer size in bytes
+        search_buf_bytes = 1024 * 1024 * 10
+
+        #  set up
+        initial_file_pos = self._tell_bytes()
+        current_file_pos = initial_file_pos
+        found_match = False
         log.warning('Attempting to find next valid datagram...')
 
-        while self.peek()['type'][:3] not in list(self.DGRAM_TYPE_KEY.keys()):
-            self._seek_bytes(1,1)
+        #  search until a match or the end of the file
+        while not found_match:
+            #  read some bytes
+            buf = self._read_bytes(search_buf_bytes)
 
-        log.warning('Found next datagram:  %s', self.peek())
-        log.warning('Skipped ahead %d bytes', self._tell_bytes() - old_file_pos)
+            #  check if we're at the end
+            if len(buf) == 0:
+                raise SimradEOF()
+
+            #  check of a datagram header
+            matches = re.finditer(re_pattern, buf)
+
+            for match in matches:
+                #  We have found text that matches one of our datagrams
+
+                #  compute the offset to this datagram from the beginning of the file
+                #  remembering to subtract the 4 bytes for the datagram size
+                next_dgram = current_file_pos + match.start() - 4
+
+                #  issue a warning
+                log.warning('Found next datagram:  %s @ %d', match.group().decode('utf-8'), next_dgram)
+
+                #  seek to the datagram
+                self._seek_bytes(next_dgram)
+                log.warning('%d bytes were skipped.', next_dgram - initial_file_pos)
+                found_match = True
+                break
+
+            #  update the current position
+            current_file_pos = current_file_pos + search_buf_bytes
 
 
     def tell(self):
