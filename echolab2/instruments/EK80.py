@@ -4308,7 +4308,7 @@ class ek80_calibration(calibration):
                     if not match_idx:
                         # OK, I think that at some point at or around v2.1.? the EK80 software
                         # changed what it stores in the pulse_duration_fm table? The pulse duration
-                        # stored for FM data now is found in pulse_duration_fm
+                        # stored for FM data now is found in pulse_duration_fm? It seems so...
                         match_idx = np.where(config_obj['pulse_duration_fm'] == raw_data.pulse_duration[idx])[0]
                     new_data[idx] = param_data[match_idx][0]
 
