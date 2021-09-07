@@ -210,6 +210,11 @@ class EK80(object):
         # with that channel.
         self.raw_data = {}
 
+        # A dictionary to store raw_data objects containing the complex Tx samples
+        # for channels that were recorded in "extra reduced" power and/or angle data
+        # only.
+        self.raw_tx = {}
+
         # channel_number_map maps channel number to channel ID.
         self.channel_number_map = {}
 
@@ -550,6 +555,8 @@ class EK80(object):
         for channel_id in self.channel_ids:
             for raw in self.raw_data[channel_id]:
                 raw.trim()
+            if channel_id in self.raw_tx:
+                self.raw_tx[channel_id].trim()
         self.nmea_data.trim()
         self.motion_data.trim()
         self.annotations.trim()
@@ -813,65 +820,99 @@ class EK80(object):
                 # Update the last ping number.
                 self.end_ping = self.n_pings
 
-                #  loop through the raw_data objects to find the raw_data object
-                #  to store this data.
-                this_raw_data = None
-                for raw_obj in self.raw_data[new_datagram['channel_id']]:
-                    if raw_obj.data_type == '':
-                        #  This raw_data object has no type so is empty and can store anything
-                        this_raw_data = raw_obj
-                        break
-                    if (new_datagram['data_type'] == 1 and raw_obj.data_type == 'power'):
-                        # This raw_data object contains power data and so does this datagram
-                        this_raw_data = raw_obj
-                        break
-                    elif (new_datagram['data_type'] == 2 and raw_obj.data_type == 'angle'):
-                        # This raw_data object contains angle data and so does this datagram
-                        this_raw_data = raw_obj
-                        break
-                    elif (new_datagram['data_type'] == 3 and raw_obj.data_type == 'power/angle'):
-                        # This raw_data object contains power/angle data and so does this datagram
-                        this_raw_data = raw_obj
-                        break
-                    elif new_datagram['data_type'] > 3:
-                        #  this will be a complex type
-                        #  first check if the number of sectors are the same
-                        if new_datagram['n_complex'] == raw_obj.complex.shape[2]:
-                            # Then make sure the data types are the same
-                            is_fm = self._tx_params[new_datagram['channel_id']]['pulse_form'] > 0
+                # Add the raw datagram based on the RAW datagram type.
+                if new_datagram['type'][3] == '3':
 
-                            if is_fm and raw_obj.data_type == 'complex-FM':
-                                this_raw_data = raw_obj
-                            elif not is_fm and raw_obj.data_type == 'complex-CW':
-                                this_raw_data = raw_obj
+                    # RAW3 datagrams store the "regular" sample data
+
+                    #  loop through the raw_data objects to find the raw_data object
+                    #  to store this data.
+                    this_raw_data = None
+                    for raw_obj in self.raw_data[new_datagram['channel_id']]:
+                        if raw_obj.data_type == '':
+                            #  This raw_data object has no type so is empty and can store anything
+                            this_raw_data = raw_obj
                             break
+                        elif (new_datagram['data_type'] == 1 and raw_obj.data_type == 'power' or
+                              new_datagram['data_type'] == 2 and raw_obj.data_type == 'angle' or
+                              new_datagram['data_type'] == 3 and raw_obj.data_type == 'power/angle'):
+                            # This raw_data object contains the dame data type as the datagram
+                            this_raw_data = raw_obj
+                            break
+                        elif new_datagram['data_type'] > 3:
+                            #  this will be a complex type
+                            #  first check if the number of sectors are the same
+                            if new_datagram['n_complex'] == raw_obj.complex.shape[2]:
+                                # Then make sure the data types are the same
+                                is_fm = self._tx_params[new_datagram['channel_id']]['pulse_form'] > 0
 
-                #  check if we need to create a new raw_data object
-                if this_raw_data is None:
-                    #  create the new raw_data object
-                    this_raw_data = raw_data(new_datagram['channel_id'],
-                            store_power=self.store_power,
-                            store_angles=self.store_angles,
-                            store_complex=self.store_complex,
-                            max_sample_number=self.read_max_sample_count,
-                            n_pings=self.raw_data_width)
-                    # Set the transceiver type
-                    this_raw_data.transceiver_type = \
-                            self._config[new_datagram['channel_id']]['transceiver_type']
-                    # Set the motion_data and nmea_data references
-                    this_raw_data.motion_data = self.motion_data
-                    this_raw_data.nmea_data = self.nmea_data
+                                if is_fm and raw_obj.data_type == 'complex-FM':
+                                    this_raw_data = raw_obj
+                                elif not is_fm and raw_obj.data_type == 'complex-CW':
+                                    this_raw_data = raw_obj
+                                break
 
-                    #  and add it to this channel's list of raw_data objects
-                    self.raw_data[new_datagram['channel_id']].append(this_raw_data)
+                    #  check if we need to create a new raw_data object
+                    if this_raw_data is None:
+                        #  create the new raw_data object
+                        this_raw_data = raw_data(new_datagram['channel_id'],
+                                store_power=self.store_power,
+                                store_angles=self.store_angles,
+                                store_complex=self.store_complex,
+                                max_sample_number=self.read_max_sample_count,
+                                n_pings=self.raw_data_width)
+                        # Set the transceiver type
+                        this_raw_data.transceiver_type = \
+                                self._config[new_datagram['channel_id']]['transceiver_type']
+                        # Set the motion_data and nmea_data references
+                        this_raw_data.motion_data = self.motion_data
+                        this_raw_data.nmea_data = self.nmea_data
 
-                # Call this channel's append_ping method.
-                this_raw_data.append_ping(new_datagram,
-                        self._config[new_datagram['channel_id']], self._environment,
-                        self._tx_params[new_datagram['channel_id']],
-                        self._filters[new_datagram['channel_id']],
-                        start_sample=self.read_start_sample,
-                        end_sample=self.read_end_sample)
+                        #  and add it to this channel's list of raw_data objects
+                        self.raw_data[new_datagram['channel_id']].append(this_raw_data)
+
+                    # Call this channel's append_ping method.
+                    this_raw_data.append_ping(new_datagram,
+                            self._config[new_datagram['channel_id']], self._environment,
+                            self._tx_params[new_datagram['channel_id']],
+                            self._filters[new_datagram['channel_id']],
+                            start_sample=self.read_start_sample,
+                            end_sample=self.read_end_sample)
+
+                elif new_datagram['type'][3] == '4':
+                    # RAW4 datagrams are only generated when saving reduced sample data
+                    # (power and/or angle data) and they contain the first 32 complex
+                    # samples from the corresponding RAW3 datagram for each channel.
+
+                    if not new_datagram['channel_id'] in self.raw_tx:
+
+                        #  create the new raw_data object to hold the Tx data
+                        this_raw_tx = raw_data(new_datagram['channel_id'],
+                                store_power=False,
+                                store_angles=False,
+                                store_complex=True,
+                                max_sample_number=self.read_max_sample_count,
+                                n_pings=self.raw_data_width)
+                        # Set the transceiver type
+                        this_raw_tx.transceiver_type = \
+                                self._config[new_datagram['channel_id']]['transceiver_type']
+                        # Set the motion_data and nmea_data references
+                        this_raw_tx.motion_data = self.motion_data
+                        this_raw_tx.nmea_data = self.nmea_data
+
+                        #  and this channel to the raw_tx dict
+                        self.raw_tx[new_datagram['channel_id']] = this_raw_tx
+
+                    # get a reference to this channels
+                    this_raw_tx = self.raw_tx[new_datagram['channel_id']]
+
+                    # Call this channel's append_ping method.
+                    this_raw_tx.append_ping(new_datagram,
+                            self._config[new_datagram['channel_id']], self._environment,
+                            self._tx_params[new_datagram['channel_id']],
+                            self._filters[new_datagram['channel_id']],
+                            start_sample=self.read_start_sample,
+                            end_sample=self.read_end_sample)
 
         # NME datagrams store ancillary data as NMEA-0183 style ASCII data.
         elif new_datagram['type'].startswith('NME'):
@@ -4264,7 +4305,13 @@ class ek80_calibration(calibration):
                     # For now we assume that just like with gain, we use the pulse_duration table even
                     # though there is also a pulse_duration_fm table.
                     match_idx = np.where(config_obj['pulse_duration'] == raw_data.pulse_duration[idx])[0]
+                    if not match_idx:
+                        # OK, I think that at some point at or around v2.1.? the EK80 software
+                        # changed what it stores in the pulse_duration_fm table? The pulse duration
+                        # stored for FM data now is found in pulse_duration_fm
+                        match_idx = np.where(config_obj['pulse_duration_fm'] == raw_data.pulse_duration[idx])[0]
                     new_data[idx] = param_data[match_idx][0]
+
                 else:
                     if param_data.ndim == 1:
                         new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
