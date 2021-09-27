@@ -4306,8 +4306,8 @@ class ek80_calibration(calibration):
                     # though there is also a pulse_duration_fm table.
                     match_idx = np.where(config_obj['pulse_duration'] == raw_data.pulse_duration[idx])[0]
                     if not match_idx:
-                        # OK, I think that at some point at or around v2.1.? the EK80 software
-                        # changed what it stores in the pulse_duration_fm table? The pulse duration
+                        # OK, I think that at some point at or around version 2.0.7381.17357 the EK80
+                        # software changed what it stores in the pulse_duration_fm table? The pulse duration
                         # stored for FM data now is found in pulse_duration_fm? It seems so...
                         match_idx = np.where(config_obj['pulse_duration_fm'] == raw_data.pulse_duration[idx])[0]
                     new_data[idx] = param_data[match_idx][0]
@@ -4355,7 +4355,15 @@ class ek80_calibration(calibration):
                         # per Echoview bug fix notification, it seems that the 'pulse_duration' table is used
                         # for FM data without BB cal even though the 'pulse_duration_fm' table exists.
                         # https://www.echoview.com/products-services/news/echoview-bug-fix-correction-to-transducer-gain-calculations-in-simrad-ek80-wideband-data
+                        # This seems to have changed - see below
                         match_idx = np.where(config_obj['pulse_duration'] == raw_data.pulse_duration[idx])[0]
+
+                        if not match_idx:
+                            # OK, I think that at some point at or around version 2.0.7381.17357 the EK80
+                            # software changed what it stores in the pulse_duration_fm table? The pulse duration
+                            # stored for FM data now is found in pulse_duration_fm? It seems so...
+                            match_idx = np.where(config_obj['pulse_duration_fm'] == raw_data.pulse_duration[idx])[0]
+
                         gain = param_data[match_idx][0]
 
                         new_data[idx] = gain + (20 * np.log10(frequency[idx] / config_obj['transducer_frequency']))
