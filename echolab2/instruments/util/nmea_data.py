@@ -36,20 +36,23 @@ class nmea_data(object):
     collected along with sonar data.
     '''
 
-    CHUNK_SIZE = 500
-
-    def __init__(self):
+    def __init__(self, chunk_size=5000):
 
         # Create a counter to keep track of the number of datagrams, This is
         # used to inform the array sizes.
         self.n_raw = 0
 
+        # Chunk size defines the size of the array allocation chunks.
+        # Larger values will limit the memory allocations required when adding
+        # datagrams which is faster, at the expense of temporary RAM usage.
+        self.chunk_size = chunk_size
+
         # Create arrays to store raw NMEA data as well as times, talkers,
         # and message IDs.
-        self.raw_datagrams = np.empty(nmea_data.CHUNK_SIZE, dtype=object)
-        self.nmea_times = np.empty(nmea_data.CHUNK_SIZE, dtype='datetime64[ms]')
-        self.talkers = np.empty(nmea_data.CHUNK_SIZE, dtype='U2')
-        self.messages = np.empty(nmea_data.CHUNK_SIZE, dtype='U3')
+        self.raw_datagrams = np.empty(self.chunk_size, dtype=object)
+        self.nmea_times = np.empty(self.chunk_size, dtype='datetime64[ms]')
+        self.talkers = np.empty(self.chunk_size, dtype='U2')
+        self.messages = np.empty(self.chunk_size, dtype='U3')
 
         # Create a couple of lists to store the unique talkers and message IDs.
         self.talker_ids = []
@@ -139,8 +142,7 @@ class nmea_data(object):
 
             # Check if we need to resize our arrays. If so, resize arrays.
             if self.n_raw > self.nmea_times.shape[0]:
-                self._resize_arrays(self.nmea_times.shape[0] +
-                                    nmea_data.CHUNK_SIZE)
+                self._resize_arrays(self.nmea_times.shape[0] + self.chunk_size)
 
             # Add this datagram and associated data to our data arrays and
             # then Add the talker and message ID to our list of unique talkers

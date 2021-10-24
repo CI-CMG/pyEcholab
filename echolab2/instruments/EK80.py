@@ -4296,32 +4296,64 @@ class ek80_calibration(calibration):
                     param_data[ret_idx] = self.default_sampling_frequency[t_type]
                 ret_idx += 1
 
+
+            '''
+                The handling of the sa_correction and gain parameters have changed during
+                the development of this library. Initially it was assumed that lookups for
+                FM data were obtained from the pulse_duration_fm table. In February 2021,
+                Echoview published this bug fix which went against this assumption and stated
+                that:
+
+                "EK80 data files can include both PulseDuration and PulseDurationFM attributes.
+                Echoview was incorrectly using the PulseDurationFM lookup table for wideband
+                data when PulseDuration should have been used."
+
+                pyEcholab was changed to follow Echoview's lead and was altered to always obtain
+                lookups from the PulseDuration table.
+
+                In September 2021 an issue was found where the extraction of calibration
+                parameters failed for certain FM files that did not have a wideband calibration.
+                When the wideband calibration is absent, gain and sa_correction (if used) are
+                obtained from the gain and sa_correction tables from the file header just like
+                narrowband data. This process was failing because there was no match for the
+                pulse length in the PulseDuration table. There *was* a match in the
+                PulseDurationFM table which, along with the name "PulseDurationFM" leads me
+                to believe that the intent of Simrad is that this field should be used for FM
+                lookups and that the Echoview bug fix was not a fix.
+
+                In October 2021, pyEcholab was changed to use the PulseDuration table for
+                narrowband data and the PulseDurationFM table for FM data without a wideband
+                calibration.
+
+               The full EV post can be found here:
+                 https://echoview.com/news-and-events/echoview-bug-fix-correction-to-transducer-gain-calculations-in-simrad-ek80-wideband-data/
+            '''
+
         elif param_name == 'sa_correction':
             # sa correction is extracted from a list that is indexed by pulse duration
             new_data = np.empty((return_indices.shape[0]), dtype=np.float32)
 
             for idx, config_obj in enumerate(raw_data.configuration[return_indices]):
+                #  Check if the data are FM
                 if raw_data.pulse_form[idx] > 0:
-                    # For now we assume that just like with gain, we use the pulse_duration table even
-                    # though there is also a pulse_duration_fm table.
-                    match_idx = np.where(config_obj['pulse_duration'] == raw_data.pulse_duration[idx])[0]
-                    if not match_idx:
-                        # OK, I think that at some point at or around version 2.0.7381.17357 the EK80
-                        # software changed what it stores in the pulse_duration_fm table? The pulse duration
-                        # stored for FM data now is found in pulse_duration_fm? It seems so...
-                        match_idx = np.where(config_obj['pulse_duration_fm'] == raw_data.pulse_duration[idx])[0]
+                    # The data are FM, extract the index from the pulse_duration_fm table.
+                    # Currently this parameter isn't used for FM conversions.
+                    match_idx = np.where(config_obj['pulse_duration_fm'] == raw_data.pulse_duration[idx])[0]
                     new_data[idx] = param_data[match_idx][0]
-
                 else:
-                    if param_data.ndim == 1:
-                        new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
-                    else:
-                       new_data[idx] = param_data[idx, config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
+                    # This is CW data - extract the param using the index from the pulse_duration table.
+                    # (I think this if statement is vestigial and have commented it out. Initial testing
+                    # supports this but IF YOUR CODE FAILS HERE UNCOMMENT AND RETRY. IF IT THEN WORKS LET ME KNOW.
+                    #if param_data.ndim == 1:
+                    new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
+                    #else:
+                    #    new_data[idx] = param_data[idx, config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
 
             param_data = new_data
 
         elif param_name == 'gain':
             # Gain needs to be handled differently depending on if the data are FM or CW.
+            # If the data are FM, we also have to check if there are wideband cal data.
             new_data = np.empty((return_indices.shape[0]), dtype=np.float32)
 
             # Get the frequencies - this returns the center freq for FM
@@ -4352,20 +4384,13 @@ class ek80_calibration(calibration):
                                 gains.append(config_obj['transducer_params_wideband'][f]['gain'])
                             new_data[idx] = np.interp(frequency[idx], xdcr_parms_wb_freqs, gains)
                     else:
-                        # per Echoview bug fix notification, it seems that the 'pulse_duration' table is used
-                        # for FM data without BB cal even though the 'pulse_duration_fm' table exists.
-                        # https://www.echoview.com/products-services/news/echoview-bug-fix-correction-to-transducer-gain-calculations-in-simrad-ek80-wideband-data
-                        # This seems to have changed - see below
-                        match_idx = np.where(config_obj['pulse_duration'] == raw_data.pulse_duration[idx])[0]
-
-                        if not match_idx:
-                            # OK, I think that at some point at or around version 2.0.7381.17357 the EK80
-                            # software changed what it stores in the pulse_duration_fm table? The pulse duration
-                            # stored for FM data now is found in pulse_duration_fm? It seems so...
-                            match_idx = np.where(config_obj['pulse_duration_fm'] == raw_data.pulse_duration[idx])[0]
-
+                        # There aren't wideband cal params available so we extract gain from the
+                        # gain table using the index obtained from the pulse_duration_fm
+                        match_idx = np.where(config_obj['pulse_duration_fm'] == raw_data.pulse_duration[idx])[0]
                         gain = param_data[match_idx][0]
 
+                        # Compute an adjusted gain based on the center frequency of the broadband signal
+                        # and the nominal frequency of the transducer.
                         new_data[idx] = gain + (20 * np.log10(frequency[idx] / config_obj['transducer_frequency']))
                 else:
                     # CW gain is obtained from the gain table that is indexed by pulse duration

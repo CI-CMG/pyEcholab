@@ -147,9 +147,9 @@ class Echogram(object):
             self.cmap = self._simrad_cmap
         else:
             if type(cmap) is str:
-                self.cmap = plt.get_cmap(cmap)
+                self.cmap = plt.get_cmap(cmap).copy()
             else:
-                self.cmap = cmap
+                self.cmap = cmap.copy()
         self.cmap.set_bad(color='grey')
 
         # Determine the vertical axis attribute.
