@@ -40,7 +40,7 @@ class afsc_bot_detector(ping_data):
     algorithm. It was written mainly as an example and will need to be developed further
     if you're looking for a robust bottom pick solution.
 
-    To use, you instantiate an instance setting your bottom deteciton parameters,
+    To use, you instantiate an instance setting your bottom detection parameters,
     then call the detect method passing in a processed_data object containing the
     data you want a bottom pick from. The detect method will return a line object
     containing the bottom values. If your processed data object is range based, your
@@ -90,7 +90,7 @@ class afsc_bot_detector(ping_data):
         if not isinstance(p_data, processed_data.processed_data):
             raise TypeError('You must pass a processed_data object to this method.')
 
-        #  get the vertical axis data and the type (range or depth) from the procressed_data object.
+        #  get the vertical axis data and the type (range or depth) from the processed_data object.
         v_axis, v_axis_type = p_data.get_v_axis()
 
         #  create the line object we'll return - note here the use of empty_like which will create
@@ -99,7 +99,7 @@ class afsc_bot_detector(ping_data):
 
         #  check if we have any data beyond our min_depth
         if not np.any(v_axis > self.search_min):
-            #  there are no data beyond our minumum detection range - there is nothing to do
+            #  there are no data beyond our minimum detection range - there is nothing to do
             return bot_line
 
         #  now iterate through our pings to perform a simple bottom detection
@@ -129,7 +129,7 @@ class afsc_bot_detector(ping_data):
                 bot_line.data[this_ping] = self.get_echo_envelope(smoothed_ping, sample_max, threshold,
                         v_axis, self.search_min, contiguous=True)
 
-            #  incremnent the ping index
+            #  increment the ping index
             this_ping += 1
 
         return bot_line

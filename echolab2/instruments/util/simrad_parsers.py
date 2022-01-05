@@ -1802,7 +1802,7 @@ class SimradRawParser(_SimradDatagramParser):
 
                 if int(data['mode']) & 0x2:
                     n_angles = data['count'] * 2
-                    datagram_fmt += '%dB' % (n_angles)
+                    datagram_fmt += '%db' % (n_angles)
                     #  reshape the angle array for writing
                     data['angle'].shape=(n_angles,)
                     datagram_contents.extend(data['angle'])
@@ -1830,7 +1830,7 @@ class SimradRawParser(_SimradDatagramParser):
                 if data['data_type'] & 0b0010:
                     # Add the angle data
                     n_angles = data['count'] * 2
-                    datagram_fmt += '%dB' % (n_angles)
+                    datagram_fmt += '%db' % (n_angles)
                     #  reshape the angle array for writing
                     data['angle'].shape=(n_angles,)
                     datagram_contents.extend(data['angle'])

@@ -30,7 +30,7 @@ botfiles = ['./data/EK60/DY1706_EK60-D20170625-T062521.bot']
 
 frequencies_to_read = [38000, 120000]
 
-# Create an instance of ER60.
+# Create an instance of EK60.
 ek60 = EK60.EK60()
 
 #  set the minimum detection distance - the simple bottom detection algorithm

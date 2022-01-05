@@ -1838,7 +1838,7 @@ class raw_data(ping_data):
         the data arrays as needed. To reduce overhead, the arrays are extended in
         chunks, not on a ping by ping basis. If the recording range or the pulse
         length changes requiring additional rows to be added, the data arrays will be
-        resized to accomodate the maximum number of samples being stored. Existing
+        resized to accommodate the maximum number of samples being stored. Existing
         samples are padded with NaNs as required. This vertical resize does not
         occur in chunks and the data are copied each time samples are added.
         This can have significant performance impacts in very specific cases.

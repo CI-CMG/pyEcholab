@@ -1029,9 +1029,9 @@ class ping_data(object):
         ping_number = np.arange(self.n_pings) + 1
 
         # If starts and/or ends are omitted, assume first and last respectively.
-        if start_ping == start_time is None:
+        if start_ping is None and start_time is None:
             start_ping = ping_number[0]
-        if end_ping == end_time is None:
+        if end_ping is None and end_time is None:
             end_ping = ping_number[-1]
 
         # Get the primary index.
@@ -1045,13 +1045,13 @@ class ping_data(object):
             primary_index = ping_number - 1
 
         # Generate a boolean mask of the values to return.
-        if start_time:
+        if start_time is not None:
             mask = self.ping_time[primary_index] >= start_time
-        elif start_ping >= 1:
+        elif start_ping is not None:
             mask = ping_number[primary_index] >= start_ping
-        if end_time:
+        if end_time is not None:
             mask = np.logical_and(mask, self.ping_time[primary_index] <= end_time)
-        elif end_ping >= 2:
+        elif end_ping is not None:
             mask = np.logical_and(mask, ping_number[primary_index] <= end_ping)
 
         # Return the indices that are included in the specified range.
