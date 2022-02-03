@@ -763,6 +763,7 @@ class SimradXMLParser(_SimradDatagramParser):
             'WaterLevelDraftIsManual':[int,'water_level_draft_is_manual','']})
 
     parameter_xml_map = OrderedDict({
+            'PingId':[str,'ping_id',''],
             'ChannelID':[str,'channel_id',''],
             'ChannelMode':[int,'channel_mode',''],
             'PulseForm':[int,'pulse_form',''],
@@ -772,7 +773,8 @@ class SimradXMLParser(_SimradDatagramParser):
             'PulseDuration':[float,'pulse_duration',''],
             'SampleInterval':[float,'sample_interval',''],
             'TransmitPower':[float,'transmit_power',''],
-            'Slope':[float,'slope','']})
+            'Slope':[float,'slope',''],
+            'SoundVelocity':[float,'sound_velocity','']})
 
     freq_param_xml_map = OrderedDict({
             'Frequency':[float,'frequency',''],
@@ -953,15 +955,42 @@ class SimradXMLParser(_SimradDatagramParser):
                         dict_to_dict(h.attrib, data['configuration'][channel_id],
                                      self.header_xml_map)
 
-            elif data['subtype'] == 'parameter':
+            elif data['subtype'] == 'initialparameter':
 
                 #print(xml_string.decode('utf-8'))
 
                 #  parse the parameter XML datagram
+                data['initialparameter'] = {}
                 for h in root_node.iter('Channel'):
                     parm_xml = h.attrib
-                    #  add the data to the environment dict
+                    #  add the data to the initial_parameter dict
+                    data['initialparameter'][parm_xml['ChannelID']] = {}
+                    dict_to_dict(parm_xml, data['initialparameter'][parm_xml['ChannelID']],
+                            self.parameter_xml_map)
+
+
+            elif data['subtype'] == 'pingsequence':
+
+                #print(xml_string.decode('utf-8'))
+
+                #  parse the pingsequence XML datagram
+                data['pingsequence'] = []
+                for h in root_node.iter('Ping'):
+                    parm_xml = h.attrib
+                    data['pingsequence'].append(parm_xml['ChannelID'])
+
+
+            elif data['subtype'] == 'parameter':
+
+                #print("UNPACK: " + xml_string.decode('utf-8'))
+
+                #  parse the parameter XML datagram
+                for h in root_node.iter('Channel'):
+                    parm_xml = h.attrib
+                    #  add the data to the parameter dict
                     dict_to_dict(parm_xml, data['parameter'], self.parameter_xml_map)
+
+                #print("UNPACK DICT: " + str(data['parameter']))
 
             elif data['subtype'] == 'environment':
 
@@ -1035,30 +1064,89 @@ class SimradXMLParser(_SimradDatagramParser):
                 header_node = root_node.find('./Header')
                 update_xml(header_node, self.header_xml_map, data['configuration'][channel_ids[0]])
 
-                # Now work through the channels in the transceivers section
+                # Now work through the transceiver sections in the config XML
                 transceivers_node = root_node.find('./Transceivers')
-                for chan in channel_ids:
-                    # Get a reference to this channels configuration data
-                    chan_data = data['configuration'][chan]
+                for xcvr in transceivers_node.findall('./Transceiver'):
 
-                    # Update this channel's transceiver node
-                    for xcvr_node in transceivers_node.findall('./Transceiver[@TransceiverName="' +
-                            chan_data['transceiver_name'] + '"]'):
-                        update_xml(xcvr_node, self.transceiver_xml_map, chan_data)
+                    #  work through this transceiver's channels
+                    channels_node = xcvr.find('./Channels')
+                    for chan_node in channels_node.findall('./Channel'):
+                        chan = chan_node.attrib['ChannelID']
 
-                        # And update this channels channel node
-                        channels_node = xcvr_node.find('./Channels')
-                        for channel_node in channels_node.findall('./Channel[@ChannelID="' + chan + '"]'):
-                            update_xml(channel_node, self.channel_xml_map, chan_data)
-                            # Update this channel's transducer node
-                            for chan_xdcr_node in channel_node.findall('./Transducer[@TransducerName="' + chan_data['transducer_name'] + '"]'):
-                                update_xml(chan_xdcr_node, self.channel_xdcr_xml_map, chan_data)
+                        if chan in channel_ids:
+                            #  this is a channel we are writing so use the config data
+                            #  to update the XML for this channel
 
-                    # Now update the transducers section
-                    transducers_node = root_node.find('./Transducers')
-                    for xdcr_node in transducers_node.findall('./Transducer[@TransducerCustomName="' +
-                            chan_data['transducer_custom_name'] + '"]'):
-                        update_xml(xdcr_node, self.xdcrs_xdcr_xml_map, chan_data)
+                            # Get a reference to this channels configuration data
+                            chan_data = data['configuration'][chan]
+
+                            # Update this channel's transceiver node
+                            for xcvr_node in transceivers_node.findall('./Transceiver[@TransceiverName="' +
+                                    chan_data['transceiver_name'] + '"]'):
+                                update_xml(xcvr_node, self.transceiver_xml_map, chan_data)
+
+                                # And update this channels channel node
+                                channels_node = xcvr_node.find('./Channels')
+                                for channel_node in channels_node.findall('./Channel[@ChannelID="' + chan + '"]'):
+                                    update_xml(channel_node, self.channel_xml_map, chan_data)
+                                    # Update this channel's transducer node
+                                    for chan_xdcr_node in channel_node.findall('./Transducer[@TransducerName="' + chan_data['transducer_name'] + '"]'):
+                                        update_xml(chan_xdcr_node, self.channel_xdcr_xml_map, chan_data)
+
+                            # Now update the transducers section
+                            transducers_node = root_node.find('./Transducers')
+                            for xdcr_node in transducers_node.findall('./Transducer[@TransducerCustomName="' +
+                                    chan_data['transducer_custom_name'] + '"]'):
+                                update_xml(xdcr_node, self.xdcrs_xdcr_xml_map, chan_data)
+
+                        else:
+                            #  this is NOT a channel we are writing so we're going to remove
+                            #  this channel from the transceiver section.
+                            channels_node.remove(chan_node)
+
+
+#  this is the old method that only updates and does not remove missing channels
+
+#                for chan in channel_ids:
+#                    # Get a reference to this channels configuration data
+#                    chan_data = data['configuration'][chan]
+#
+#                    # Update this channel's transceiver node
+#                    for xcvr_node in transceivers_node.findall('./Transceiver[@TransceiverName="' +
+#                            chan_data['transceiver_name'] + '"]'):
+#                        update_xml(xcvr_node, self.transceiver_xml_map, chan_data)
+#
+#                        # And update this channels channel node
+#                        channels_node = xcvr_node.find('./Channels')
+#                        for channel_node in channels_node.findall('./Channel[@ChannelID="' + chan + '"]'):
+#                            update_xml(channel_node, self.channel_xml_map, chan_data)
+#                            # Update this channel's transducer node
+#                            for chan_xdcr_node in channel_node.findall('./Transducer[@TransducerName="' + chan_data['transducer_name'] + '"]'):
+#                                update_xml(chan_xdcr_node, self.channel_xdcr_xml_map, chan_data)
+#
+#                    # Now update the transducers section
+#                    transducers_node = root_node.find('./Transducers')
+#                    for xdcr_node in transducers_node.findall('./Transducer[@TransducerCustomName="' +
+#                            chan_data['transducer_custom_name'] + '"]'):
+#                        update_xml(xdcr_node, self.xdcrs_xdcr_xml_map, chan_data)
+
+            elif data['subtype'] == 'initialparameter':
+
+                # Build the InitialParameter XML string
+                root_node = ET.Element('InitialParameter')
+                chans_node = ET.SubElement(root_node, "Channels")
+
+                for chan in data['initialparameter']:
+                    chan_node = ET.SubElement(chans_node, "Channel")
+                    update_xml(chan_node, self.parameter_xml_map, data['initialparameter'][chan])
+
+            elif data['subtype'] == 'pingsequence':
+
+                # Build the PingSequence XML string
+                root_node = ET.Element('PingSequence')
+                for chan in data['pingsequence']:
+                    ping_node = ET.SubElement(root_node, "Ping")
+                    ping_node.attrib['ChannelID'] = chan
 
             elif data['subtype'] == 'parameter':
 
@@ -1082,7 +1170,9 @@ class SimradXMLParser(_SimradDatagramParser):
             # Get the xml obj as a bytes, insert header, and convert to string
             xml_string = ET.tostring(root_node, encoding='utf8', method='xml',
                         pretty_print=True)
-            xml_string = b'<?xml version="1.0" encoding="utf-8"?>\n' + xml_string
+            xml_string = b'<?xml version="1.0" encoding="utf-8" ?>\n' + xml_string
+
+            #  you can uncomment this to print out the formatted XML for debugging
             #print(xml_string.decode('utf-8'))
 
             #Pad with more nulls to 4-byte word boundry if necessary

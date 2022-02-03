@@ -253,8 +253,11 @@ class EK80(object):
         self._filters = {}
         self._tx_params = {}
         self._environment = None
+        self._initial_params = {}
         self._file_n_channels = 0
         self._file_channel_number_map = {}
+
+        self._ping_sequence = None
 
 
     def read_raw(self, *args, **kwargs):
@@ -462,9 +465,11 @@ class EK80(object):
             self._filters = {}
             self._tx_params = {}
             self._environment = None
+            self._initial_params = {}
             self._file_channel_number_map = {}
             self._file_n_channels = 0
             last_progress = -1
+            self._ping_sequence = None
 
             #  normalize the file path and split out the parts
             filename = os.path.normpath(filename)
@@ -480,7 +485,7 @@ class EK80(object):
 
             # Check if there is an .idx file for this raw file
             try:
-                # assume the .idx file is colocated with the .raw file
+                # assume the .idx file is collocated with the .raw file
                 idx_filename = filename[:-3] + 'idx'
                 # read the .idx file
                 idx_data = self.read_idx(idx_filename)
@@ -664,8 +669,12 @@ class EK80(object):
 
                 #  check if we need to create an entry for this channel's filters
                 if channel_id not in self._filters:
-                    #  and an empty dict to store this channel's filters
+                    #  add an empty dict to store this channel's filters
                     self._filters[channel_id] = {}
+                #  and initial_params dict
+                if channel_id not in self._initial_params:
+                    #  add an entry in the initial_params dict
+                    self._initial_params[channel_id] = None
 
         # Now remove any channels marked for removal
         for channel_id in remove_channels:
@@ -735,9 +744,23 @@ class EK80(object):
                 #  update the most recent parameter attribute for this channel
                 self._tx_params[new_datagram[new_datagram['subtype']]['channel_id']] = \
                         new_datagram[new_datagram['subtype']]
+
             elif new_datagram['subtype'] == 'environment':
                 #  update the most recent environment attribute
                 self._environment = new_datagram[new_datagram['subtype']]
+
+            # InitialParameter and PingSequence seem to be required for replay
+            # in the EK80 application but aren't required to work with the data.
+            elif new_datagram['subtype'] == 'initialparameter':
+                #  the initialparameter is a little different in that it appears
+                #  only once in the file after the config header before the filters.
+                self._initial_params = new_datagram[new_datagram['subtype']]
+
+            elif new_datagram['subtype'] == 'pingsequence':
+                # The PingSequence datagram seems to come right before the
+                # ping ensemble data (pairs of Parameter+RAW datagrams per
+                # transmitting channel.)
+                self._ping_sequence = new_datagram[new_datagram['subtype']]
 
             return result
 
@@ -876,6 +899,8 @@ class EK80(object):
                             self._config[new_datagram['channel_id']], self._environment,
                             self._tx_params[new_datagram['channel_id']],
                             self._filters[new_datagram['channel_id']],
+                            self._initial_params[new_datagram['channel_id']],
+                            self._ping_sequence,
                             start_sample=self.read_start_sample,
                             end_sample=self.read_end_sample)
 
@@ -911,6 +936,8 @@ class EK80(object):
                             self._config[new_datagram['channel_id']], self._environment,
                             self._tx_params[new_datagram['channel_id']],
                             self._filters[new_datagram['channel_id']],
+                            self._initial_params[new_datagram['channel_id']],
+                            self._ping_sequence,
                             start_sample=self.read_start_sample,
                             end_sample=self.read_end_sample)
 
@@ -1340,7 +1367,7 @@ class EK80(object):
                 # Check if we've been provided with an index array
                 if raw_index_array is not None:
                     if isinstance(raw_index_array, dict) and data in raw_index_array:
-                        # this is a dict mapping the index to theraw_data objects
+                        # this is a dict mapping the index to the raw_data objects
                         this_idx = raw_index_array[data]
                     else:
                         # Assume that if we're not passed a dict, that this must be
@@ -1386,7 +1413,7 @@ class EK80(object):
                             conf_ids.append(this_id)
 
                         if is_unique:
-                            # this is a convienient place to filter by frequency...
+                            # this is a convenient place to filter by frequency...
                             if frequencies:
                                 #  freqs specified, check if this is one of them
                                 if c['frequency'] in frequencies:
@@ -1397,7 +1424,7 @@ class EK80(object):
                                 unique_ids.append(this_id)
                                 unique_configs.append(c)
 
-                    # Convert the list of cinfiguration IDs to a numpy array
+                    # Convert the list of configuration IDs to a numpy array
                     conf_ids = np.array(conf_ids)
 
                     # Determine the indices for each config
@@ -1549,22 +1576,47 @@ class EK80(object):
             bytes_written = 0
             cumulative_pct = -1
             datagrams_processed = 0
+            write_ping_sequence = True
 
             #  keep track of the files we're writing to return to caller
             files_written.append(outfile_name)
 
-            # Build the configuration dict and collect the filter params
+            # Build the configuration dict and collect the filter_params and initial_params.
+            # These are file level attributes and as such are the same for every ping in a
+            # file. Since we have already indexed the data by file, we know that every ping
+            # will be the same, so we just take these values from the first ping.
             filter_params = {}
+            initial_params = {}
             config_dgram = new_datagram(dg_times[0], 'XML', DGRAM_VERSION_KEY['XML'])
             config_dgram['configuration'] = {}
             config_dgram['subtype'] = 'configuration'
             for channel in data_by_file[infile]:
-                filter_params[channel] = data_by_file[infile][channel][0]['data'].filters[0]
-                config_dgram['configuration'][channel] = \
-                    data_by_file[infile][channel][0]['configuration']
+                if channel in channel_ids:
+                    filter_params[channel] = data_by_file[infile][channel][0]['data'].filters[0]
+                    initial_params[channel] = data_by_file[infile][channel][0]['data'].initial_parameters[0]
+                    if initial_params[channel]:
+                        do_initial_params = True
+                    else:
+                        do_initial_params = False
+                    config_dgram['configuration'][channel] = \
+                        data_by_file[infile][channel][0]['configuration']
 
-            #  pack config dict into raw byte stream and write
+            # The configuration datagram is the first in the file. Pack the
+            # config dict into raw byte stream and write
             bytes_written += raw_fid.write(DGRAM_PARSE_KEY['XML'].to_string(config_dgram))
+
+            # I don't know much about the InitialParameter XML datagram. I think it is only
+            # used by the EK80 application. What ever it is for, we write it if it exists.
+            if do_initial_params:
+                # Create the base datagram dict for the XML Parameter datagram
+                dgram = new_datagram(dg_times[idx], 'XML', DGRAM_VERSION_KEY['XML'])
+
+                # Build the datagram dictionary
+                dgram['subtype'] = 'initialparameter'
+                dgram['initialparameter'] = initial_params
+
+                # write the parameter XML datagram
+                bytes_written += raw_fid.write(DGRAM_PARSE_KEY['XML'].to_string(dgram))
 
             # Now write the filter datagrams
             for channel in filter_params:
@@ -1587,6 +1639,31 @@ class EK80(object):
                 #  now assemble the datagram dict based on the type
                 if dg_type[idx] == 'RAW':
 
+                    # The initial raw file spec had RAW datagrams grouped into ensembles comprised
+                    # of a parameter XML datagram and a RAW datagram for each channel in the order
+                    # that they were triggered. At some point, this was changed and newer file
+                    # formats include a PingSequence XML datagram that proceeds the parameter+RAW
+                    # datagram tuples. This PingSequence datagram isn't required to work with the
+                    # data but it is required when playing back files in the EK80 application.
+                    ping_sequence = dg_objects[idx].ping_sequence[dg_obj_idx[idx]]
+                    if ping_sequence and write_ping_sequence:
+
+                        # Filter out channels we are not writing
+                        filtered_sequence = [x for x in ping_sequence if x in channel_ids]
+
+                        # Create the base datagram dict for the XML PingSequence datagram
+                        dgram = new_datagram(dg_times[idx], 'XML', DGRAM_VERSION_KEY['XML'])
+
+                        # Build the datagram dictionary
+                        dgram['subtype'] = 'pingsequence'
+                        dgram['pingsequence'] = filtered_sequence
+
+                        # write the parameter XML datagram
+                        bytes_written += raw_fid.write(DGRAM_PARSE_KEY['XML'].to_string(dgram))
+
+                        #  we have written the ping_sequence for this ensemble so unset write_ping_sequence
+                        write_ping_sequence = False
+
                     #  get the channel ID
                     channel_id = data_by_file[infile][dg_objects[idx].channel_id][0]['configuration']['channel_id']
 
@@ -1608,8 +1685,11 @@ class EK80(object):
                     dgram['parameter']['sample_interval'] = dg_objects[idx].sample_interval[dg_obj_idx[idx]]
                     dgram['parameter']['transmit_power'] = dg_objects[idx].transmit_power[dg_obj_idx[idx]]
                     dgram['parameter']['slope'] = dg_objects[idx].slope[dg_obj_idx[idx]]
+                    #  I don't think sound velocity was in the original spec?
+                    if not np.isnan(dg_objects[idx].sound_velocity[dg_obj_idx[idx]]):
+                        dgram['parameter']['sound_velocity'] = dg_objects[idx].sound_velocity[dg_obj_idx[idx]]
 
-                    # write theparameter XML datagram
+                    # write the parameter XML datagram
                     bytes_written += raw_fid.write(DGRAM_PARSE_KEY['XML'].to_string(dgram))
 
                     # Create the base datagram dict for the RAW3 datagram
@@ -1693,6 +1773,10 @@ class EK80(object):
                     bytes_written += raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram))
 
                 elif dg_type[idx] == 'TAG':
+                    # We assume if a non RAW datagram is written, we are done writing any
+                    # ping ensembles and we set write_ping_sequence.
+                    write_ping_sequence = True
+
                     #  create the base datagram dict
                     dgram = new_datagram(dg_times[idx], dg_type[idx],
                             DGRAM_VERSION_KEY[dg_type[idx]])
@@ -1704,6 +1788,10 @@ class EK80(object):
                     bytes_written += raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram))
 
                 elif dg_type[idx] == 'NME':
+                    # We assume if a non RAW datagram is written, we are done writing any
+                    # ping ensembles and we set write_ping_sequence.
+                    write_ping_sequence = True
+
                     #  create the base datagram dict
                     dgram = new_datagram(dg_times[idx], dg_type[idx],
                             DGRAM_VERSION_KEY[dg_type[idx]])
@@ -1715,6 +1803,10 @@ class EK80(object):
                     bytes_written += raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram))
 
                 elif dg_type[idx] == 'MRU':
+                    # We assume if a non RAW datagram is written, we are done writing any
+                    # ping ensembles and we set write_ping_sequence.
+                    write_ping_sequence = True
+
                     #  create the base datagram dict
                     dgram = new_datagram(dg_times[idx], dg_type[idx],
                             DGRAM_VERSION_KEY[dg_type[idx]])
@@ -1728,6 +1820,10 @@ class EK80(object):
                     bytes_written += raw_fid.write(DGRAM_PARSE_KEY[dg_type[idx]].to_string(dgram))
 
                 elif dg_type[idx] == 'ENV':
+                    # We assume if a non RAW datagram is written, we are done writing any
+                    # ping ensembles and we set write_ping_sequence.
+                    write_ping_sequence = True
+
                     #  create the base datagram dict
                     dgram = new_datagram(dg_times[idx], 'XML', DGRAM_VERSION_KEY['XML'])
                     # Set the environment XML datagram values
@@ -1739,6 +1835,10 @@ class EK80(object):
                     bytes_written += raw_fid.write(DGRAM_PARSE_KEY['XML'].to_string(dgram))
 
                 else:
+                    # We assume if a non RAW datagram is written, we are done writing any
+                    # ping ensembles and we set write_ping_sequence.
+                    write_ping_sequence = True
+
                     #  we should never encounter an unknown type, but raise exception if so
                     raise ValueError('Unknown datagram type encountered: ' + dg_type[idx] +
                             '. This should never happen...')
@@ -1970,11 +2070,14 @@ class raw_data(ping_data):
         self._data_attributes += ['configuration',
                                   'environment',
                                   'filters',
+                                  'initial_parameters',
+                                  'ping_sequence',
                                   'channel_mode',
                                   'pulse_form',
                                   'pulse_duration',
                                   'sample_interval',
                                   'slope',
+                                  'sound_velocity',
                                   'transmit_power',
                                   'sample_count',
                                   'sample_offset']
@@ -2077,7 +2180,8 @@ class raw_data(ping_data):
 
 
     def append_ping(self, sample_datagram, config_params, environment_datagram,
-            tx_parms, filters, start_sample=None, end_sample=None):
+            tx_parms, filters, initial_params, ping_sequence, start_sample=None,
+            end_sample=None):
         """Adds a "pings" worth of data to the object.
 
         This method extracts data from the provided sample_datagram dict and
@@ -2088,7 +2192,7 @@ class raw_data(ping_data):
         the data arrays as needed. To reduce overhead, the arrays are extended in
         chunks, not on a ping by ping basis. If the recording range or the pulse
         length changes requiring additional rows to be added, the data arrays will be
-        resized to accomodate the maximum number of samples being stored. Existing
+        resized to accommodate the maximum number of samples being stored. Existing
         samples are padded with NaNs as required. This vertical resize does not
         occur in chunks and the data are copied each time samples are added.
         This can have significant performance impacts in specific cases and this
@@ -2112,6 +2216,10 @@ class raw_data(ping_data):
                              datagram for this channel.
             filters (dict): A dictionary containing this channels filter coefficients
                             used by the EK80 to filter the received signal.
+            initial_params (dict): A dictionary containing the data from the InitialParameter
+                                   datagram for this channel.
+            ping_sequence (list): A list that contains the channel IDs ordered by how the
+                                  channels were triggered.
             start_sample (int): The starting sample to store in the object.
             end_sample (int): The ending sample to store in the object.
         """
@@ -2125,7 +2233,7 @@ class raw_data(ping_data):
 
         # The contents of the first ping appended to a raw_data object defines
         # the data_type and determines how the data arrays will be created. Also,
-        # since a raw_data object can only store onedata_type, we disable saving
+        # since a raw_data object can only store one data_type, we disable saving
         # of the other types.
         if self.n_pings == -1:
 
@@ -2296,17 +2404,20 @@ class raw_data(ping_data):
         config_params['end_ping'] = self.n_pings
         config_params['end_time'] = sample_datagram['timestamp']
 
-        # Insert the config, environment, and filter object references for this ping.
+        # Insert the config, environment, filter, initial params, and ping sequence
+        # object references for this ping.
         self.configuration[this_ping] = config_params
         self.environment[this_ping] = environment_datagram
         self.filters[this_ping] = filters
+        self.initial_parameters[this_ping] = initial_params
+        self.ping_sequence[this_ping] = ping_sequence
 
         # Now insert the data into our numpy arrays.
         self.ping_time[this_ping] = sample_datagram['timestamp']
         self.channel_mode[this_ping] = tx_parms['channel_mode']
         self.pulse_form[this_ping] = tx_parms['pulse_form']
         if tx_parms['pulse_form'] == 0:
-            # CW files will have the freuqency parameter
+            # CW files will have the frequency parameter
             self.frequency[this_ping] = tx_parms['frequency']
         else:
             # FM files will have the frequency_start and frequency_end parameters
@@ -2316,6 +2427,13 @@ class raw_data(ping_data):
         self.sample_interval[this_ping] = tx_parms['sample_interval']
         self.slope[this_ping] = tx_parms['slope']
         self.transmit_power[this_ping] = tx_parms['transmit_power']
+        # I *think* sound_velocity was added to the tx parameter datagram at
+        # some point. Or I just missed it from the beginning. Until I know,
+        # we'll insert it if we have it. If not we'll just insert a NaN
+        if 'sound_velocity' in tx_parms:
+            self.sound_velocity[this_ping] = tx_parms['sound_velocity']
+        else:
+            self.sound_velocity[this_ping] = np.nan
 
         # Update sample count and sample offset values
         if start_sample:
@@ -3997,6 +4115,7 @@ class raw_data(ping_data):
         self.configuration = np.empty((n_pings), dtype='object')
         self.environment = np.empty((n_pings), dtype='object')
         self.filters = np.empty((n_pings), dtype='object')
+        self.initial_parameters = np.empty((n_pings), dtype='object')
 
         #  the rest of the arrays store syncronous ping data
         self.sample_offset = np.empty((n_pings), np.int32)
@@ -4010,8 +4129,10 @@ class raw_data(ping_data):
         self.pulse_duration = np.empty((n_pings), np.float32)
         self.sample_interval = np.empty((n_pings), np.float32)
         self.slope = np.empty((n_pings), np.float32)
+        self.sound_velocity = np.empty((n_pings), np.float32)
         self.transmit_power = np.empty((n_pings), np.float32)
         self.sample_count = np.empty((n_pings), np.int32)
+        self.ping_sequence = np.empty((n_pings), dtype='object')
 
         #  and the 2d sample data arrays
         if create_power and self.store_power:

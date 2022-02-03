@@ -92,11 +92,11 @@ def check_filetype(filename):
 
     # Return the file type based on the header
     if header[4:8]==b'CON0':
-        # Simrad EK60 style raw files start with P <BS> <NUL> <NUL> C O N 0
+        # Simrad EK60 style raw files start  with 4 bytes for the size then C O N 0
         return SIMRAD_EK60
 
     elif header[4:8]==b'XML0':
-        # Simrad EK80 style raw files start with <DLE> p <NUL> <NUL> X M L 0
+        # Simrad EK80 style raw files start with 4 bytes for the size then X M L 0
         return SIMRAD_EK80
 
     else:

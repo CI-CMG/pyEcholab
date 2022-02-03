@@ -75,10 +75,10 @@ print(ek60)
 # The size of the data array(s) is printed next in the form (n pings, n samples)
 
 
-# ER60 objects contain all the data stored in a .raw file organized in a number
+# EK60 objects contain all the data stored in a .raw file organized in a number
 # of attributes. The bulk of the data are stored in raw_data objects and getting
 # a reference to these raw_data objects is one of the first things you'll usually
-# do when processing .raw data. You can access the ER60.raw_data attribute directly
+# do when processing .raw data. You can access the EK60.raw_data attribute directly
 # (it is a dictionary keyed by channel ID) or you can use the EK60.get_channel_data()
 # method which allows you to get references by channel number, frequency, and/or
 # channel ID.
