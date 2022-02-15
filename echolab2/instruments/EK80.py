@@ -253,11 +253,10 @@ class EK80(object):
         self._filters = {}
         self._tx_params = {}
         self._environment = None
+        self._ping_sequence = None
         self._initial_params = {}
         self._file_n_channels = 0
         self._file_channel_number_map = {}
-
-        self._ping_sequence = None
 
 
     def read_raw(self, *args, **kwargs):
@@ -465,11 +464,11 @@ class EK80(object):
             self._filters = {}
             self._tx_params = {}
             self._environment = None
+            self._ping_sequence = None
             self._initial_params = {}
             self._file_channel_number_map = {}
             self._file_n_channels = 0
             last_progress = -1
-            self._ping_sequence = None
 
             #  normalize the file path and split out the parts
             filename = os.path.normpath(filename)
@@ -1114,6 +1113,20 @@ class EK80(object):
                  annotation_index_array=None, strip_padding=True):
         """Writes one or more Simrad EK80 .raw files.
 
+        Data stored within the EK80 object will be written to disk. You can use the
+        various and sundry arguments here to influence what data will be written.
+
+        Files written by this method will not be bit-perfect copies of the originals.
+        For obvious reasons, data is read and manipulated before being stored in the
+        raw_data objects and the transformation back to the on-disk format results in
+        minuscule changes. Also, the lxml package used by pyEcholab creates XML with
+        less white space than the Simrad parser resulting in XML strings that are
+        functionally the same but contain fewer characters.
+
+        The goal is to produce files that are replayable within the EK80 application
+        but this method will not automatically add missing datagrams to a file. If you
+        read a file with an older format that will not play in a current version of EK80,
+        writing a copy will not make it compatible.
 
         Args:
             output_filenames (str, dict): A string specifying the full path and
@@ -1592,8 +1605,11 @@ class EK80(object):
             config_dgram['subtype'] = 'configuration'
             for channel in data_by_file[infile]:
                 if channel in channel_ids:
+                    # This is a channel we are writing
                     filter_params[channel] = data_by_file[infile][channel][0]['data'].filters[0]
                     initial_params[channel] = data_by_file[infile][channel][0]['data'].initial_parameters[0]
+                    # Not all files contain the InitialParameters datagram. If a file doesn't,
+                    # initial_parameters == None.
                     if initial_params[channel]:
                         do_initial_params = True
                     else:
@@ -1685,7 +1701,8 @@ class EK80(object):
                     dgram['parameter']['sample_interval'] = dg_objects[idx].sample_interval[dg_obj_idx[idx]]
                     dgram['parameter']['transmit_power'] = dg_objects[idx].transmit_power[dg_obj_idx[idx]]
                     dgram['parameter']['slope'] = dg_objects[idx].slope[dg_obj_idx[idx]]
-                    #  I don't think sound velocity was in the original spec?
+                    # Sound velocity was not in the original parameter datagram spec so older files
+                    # will not have it. We need to check if we have valid data to write. Otherwise omit it.
                     if not np.isnan(dg_objects[idx].sound_velocity[dg_obj_idx[idx]]):
                         dgram['parameter']['sound_velocity'] = dg_objects[idx].sound_velocity[dg_obj_idx[idx]]
 
@@ -1895,6 +1912,8 @@ class EK80(object):
                     msg = msg + ("        " + channel_id + " :: " + raw.data_type + " " + str(raw.shape) + "\n")
             msg = msg + ("    data start time: " + str(self.start_time) + "\n")
             msg = msg + ("      data end time: " + str(self.end_time) + "\n")
+            #  TODO: this returns sum of pings in all raw objects when it should return
+            #        total number of unique pings
             msg = msg + ("    number of pings: " + str(self.end_ping -
                                                        self.start_ping + 1) + "\n")
 
