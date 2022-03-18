@@ -1957,7 +1957,7 @@ class raw_data(ping_data):
     ZTRANSDUCER = 75.0
 
     # Specify the default transceiver impedance in ohms. This value is
-    # used when the transceiver impedance is not availabe in the data file.
+    # used when the transceiver impedance is not available in the data file.
     # Older versions of the EK80 configuration header did not include this
     # value. Earlier versions of the EK80 software assumed a nominal
     # impedance of 1000 omhs. This may or may not have changed to 5400 before
@@ -4312,9 +4312,13 @@ class ek80_calibration(calibration):
         #  call the parent init
         super(ek80_calibration, self).__init__(absorption_method=absorption_method)
 
+        #  update the ECS->Echolab map with specifics for this class
+        self.ECS_ECHOLAB_MAP.update({'EffectivePulseLength':'effective_pulse_duration'})
+
         # Set up the attributes that are specific to the EK80 system. In general
-        # this wttribute names will match the parameter names found within the
-        # EK80 formatted .raw file except that
+        # the attribute names will match the parameter names found within the
+        # EK80 .raw file except that instead of CamelCase they are lower case with
+        # underscores: "TransducerOffsetX" becomes "transducer_offset_x"
 
         # Absorption_method stores the string identifying the method used to
         # compute seawater absorption. Unlike ER60, EK80 doesn't compute this

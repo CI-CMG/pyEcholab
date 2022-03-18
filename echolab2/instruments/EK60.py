@@ -3436,6 +3436,9 @@ class ek60_calibration(calibration):
         #  call the parent init
         super(ek60_calibration, self).__init__()
 
+        #  update the ECS->Echolab map with specifics for this class
+        self.ECS_ECHOLAB_MAP.update({'EffectivePulseLength':'pulse_length'})
+
         # Set up the attributes that are specific to the EK60 system. In general
         # these attribute names will match the parameter names found within the
         # EK60 formatted .raw file.
@@ -3448,8 +3451,8 @@ class ek60_calibration(calibration):
 
         #  these attributes are found in the configuration datagram
         self._config_attributes = ['transect_name', 'version' ,'survey_name', 'sounder_name',
-                'spare0', 'channel_id', 'beam_type', 'frequency', 'gain', 'equivalent_beam_angle',
-                'beamwidth_alongship', 'beamwidth_athwartship', 'angle_sensitivity_alongship',
+                'spare0', 'channel_id', 'beam_type', 'gain', 'equivalent_beam_angle',
+                'beam_width_alongship', 'beam_width_athwartship', 'angle_sensitivity_alongship',
                 'angle_sensitivity_athwartship', 'angle_offset_alongship', 'angle_offset_athwartship',
                 'pos_x', 'pos_y', 'pos_z', 'dir_x', 'dir_y','dir_z','spare2','sa_correction',
                 'gpt_software_version', 'pulse_length_table','spare1','gain_table','spare3','spare4']
@@ -3492,6 +3495,8 @@ class ek60_calibration(calibration):
         # sa_correction is't explicitly defined in the calibration object. It
         # has to be pulled from the sa_correction_table.
         if param_name == 'sa_correction':
+            first_val = -99999
+            param_is_constant = True
             param_data = np.empty((return_indices.shape[0]), dtype=np.float32)
             for i in range(return_indices.shape[0]):
                 if not np.isnan(raw_data.pulse_length[return_indices[i]]):
@@ -3501,6 +3506,13 @@ class ek60_calibration(calibration):
                     param_data[i] = config_obj['sa_correction_table'][table_mask][0]
                 else:
                     param_data[i] = np.nan
+                if first_val == -99999:
+                    first_val = param_data[i]
+                param_is_constant &= param_data[i] == first_val
+
+            #  if the param is constant for all pings we return a scalar
+            if param_is_constant:
+                param_data = first_val
 
         return param_data
 
@@ -3524,9 +3536,11 @@ class ek60_calibration(calibration):
 
         # And assemble the string
         for param_name in attr_to_display:
+            if 'spare' in param_name:
+                continue
             n_spaces = 32 - len(param_name)
             msg += n_spaces * ' ' + param_name
-            # Extract data from raw_data attribues
+            # Extract data from raw_data attributes
             if hasattr(self, param_name):
                 attr = getattr(self, param_name)
                 if isinstance(attr, np.ndarray):

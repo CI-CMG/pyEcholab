@@ -58,6 +58,23 @@ class grid(object):
         interval_length = numpy.timedelta64(30, 'm')
 
 
+
+    The primary grid attribues are
+
+        n_intervals: the number of intervals in the grid
+
+        interval_edges: the location of the interval boundaries including the right
+            boundary of the last interval. There are n_intervals + 1 edges.
+
+        interval_pings: the number of pings in each interval
+
+        ping_interval_map:
+        n_layers
+        layer_edges
+        layer_samples
+        sample_layer_map
+
+
     """
 
     def __init__(self, interval_length=0.5, interval_axis='trip_distance_nmi',
@@ -103,6 +120,14 @@ class grid(object):
         self.layer_edges = np.array([])
         self.layer_samples = np.array([])
         self.sample_layer_map = np.array([])
+
+        self.p_data = None
+        self.interval_axis_data = None
+        self._iter_interval = 0
+        self._iter_layer = 0
+        self._gc_last_interval = -1
+        self._gc_last_layer = -1
+
 
         # If data is provided, update the grid
         if data:
@@ -174,6 +199,8 @@ class grid(object):
         else:
             self.interval_edges = interval_edges
 
+        #  store the horizontal axis data
+        self.interval_axis_data = axis_data
 
         # Generate the vertical axis grid attributes
         if  hasattr(p_data, self.layer_axis):
@@ -185,6 +212,95 @@ class grid(object):
         # Update the vertical axis properties
         self.n_layers, self.layer_edges, self.layer_samples, self.sample_layer_map = \
                 self._grid_axis(axis_data, self.layer_start, self.layer_thickness)
+
+        #  store a reference to the data used to generate the grid
+        self.grid_data = p_data
+
+
+    def get_cell_data(self, interval, layer, data_obj):
+        '''
+        get_cell_data will return a numpy array containing the data in the
+        provided data_obj contained withing the grid cell defined by the
+        provided interval and layer values.
+
+        interval and layer numbers start at 0 with the upper left cell at
+        (0,0)
+
+
+        '''
+
+        #  make sure we've been given sane interval and layer values
+        if (interval >= self.n_intervals) or (interval < 0):
+            # this interval doesn't exist in this grid
+            return np.array([], dtype='float32')
+        if (layer >= self.n_layers) or (layer < 0):
+            # this layer doesn't exist in this grid
+            return np.array([], dtype='float32')
+
+        # Make sure the data_obj has the same axes as the grid
+        if not np.array_equal(self.grid_data.ping_time, data_obj.ping_time):
+            raise ValueError("The provided data_obj's ping times do not " +
+                    "match the grid's ping times.")
+
+        # Make sure the vertical axes are the same
+        if hasattr(self.grid_data, 'range'):
+            if hasattr(data_obj, 'range'):
+                if not np.array_equal(self.grid_data.range, data_obj.range):
+                    raise ValueError("The grid's ranges and provided data_obj's " +
+                            "ranges do not match.")
+            else:
+                raise AttributeError("The grid is range based but the provided data_obj " +
+                        "doesn't have the range attribute")
+        else:
+            if hasattr(data_obj, 'depth'):
+                if not np.array_equal(self.grid_data.depth, data_obj.depth):
+                    raise ValueError("The grid's depths and provided data_obj's " +
+                            "depths do not match.")
+            else:
+                raise AttributeError("The grid is depth based but the provided data_obj " +
+                        "doesn't have the depth attribute")
+
+        #  check if we need to create a new interval index
+        if interval != self._gc_last_interval:
+            self._interval_pings = self.ping_interval_map == interval
+            self._gc_last_interval = interval
+
+        #  check if we need to create a new layer index
+        if layer != self._gc_last_layer:
+            self._layer_samples = self.sample_layer_map == layer
+            self._gc_last_layer = layer
+
+        #  return the data and the mask
+        return data_obj[self._interval_pings,:][:,self._layer_samples]
+
+
+    def get_cell_mask(self, interval, layer):
+        '''
+        get_cell_data will return a numpy array of the sample data contained
+        in the provided interval and layer as well as a mask
+
+        '''
+
+        #  make sure we've been given sane interval and layer values
+        if (interval >= self.n_intervals) or (interval < 0):
+            # this interval doesn't exist in this grid
+            return np.array([], dtype='float32')
+        if (layer >= self.n_layers) or (layer < 0):
+            # this layer doesn't exist in this grid
+            return np.array([], dtype='float32')
+
+        #  check if we need to create a new interval index
+        if interval != self._gc_last_interval:
+            self._interval_pings = self.ping_interval_map == interval
+            self._gc_last_interval = interval
+
+        #  check if we need to create a new layer index
+        if layer != self._gc_last_layer:
+            self._layer_samples = self.sample_layer_map == layer
+            self._gc_last_layer = layer
+
+        #  return the mask
+        return self._layer_samples & self._interval_pings[:, np.newaxis]
 
 
     def _grid_axis(self, axis_data, axis_start, axis_size):

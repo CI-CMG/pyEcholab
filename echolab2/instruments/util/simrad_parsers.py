@@ -1111,7 +1111,7 @@ class SimradXMLParser(_SimradDatagramParser):
                         #  set removed_xcvr so we know we have to renumber below
                         removed_xcvr = True
 
-                #  If we've removed any transceivers, we renumber the remaining ones
+                #  If we've removed any transceivers, we renumber the remaining ones.
                 if removed_xcvr:
                     #  according to the internet, findall returns elements in document order so we
                     #  can assume that we start at 1 and increment by 1 for each remaining xcvr
@@ -1402,8 +1402,8 @@ class SimradConfigParser(_SimradDatagramParser):
                                        ('frequency', 'f'),
                                        ('gain', 'f'),
                                        ('equivalent_beam_angle', 'f'),
-                                       ('beamwidth_alongship', 'f'),
-                                       ('beamwidth_athwartship', 'f'),
+                                       ('beam_width_alongship', 'f'),
+                                       ('beam_width_athwartship', 'f'),
                                        ('angle_sensitivity_alongship', 'f'),
                                        ('angle_sensitivity_athwartship', 'f'),
                                        ('angle_offset_alongship', 'f'),
@@ -1428,8 +1428,8 @@ class SimradConfigParser(_SimradDatagramParser):
                                        ('frequency', 'f'),
                                        ('gain', 'f'),
                                        ('equivalent_beam_angle', 'f'),
-                                       ('beamwidth_alongship', 'f'),
-                                       ('beamwidth_athwartship', 'f'),
+                                       ('beam_width_alongship', 'f'),
+                                       ('beam_width_athwartship', 'f'),
                                        ('angle_sensitivity_alongship', 'f'),
                                        ('angle_sensitivity_athwartship', 'f'),
                                        ('angle_offset_alongship', 'f'),
@@ -1454,8 +1454,8 @@ class SimradConfigParser(_SimradDatagramParser):
                                        ('frequency', 'f'),
                                        ('reserved1', 'f'),
                                        ('equivalent_beam_angle', 'f'),
-                                       ('beamwidth_alongship', 'f'),
-                                       ('beamwidth_athwartship', 'f'),
+                                       ('beam_width_alongship', 'f'),
+                                       ('beam_width_athwartship', 'f'),
                                        ('angle_sensitivity_alongship', 'f'),
                                        ('angle_sensitivity_athwartship', 'f'),
                                        ('angle_offset_alongship', 'f'),

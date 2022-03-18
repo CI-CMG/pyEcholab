@@ -30,9 +30,6 @@
 
 import numpy as np
 
-
-#  This class may ultimately become simrad_calibration
-
 class calibration(object):
     """
     The calibration class provides parameters required for transforming power,
@@ -90,6 +87,32 @@ class calibration(object):
                   https://github.com/OSOceanAcoustics/echopype
 
         '''
+
+        #  create a dict to map ECS variables to Echolab cal object properties
+        #  A few mappings may be updated in the child class init.
+        self.ECS_ECHOLAB_MAP = {'AbsorptionCoefficient':'absorption_coefficient',
+                                'AbsorptionDepth':'depth',
+                                'Acidity':'acidity',
+                                'EffectivePulseLength':'',
+                                'EK60SaCorrection':'sa_correction',
+                                'Frequency':'frequency',
+                                'MajorAxis3dbBeamAngle':'beam_width_alongship',
+                                'MajorAxisAngleOffset':'angle_offset_alongship',
+                                'MajorAxisAngleSensitivity':'angle_sensitivity_alongship',
+                                'MinorAxis3dbBeamAngle':'beam_width_athwartship',
+                                'MinorAxisAngleOffset':'angle_offset_athwartship',
+                                'MinorAxisAngleSensitivity':'angle_sensitivity_athwartship',
+                                'Salinity':'salinity',
+                                'SamplingFrequency':'sampling_frequency',
+                                'TransceiverSamplingFrequency':'rx_sample_frequency',
+                                'TransceiverImpedance':'transceiver_impedance',
+                                'SoundSpeed':'sound_speed',
+                                'Temperature':'temperature',
+                                'TransducerGain':'gain',
+                                'TransmittedPower':'transmit_power',
+                                'TransmittedPulseLength':'pulse_length',
+                                'TvgRangeCorrection':'tvg_range_correction',
+                                'TwoWayBeamAngle':'equivalent_beam_angle'}
 
         # Set the initial calibration property values.
         self.channel_id = None
@@ -266,61 +289,94 @@ class calibration(object):
 
 
     def read_ecs_file(self, ecs_file, channel):
-        """Reads an echoview ecs file and parses out the
-        parameters for a given channel.
+        """Reads an echoview ecs file and parses out the parameters for a given channel.
+
+        channel (str): Specify the "SourceCal" channel ID, eg "T1" "T2" etc
+
         """
 
+        def parse_ecs_param(ecs_text):
+            #  first split on the equals sign
+            line_parts = line.split('=')
+            param = line_parts[0].strip()
+
+            #  try to map this parameter to this cal object's attribute
+            try:
+                our_param = self.ECS_ECHOLAB_MAP[param]
+            except:
+                raise NotImplementedError('Echoview ECS parameter ' + param +
+                        ' is not implemented.')
+
+            #  then clean up the RHS by stripping off any comments
+            value = line_parts[1].split('#')[0]
+
+            #  try to convert to a float
+            try:
+                value = float(value)
+            except:
+                value.strip()
+
+            return our_param, value
+
+
         ecs_version = None
-        sourcecal = {}
-        localcal = {}
-        fileset = {}
         current_section = ''
-        current_transceiver = ''
+        current_channel = ''
 
         with open(ecs_file, 'r') as fp:
-            line = fp.readline()
+            for line in fp:
 
-            line = line.strip()
-            if line[0] == "#":
-                #  this is a comment line - process for section headers
-                if line.find('FILESET SETTINGS'):
-                    current_section = 'FILESET SETTINGS'
+                #  strip leading and trailing whitespace
+                line = line.strip()
 
-                elif line.find('SOURCECAL SETTINGS'):
-                    current_section = 'SOURCECAL SETTINGS'
+                #  skip blank lines
+                if len(line) == 0:
+                    continue
 
-                elif line.find('LOCALCAL SETTINGS'):
-                    current_section = 'LOCALCAL SETTINGS'
+                if line[0] == "#":
+                    #  this is a comment line - process for section headers
+                    if line.find('FILESET SETTINGS') > -1:
+                        current_section = 'FILESET SETTINGS'
+                    elif line.find('SOURCECAL SETTINGS') > -1:
+                        current_section = 'SOURCECAL SETTINGS'
+                    elif line.find('LOCALCAL SETTINGS') > -1:
+                        current_section = 'LOCALCAL SETTINGS'
 
-            else:
-                if line:
-                    line_parts = line.split(' ')
+                    # otherwise we ignore commented lines
+
+                else:
+                    #  this line is *not* commented - proceed based on what section we're in
 
                     if current_section == '':
+                        #  this must be the version
+                        line_parts = line.split(' ')
                         if line_parts[0].lower() == 'version':
-                            ecs_version = line_parts[2]
+                            ecs_version = line_parts[1].strip()
 
                     elif current_section == 'FILESET SETTINGS':
-                        #  not sure how localcal section is laid out
-                        #  for now just dump into the top level
-                        fileset[line_parts[0]] = line_parts[2]
+                        #  process the fileset params -
+                        param, value = parse_ecs_param(line)
+
+                        #  these params apply to all channels so we set our attribute
+                        setattr(self, param, value)
 
                     elif current_section == 'SOURCECAL SETTINGS':
+                        line_parts = line.split(' ')
                         if line_parts[0].lower() == 'sourcecal':
-                            current_transceiver = line_parts[1]
+                            current_channel = line_parts[1].strip()
                         else:
-                            #  this must be a param in the current xcvr sourcecal section
-                            if not current_transceiver in sourcecal.keys():
-                                sourcecal[current_transceiver] = {}
+                            #  check if these are the params we're looking for...
+                            if current_channel == channel:
 
-                            sourcecal[current_transceiver][line_parts[0]] = line_parts[2]
+                                #  parse the value
+                                param, value = parse_ecs_param(line)
+
+                                #  and set the attribute
+                                setattr(self, param, value)
 
                     elif current_section == 'LOCALCAL SETTINGS':
-                        #  not sure how localcal section is laid out
-                        #  for now just dump into the top level
-                        localcal[line_parts[0]] = line_parts[2]
-
-        return (ecs_version, sourcecal, localcal, fileset)
+                        #  not really sure what to do with localcal settings
+                        raise NotImplementedError('LOCALCAL settings are currently not implemented.')
 
 
     def get_attribute_from_raw(self, raw_data, param_name, return_indices=None):
