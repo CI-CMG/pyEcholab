@@ -1139,7 +1139,7 @@ class processed_data(ping_data):
 
         Args:
             key: A mask object or python array slice.
-            value (int): A scalar to assign.
+            value (float): A scalar to assign.
         """
         # Determine if we're assigning with a mask or assigning with slice
         # object.

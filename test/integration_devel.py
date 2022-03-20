@@ -16,8 +16,8 @@ rawfiles = ['../examples/data/EK60/DY1706_EK60-D20170625-T062521.raw',
 botfiles = ['../examples/data/EK60/DY1706_EK60-D20170625-T062521.bot',
             '../examples/data/EK60/DY1706_EK60-D20170625-T063335.bot']
 
-#  specify an Echoview cal file
-ecs_file = 'C:/EK Test Data/DY2104 final settings.ecs'
+#  specify an Echoview cal file (THIS IS NOT REQUIRED)
+#ecs_file = 'C:/EK Test Data/DY2104 final settings.ecs'
 
 # Use the echosounder function read our data. This function figures
 # out what format the data is in (EK60 or EK80), creates the correct
@@ -52,8 +52,9 @@ raw_data = echosounder_data.get_channel_data(frequencies=[38000])
 # Again, 90% of the time you're going to only have 1 element in the
 # list so it's convenient to unpack it here. If you read a file with
 # multiple channels at the same frequency, or data from the same channel
-# saved as complex and reduced, multiple objects will be returned in
-# the list and like above, it's your business to sort that out.
+# saved as in some files as complex and others reduced, multiple objects
+# will be returned in the list and like above, it's your business to
+# sort that out.
 raw38_data = raw_data[38000][0]
 
 # Next get a calibration object populated with data from the raw file.
@@ -74,48 +75,18 @@ cal_obj.sound_speed = 1477.0
 # your cal object with parameters from the file. This needs testing.
 #cal_obj.read_ecs_file(ecs_file, 'T2')
 
+
+# get an echolab2 line object representing the detected bottom. Note
+# that the line will be corrected if the  cal_obj's sound_speed is
+# different than the recorded sound_speed.
+bottom_line = raw38_data.get_bottom(calibration=cal_obj)
+
+
 # Get Sv. Pass the cal_obj so the method uses our modified settings.
 # If you don't pass the calibration argument, the method will grab
 # the cal params from the data file which you may not want. By default
 # data will be returned with a range based vertical axis.
 Sv_data = raw38_data.get_Sv(calibration=cal_obj)
-
-#  get an echolab2 line object representing the detected bottom
-bottom_line = raw38_data.get_bottom(calibration=cal_obj)
-
-
-# Now create a mask and apply surface and bottom lines to these masks
-# such that we mask out samples near the surface and below the bottom.
-
-# create the mask to mask the surface and bottom. Note that we pass
-# the "like" keyword to return a mask with the same shape and axes
-# (aka "like") our sample data
-surf_bot_mask = mask.mask(like=Sv_data)
-
-# Create a surface exclusion line at 10m RANGE.
-surf_line = line.line(ping_time=Sv_data.ping_time, data=10)
-
-# Next create a line that is 0.5m shallower than the detected bottom.
-# Note that the math operators are implemented for the line class so
-# you can just subtract 0.5 and
-bot_offset = bottom_line - 0.5
-
-# Now apply our lines to our mask. The mask.apply_line() method sets
-# all samples either above (apply_above=True) or below (apply_above=False)
-# the line to the boolean value you specify.
-
-# Mask out samples above our surface line
-surf_bot_mask.apply_line(surf_line, apply_above=True, value=True)
-
-# And mask out samples below our bottom offset line
-surf_bot_mask.apply_line(bot_offset, apply_above=False, value=True)
-
-# Now apply this mask to our data. When masking out surface and bottom
-# data we set the data values to NaN since we do not want these samples
-# to be considered *at all* for integration.
-
-# You can apply a mask object just like a numpy boolean mask
-Sv_data[surf_bot_mask] = np.nan
 
 
 # When integrating, you probably want to apply an upper and possibly
@@ -137,30 +108,68 @@ threshold_mask = max_threshold_mask | min_threshold_mask
 Sv_data[threshold_mask] = -999
 
 
-# Convert our data to linear units
+# The last thing we'll do to our data is convert it to linear units.
 Sv_data.to_linear()
 
 
-# Next create a grid that defines the domain the samples are
-# averaged over. The vertical axis is always in meters and the
-# horizontal axis can be in distance, time, or pings. See the
+# At this point our data is ready to go. The next step is to create a
+# mask that defines the samples that we want to integrate. Usually you
+# are interested in integrating only a part of the water column and
+# the include mask defines this region on a sample basis.
+
+# In this example we will integrate from 7m to 0.5 meters above the
+# bottom. The first step is to create a mask. Note that we pass
+# the "like" keyword to return a mask with the same shape and axes
+# (aka "like") our sample data. By default, all values will be set
+# to False.
+inclusion_mask = mask.mask(like=Sv_data)
+
+# Create a surface exclusion line at 7m RANGE.
+surf_line = line.line(ping_time=Sv_data.ping_time, data=7)
+
+# Next create a line that is 0.5m shallower than the detected bottom.
+# Note that the math operators are implemented for the line class so
+# you can just subtract 0.5 and
+bot_offset = bottom_line - 0.5
+
+# Now apply our lines to our mask. We use the mask.apply_between_lines
+# method to apply True to the mask elements between our two lines.
+inclusion_mask.apply_between_lines(surf_line, bot_offset, value=True)
+
+# The mask also has the apply_below_line, apply_above_line, and
+# apply_polygon methods that you can use to manipulate the mask values
+# to create your inclusion mask.
+
+
+
+# The last step is creating a grid that defines the domain the
+# samples are averaged over. The vertical axis is always in meters
+# and the horizontal axis can be in distance, time, or pings. See the
 # echolab2.processing.grid class for more info.
 
-# create a grid with a time based horizontal axis with 5 minute
+# create a grid with a time based horizontal axis with 1 minute
 # intervals and a vertical axis of 10 m. Since our data has a
 # range based vertical axis we have to specify the layer_axis
 # as 'range'.
+#
+# As noted in the echolab2.processing.grid class, if you specify
+# a ping_time axis, the interval length must be specified as a
+# numpy timedelta64 object (timedeltas define an time interval.)
+# See the numpy docs for details of the constructor, but in this case
+# I am specifying and interval value of 1 ('1') and unit of minutes ('m')
 integration_grid = grid.grid(interval_axis='ping_time',
         interval_length=np.timedelta64('1', 'm'), data=Sv_data,
         layer_axis='range', layer_thickness=10)
 
 
 
-# In the future, we would next call an integration function that
-# accepts our data and grid and returns a processed data object
-# containing NASC and some other stats as 2d properties and the
-# axes containing the cell centers. But for now I'll leave it to
-# you to work out computing NASC etc. down below in this script.
+# We now have everything we need to integrate. The data, a mask
+# specifying the samples to integrate, and a grid defining what to
+# integrate. In the future, we would next call an integration function
+# that accepts our data, inclusion mask, and grid and returns a processed
+# data object containing NASC and some other stats as 2d properties
+# and the axes containing the cell centers. But for now I'll leave
+# it to you to work out computing NASC etc. down below in this script.
 
 
 
@@ -176,9 +185,14 @@ for interval in range(integration_grid.n_intervals):
         # use the mask to get the cell data
         cell_Sv = Sv_data[cell_mask]
 
+        # and again to get the included data mask for this cell
+        cell_include = inclusion_mask[cell_mask]
+
         #  now get some info our our cell and cell sample data
-        bad_samples = np.isnan(cell_Sv)
-        n_good_samples = np.count_nonzero(~bad_samples)
+        no_data_samples = np.isnan(cell_Sv)
+        n_no_data_samples = np.count_nonzero(no_data_samples)
+        n_included_samples = np.count_nonzero(cell_include)
+        n_excluded_samples = np.count_nonzero(~cell_include)
         n_samples = integration_grid.interval_pings[interval]
         n_pings_in_cell = integration_grid.layer_samples[layer]
         n_total_samples = n_samples * n_pings_in_cell
@@ -193,8 +207,8 @@ for interval in range(integration_grid.n_intervals):
 
         #  and print out the info
         print("Interval %i, Layer %i" % (interval, layer))
-        print("   total samples: %i" % (n_total_samples))
-        print("    good samples: %i" % (n_good_samples))
-        print("         mean Sv: %3.2f" % (cell_mean_Sv))
-
-
+        print("      total samples: %i" % (n_total_samples))
+        print(" n included samples: %i" % (n_included_samples))
+        print(" n excluded samples: %i" % (n_excluded_samples))
+        print("    no_data samples: %i" % (n_no_data_samples))
+        print("            mean Sv: %3.2f" % (cell_mean_Sv))

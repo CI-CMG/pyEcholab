@@ -127,7 +127,7 @@ class mask(ping_data):
         Raise:
             TypeError: Invalid mask type.
             TypeError: The object argument is not an instance of echolab2
-                ProcesedData or Mask classes.
+                procesed_data or mask classes.
         """
 
         # Ensure the value arg is a bool.
@@ -189,7 +189,7 @@ class mask(ping_data):
         else:
             # We only can base masks on processed_data or mask objects.
             raise TypeError('"like_obj" argument must be an instance of '
-                            'echolab2 ProcesedData or Mask classes.')
+                            'echolab2 procesed data or mask classes.')
 
 
     def copy(self):
@@ -213,21 +213,119 @@ class mask(ping_data):
                 mask_copy.depth = self.depth.copy()
 
 
-    def apply_line(self, line_obj, apply_above=False, value=True):
-        """Sets mask elements above and below the line object.
+    def apply_between_lines(self, upper_line, lower_line, value=True):
+        """Sets mask elements between the provided lines to the specified
+        value.
 
-        This method sets mask elements above the line object to the value
-        specified by the above keyword and mask elements below the
-        line to the value specified by the below keyword.
+        This is a convenience function. See apply_line for details.
 
         Args:
-            line_obj (processed_data obj): The line object the mask refers to.
-            apply_above (bool):
-            value (bool):
+            upper_line (line): The line object used to define the upper boundary
+                               on the mask where the provided value will be
+                               applied.
+            lower_line (line): The line object used to define the lower boundary
+                               on the mask where the provided value will be
+                               applied.
+            value (bool): Set this keyword to True to set the mask elements to
+                          True, False to False. Default: True
 
         Raises:
-            TypeError: The line isn't a sample mask.
-            ValueError: Line ping times do not match mask times.
+            TypeError: When the mask is a ping mask (1-d mask). You cannot apply
+                       a line to a ping mask.
+            ValueError: Line line ping times do not match mask times. The line(s)
+                        and mask axes must match.
+        """
+
+        self.apply_line(upper_line, value=value, other_line=lower_line)
+
+
+    def apply_below_line(self, line_obj, value=True):
+        """Sets mask elements below the line to the specified value.
+
+        This is a convenience function. See apply_line for details.
+
+        Args:
+            line_obj (line): The line object used to define the upper boundary
+                             on the mask where the provided value will be
+                             applied. All mask elements at or below the line
+                             will be set.
+            value (bool): Set this keyword to True to set the mask elements to
+                          True, False to False. Default: True
+
+        Raises:
+            TypeError: When the mask is a ping mask (1-d mask). You cannot apply
+                       a line to a ping mask.
+            ValueError: Line line ping times do not match mask times. The line(s)
+                        and mask axes must match.
+        """
+
+        self.apply_line(line_obj, value=value, apply_above=False)
+
+
+    def apply_above_line(self, line_obj, value=True):
+        """Sets mask elements above the line to the specified value.
+
+        This is a convenience function. See apply_line for details.
+
+        Args:
+            line_obj (line): The line object used to define the lower boundary
+                             on the mask where the provided value will be
+                             applied. All mask elements at or above the line
+                             will be set.
+            value (bool): Set this keyword to True to set the mask elements to
+                          True, False to False. Default: True
+
+        Raises:
+            TypeError: When the mask is a ping mask (1-d mask). You cannot apply
+                       a line to a ping mask.
+            ValueError: Line line ping times do not match mask times. The line(s)
+                        and mask axes must match.
+        """
+
+        self.apply_line(line_obj, value=value, apply_above=True)
+
+
+    def apply_line(self, line_obj, apply_above=False, value=True,
+            other_line=None):
+        """Sets mask elements above, below, and between lines.
+
+        This method sets this mask's elements above, below, or between the
+        provided echolab2.processing.line object(s) to the specified boolean
+        value.
+
+        Set apply_above to True to apply the provided value to samples with
+        range/depth values LESS THAN OR EQUAL TO the provided line.
+
+        Set apply_above to False to apply the provided value to samples with
+        range/depth values GREATER THAN OR EQUAL TO the provided line.
+
+        If you set other_line to a line object, the apply_above argument will
+        be ignored and samples greater than or equal to line_obj and samples
+        less than or equal to other_line will be set to the provided value.
+        In other words, setting other_line will set samples between the two
+        lines.
+
+        The line(s) and mask must share the same horizontal axis.
+
+        Args:
+            line_obj (line): The line object used to define the vertical
+                             boundary for each
+            apply_above (bool): Set apply_above to True to apply the provided
+                                value to all samples equal to or less than the
+                                line range/depth. Set to False to apply to
+                                samples greater than or equal to the line range/
+                                depth. Default: False
+            other_line (line): Set other_line to a line object to set all samples
+                               between line_obj and other_line to the provided
+                               value. Default: None
+            value (bool): Set this keyword to True to set the mask elements to
+                          True, False to False. Default: True
+
+        Raises:
+            TypeError: When the mask is a ping mask (1-d mask). You cannot apply
+                       a line to a ping mask.
+            ValueError: Line line ping times do not match mask times. The line(s)
+                        and mask axes must match.
         """
         # Make sure this is a sample mask.
         if self.type == 'ping':
@@ -236,24 +334,41 @@ class mask(ping_data):
 
         # Make sure we share the same ping_time axis.
         if not np.array_equal(self.ping_time, line_obj.ping_time):
-            raise ValueError('Line ping times do not match mask times.')
+            raise ValueError("line_obj ping times do not match this mask's times.")
 
         # Ensure value is a bool.
         value = bool(value)
 
+        # get our vertical axis
         if hasattr(self, 'range'):
             v_axis = self.range
         else:
             v_axis = self.depth
 
-        if apply_above:
-            for ping in range(self.n_pings):
-                samps_to_mask = v_axis <= line_obj.data[ping]
-                self.mask[ping, :][samps_to_mask] = value
-        else:
+        #  first check if we're setting between two lines
+        if other_line is not None:
+            #  we are, check the other line's ping_time axis
+            if not np.array_equal(self.ping_time, other_line.ping_time):
+                raise ValueError("other_line ping times do not match this mask's times.")
+
+            # apply value to mask elements between the two provided lines
             for ping in range(self.n_pings):
                 samps_to_mask = v_axis >= line_obj.data[ping]
+                samps_to_mask &= v_axis <= other_line.data[ping]
                 self.mask[ping, :][samps_to_mask] = value
+
+        else:
+            #  only one line passed so we'll apply above or below that line
+            if apply_above:
+                # apply value to mask elements less than or equal to the line
+                for ping in range(self.n_pings):
+                    samps_to_mask = v_axis <= line_obj.data[ping]
+                    self.mask[ping, :][samps_to_mask] = value
+            else:
+                # apply value to mask elements greater than or equal to the line
+                for ping in range(self.n_pings):
+                    samps_to_mask = v_axis >= line_obj.data[ping]
+                    self.mask[ping, :][samps_to_mask] = value
 
 
     def apply_polygon(self, poly_obj, inside=True, outside=False):
@@ -300,6 +415,132 @@ class mask(ping_data):
         self.mask = mask.reshape((self.n_pings,self.n_samples))
 
 
+    def any(self):
+        """Checks if any elements of the mask are True.
+
+        Returns:
+            Returns True if at least one element in the mask is True.
+        """
+
+        try:
+            return np.any(self.mask)
+        except:
+            return False
+
+
+    def all(self):
+        """Checks if all elements of the mask are True.
+
+        Returns:
+            Returns True if all elements of the mask are True.
+        """
+
+        try:
+            return np.all(self.mask)
+        except:
+            return False
+
+    def to_sample_mask(self, other):
+        """Creates a new 2d sample based mask.
+
+        to_sample_mask returns a new 2d sample based mask created when called
+        by a ping based mask and provided with another sample mask or
+        processed_data object to obtain the sample count from.
+
+        Args:
+            other (Mask obj): A sample mask object used to create a new sample
+                based mask.
+        """
+        if self.type == 'sample':
+            return
+
+        # Create a new 2d mask based on the "other" sample mask.
+        new_mask = mask(like=other)
+
+        # Set all samples to True for each ping set True in this mask.
+        new_mask.mask[self.mask, :] = True
+
+        # Update the type and data.
+        self.type = 'sample'
+        self.mask = new_mask.mask
+
+
+    def __getitem__(self, key):
+        """mask objects can be sliced with standard index based
+        slicing as well as other mask objects.
+
+        Args:
+            key: A mask object or python array slice.
+
+        Returns:
+            The sliced/masked mask data.
+        """
+
+        # Determine if we're "slicing" with a mask or slicing with slice object.
+        if isinstance(key, mask):
+
+            # Make sure the mask applies to this object.
+            self._check_mask(key)
+
+            if key.type.lower() == 'sample':
+                # This is a 2d mask array which we can directly apply to the
+                # data.
+                sample_mask = key.mask
+            else:
+                # This is a ping based mask - create a 2d array based on the
+                # mask to apply to the data.
+                sample_mask = np.full((self.n_pings, self.n_samples), False,
+                                      dtype=bool)
+
+                # Set all samples to True for each ping set True in the ping
+                # mask
+                sample_mask[key.mask, :] = True
+
+        else:
+            # Assume we've been passed slice objects.  Just pass them along.
+            sample_mask = key
+
+        # Return the sliced/masked mask data.
+        return self.mask[sample_mask]
+
+
+    def __setitem__(self, key, value):
+        """
+        We can assign to mask data elements  using assignment with other mask
+        objects or we can use python array slicing.
+
+        Args:
+            key: A mask object or python array slice.
+            value (bool): A scalar to assign.
+        """
+
+        # Determine if we're assigning with a mask or assigning with slice
+        # object.
+        if isinstance(key, mask):
+            # It's a mask.  Make sure the mask applies to this object.
+            self._check_mask(key)
+
+            if key.type.lower() == 'sample':
+                # This is a 2d mask array which we can directly apply to the
+                # data.
+                sample_mask = key.mask
+            else:
+                # This is a ping based mask.  Create a 2d array based on the
+                # mask to apply to the data.
+                sample_mask = np.full((self.n_pings, self.n_samples), False,
+                                      dtype=bool)
+
+                # Set all samples to True for each ping set True in the ping
+                # mask.
+                sample_mask[key.mask, :] = True
+        else:
+            # Assume we've been passed slice objects.  Just pass them along.
+            sample_mask = key
+
+        # Set the mask data to the provided value(s).
+        self.data[sample_mask] = bool(value)
+
+
     def __eq__(self, other):
         """Compares two masks
 
@@ -332,32 +573,6 @@ class mask(ping_data):
             other_mask, ret_mask = self._check_mask(other)
 
             return np.any(ret_mask.mask != other.mask)
-        except:
-            return False
-
-
-    def any(self):
-        """Checks if any elements of the mask are True.
-
-        Returns:
-            Returns True if at least one element in the mask is True.
-        """
-
-        try:
-            return np.any(self.mask)
-        except:
-            return False
-
-
-    def all(self):
-        """Checks if all elements of the mask are True.
-
-        Returns:
-            Returns True if all elements of the mask are True.
-        """
-
-        try:
-            return np.all(self.mask)
         except:
             return False
 
@@ -532,31 +747,6 @@ class mask(ping_data):
         ret_mask.mask[:] = ~self.mask
 
         return ret_mask
-
-
-    def to_sample_mask(self, other):
-        """Creates a new 2d sample based mask.
-
-        to_sample_mask returns a new 2d sample based mask created when called
-        by a ping based mask and provided with another sample mask or
-        processed_data object to obtain the sample count from.
-
-        Args:
-            other (Mask obj): A sample mask object used to create a new sample
-                based mask.
-        """
-        if self.type == 'sample':
-            return
-
-        # Create a new 2d mask based on the "other" sample mask.
-        new_mask = mask(like=other)
-
-        # Set all samples to True for each ping set True in this mask.
-        new_mask.mask[self.mask, :] = True
-
-        # Update the type and data.
-        self.type = 'sample'
-        self.mask = new_mask.mask
 
 
     def _check_mask(self, other, inplace=False):
