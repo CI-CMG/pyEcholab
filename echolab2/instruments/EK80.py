@@ -2442,17 +2442,23 @@ class raw_data(ping_data):
             # FM files will have the frequency_start and frequency_end parameters
             self.frequency_start[this_ping] = tx_parms['frequency_start']
             self.frequency_end[this_ping] = tx_parms['frequency_end']
-        self.pulse_duration[this_ping] = tx_parms['pulse_duration']
         self.sample_interval[this_ping] = tx_parms['sample_interval']
         self.slope[this_ping] = tx_parms['slope']
         self.transmit_power[this_ping] = tx_parms['transmit_power']
-        # I *think* sound_velocity was added to the tx parameter datagram at
-        # some point. Or I just missed it from the beginning. Until I know,
-        # we'll insert it if we have it. If not we'll just insert a NaN
+        # Sound_velocity was added to the tx parameter datagram at
+        # some point. Older files will not have it so we'll just insert a NaN
         if 'sound_velocity' in tx_parms:
             self.sound_velocity[this_ping] = tx_parms['sound_velocity']
         else:
             self.sound_velocity[this_ping] = np.nan
+        #  pulse_duration was called pulse_length in older file versions
+        if 'pulse_duration' in tx_parms:
+            self.pulse_duration[this_ping] = tx_parms['pulse_duration']
+        elif 'pulse_length' in tx_parms:
+            self.pulse_duration[this_ping] = tx_parms['pulse_length']
+        else:
+            # I don't know if this is possible but just in case...
+            self.pulse_duration[this_ping] = np.nan
 
         # Update sample count and sample offset values
         if start_sample:
@@ -4602,6 +4608,11 @@ class ek80_calibration(calibration):
             else:
                 # EK60 hardware power conversion does not require this parameter
                 param_data = None
+
+        elif param_name == 'absorption_coefficient':
+            param_data = self._compute_absorption(raw_data,
+                return_indices, self.absorption_method)
+
 
         return param_data
 

@@ -771,6 +771,7 @@ class SimradXMLParser(_SimradDatagramParser):
             'FrequencyStart':[float,'frequency_start',''],
             'FrequencyEnd':[float,'frequency_end',''],
             'PulseDuration':[float,'pulse_duration',''],
+            'PulseLength':[float,'pulse_length',''],
             'SampleInterval':[float,'sample_interval',''],
             'TransmitPower':[float,'transmit_power',''],
             'Slope':[float,'slope',''],
@@ -889,10 +890,18 @@ class SimradXMLParser(_SimradDatagramParser):
 
                 #print(xml_string.decode('utf-8'))
 
+                # Check for the Transducers section - This section contains the
+                # mounting information about the transducers attached to the system.
+                # This section was added in later raw file versions and doesn't
+                # exist in all files.
                 transducer_map = {}
                 transducers_node = root_node.find('./Transducers')
-                for xdcrs_node in transducers_node.iter('Transducer'):
-                    transducer_map[xdcrs_node.get('TransducerName')] = xdcrs_node.attrib
+                if transducers_node:
+                    # Node exists, create a mapping of name to attributes we'll
+                    # use below to map the attributes to the xdcrs connected to
+                    # each transceiver.
+                    for xdcrs_node in transducers_node.iter('Transducer'):
+                        transducer_map[xdcrs_node.get('TransducerName')] = xdcrs_node.attrib
 
                 # Parse the Transceiver section
                 xcvrs_node = root_node.find('./Transceivers')
@@ -943,11 +952,11 @@ class SimradXMLParser(_SimradDatagramParser):
                         if len(xdcr_params_wideband):
                             data['configuration'][channel_id]['transducer_params_wideband'] = xdcr_params_wideband
 
-                        # Now add the matching transducer from the transducers section
-                        # we parsed above.
-                        transducer_map[transducer_attributes['TransducerName']]
-                        dict_to_dict(transducer_map[transducer_attributes['TransducerName']],
-                                data['configuration'][channel_id], self.xdcrs_xdcr_xml_map)
+                        # If available add the data from the Transducers section for this transducer
+                        if transducers_node:
+                            transducer_map[transducer_attributes['TransducerName']]
+                            dict_to_dict(transducer_map[transducer_attributes['TransducerName']],
+                                    data['configuration'][channel_id], self.xdcrs_xdcr_xml_map)
 
                         #  add the header data to the config dict
                         h = root_node.find('Header')
