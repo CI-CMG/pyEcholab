@@ -257,6 +257,7 @@ class EK80(object):
         self._initial_params = {}
         self._file_n_channels = 0
         self._file_channel_number_map = {}
+        self._known_file_errors = []
 
 
     def read_raw(self, *args, **kwargs):
@@ -468,6 +469,7 @@ class EK80(object):
             self._initial_params = {}
             self._file_channel_number_map = {}
             self._file_n_channels = 0
+            self._known_file_errors = []
             last_progress = -1
 
             #  normalize the file path and split out the parts
@@ -710,6 +712,19 @@ class EK80(object):
         #  attempt to read the next datagram
         try:
             new_datagram = fid.read(1)
+        except ValueError as e:
+            # A ValueError will be raised if we encounter an unknown datagram
+            # type. This typically happens when Simrad updates a datagram version
+            # but we don't know how to handle it. We will report this issue once
+            error_str = e.__str__()
+            if error_str not in self._known_file_errors:
+                # Report our parsing error
+                print(error_str)
+                print("These datagrams will be ignored until the parser is updated.")
+
+                # add this error to our list of known errors
+                self._known_file_errors.append(error_str)
+            return result
         except SimradEOF:
             #  we're at the end of the file
             result['finished'] = True

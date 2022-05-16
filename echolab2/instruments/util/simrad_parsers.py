@@ -896,7 +896,7 @@ class SimradXMLParser(_SimradDatagramParser):
                 # exist in all files.
                 transducer_map = {}
                 transducers_node = root_node.find('./Transducers')
-                if transducers_node:
+                if transducers_node is not None:
                     # Node exists, create a mapping of name to attributes we'll
                     # use below to map the attributes to the xdcrs connected to
                     # each transceiver.
@@ -953,7 +953,7 @@ class SimradXMLParser(_SimradDatagramParser):
                             data['configuration'][channel_id]['transducer_params_wideband'] = xdcr_params_wideband
 
                         # If available add the data from the Transducers section for this transducer
-                        if transducers_node:
+                        if transducers_node is not None:
                             transducer_map[transducer_attributes['TransducerName']]
                             dict_to_dict(transducer_map[transducer_attributes['TransducerName']],
                                     data['configuration'][channel_id], self.xdcrs_xdcr_xml_map)
