@@ -134,3 +134,21 @@ test/misc tests/
 test/create_test_data_snippets.py
 test/compare_main_vs_RHT-EK80.py
 test/create_pickles.py
+.vscode/
+test/evl_test.py
+test/fix_z_offset_error.py
+test/grid_test.py
+test/knut_test.py
+test/knut_test2.py
+test/plot_heave_data.py
+test/test_resample.py
+test/test_resample2.py
+echolab2/instruments/resources/regrid.py
+echolab2/instruments/resources/regrid_orig.py
+echolab2/instruments/resources/version 1.01 config header with bb cal.txt
+echolab2/instruments/resources/version 1.23 config header no bb cal.txt
+echolab2/processing/afsc_bot_detector_nate.py
+echolab2/processing/processed_data_MS2.py
+examples/plot_single_ping_ES60.py
+examples/not_updated/read_out.py
+test/ek80_z_offset_bug_test_2.py
