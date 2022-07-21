@@ -342,20 +342,24 @@ class RawSimradFile(BufferedReader):
             in bytes,
         :type bytes_read: int
 
-        Returns a formated datagram object using the data in raw_datagram_string
+        Returns a formatted datagram object using the data in raw_datagram_string
         '''
 
         #  11/26/19 - RHT - Modified this method to pass through the number of
         #  bytes read so we can bubble that up to the user.
 
+        #  07/17/22 - RHT - Modified to partially parse unknown datagram types
+
         dgram_type = raw_datagram_string[:3].decode('iso-8859-1')
         try:
             parser = self.DGRAM_TYPE_KEY[dgram_type]
+            nice_dgram = parser.from_string(raw_datagram_string, bytes_read)
         except KeyError:
-            #raise KeyError('Unknown datagram type %s, valid types: %s' % (str(dgram_type), str(self.DGRAM_TYPE_KEY.keys())))
-            return raw_datagram_string
+            #  Unknown datagram type
 
-        nice_dgram = parser.from_string(raw_datagram_string, bytes_read)
+            parser = simrad_parsers.SimradUnknownParser(dgram_type)
+            nice_dgram = parser.from_string(raw_datagram_string, bytes_read)
+
         return nice_dgram
 
 

@@ -257,7 +257,7 @@ class EK80(object):
         self._initial_params = {}
         self._file_n_channels = 0
         self._file_channel_number_map = {}
-        self._known_file_errors = []
+        self._unknown_datagram_types = []
 
 
     def read_raw(self, *args, **kwargs):
@@ -469,7 +469,7 @@ class EK80(object):
             self._initial_params = {}
             self._file_channel_number_map = {}
             self._file_n_channels = 0
-            self._known_file_errors = []
+            self._unknown_datagram_types = []
             last_progress = -1
 
             #  normalize the file path and split out the parts
@@ -712,19 +712,6 @@ class EK80(object):
         #  attempt to read the next datagram
         try:
             new_datagram = fid.read(1)
-        except ValueError as e:
-            # A ValueError will be raised if we encounter an unknown datagram
-            # type. This typically happens when Simrad updates a datagram version
-            # but we don't know how to handle it. We will report this issue once
-            error_str = e.__str__()
-            if error_str not in self._known_file_errors:
-                # Report our parsing error
-                print(error_str)
-                print("These datagrams will be ignored until the parser is updated.")
-
-                # add this error to our list of known errors
-                self._known_file_errors.append(error_str)
-            return result
         except SimradEOF:
             #  we're at the end of the file
             result['finished'] = True
@@ -1005,8 +992,18 @@ class EK80(object):
                         data.detected_bottom[ping_idx] = new_datagram['depth'][idx]
 
         else:
-            #  report an unknown datagram type
-            print("Unknown datagram type: " + str(new_datagram['type']))
+            #  This is an unknown datagram type. Warn the user. Note that unknown
+            #  datagrams are not stored and they will be omitted from rewritten files.
+
+            if new_datagram['type'] not in self._unknown_datagram_types:
+                # Warn the user about the unknown datagram encountered
+                warning_string = ('WARNING - Unknown datagram type encountered: ' +
+                        new_datagram['type'] + '. These datagrams will be ignored ' +
+                        'until the parser is updated to handle them.')
+                print(warning_string)
+
+                # add this type to our list of known types
+                self._unknown_datagram_types.append(new_datagram['type'])
 
         #  return our result dict which contains some basic info about
         #  the datagram we just read
