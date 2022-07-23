@@ -829,6 +829,7 @@ class SimradXMLParser(_SimradDatagramParser):
             'FrequencyStart':[float,'frequency_start',''],
             'FrequencyEnd':[float,'frequency_end',''],
             'PulseDuration':[float,'pulse_duration',''],
+            'EffectivePulseDuration':[float,'effective_pulse_duration',''],
             'PulseLength':[float,'pulse_length',''],
             'SampleInterval':[float,'sample_interval',''],
             'TransmitPower':[float,'transmit_power',''],

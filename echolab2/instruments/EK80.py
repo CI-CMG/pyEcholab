@@ -34,6 +34,7 @@ $Id$
 '''
 
 import os
+import re
 import numpy as np
 from scipy.interpolate import interp1d
 from .util.simrad_calibration import calibration
@@ -677,6 +678,12 @@ class EK80(object):
                     #  add an entry in the initial_params dict
                     self._initial_params[channel_id] = None
 
+                #  check if the transceiver_type is missing and add. I believe that this
+                #  should only be the case with ES80 files.
+                if 'transceiver_type' not in config_datagram['configuration'][channel_id]:
+                    config_datagram['configuration'][channel_id]['transceiver_type'] = \
+                            re.findall('^[^0-9]*', channel_id)[0].strip()
+
         # Now remove any channels marked for removal
         for channel_id in remove_channels:
             config_datagram['configuration'].pop(channel_id)
@@ -745,6 +752,8 @@ class EK80(object):
                 #  update the most recent parameter attribute for this channel
                 self._tx_params[new_datagram[new_datagram['subtype']]['channel_id']] = \
                         new_datagram[new_datagram['subtype']]
+                #  store the channel ID which is required below for ES80 files
+                self._param_channel_id = new_datagram[new_datagram['subtype']]['channel_id']
 
             elif new_datagram['subtype'] == 'environment':
                 #  update the most recent environment attribute
@@ -784,11 +793,6 @@ class EK80(object):
             if self._this_ping_time != new_datagram['timestamp']:
                 self.n_pings += 1
                 self._this_ping_time = new_datagram['timestamp']
-
-                # check if we're storing this channel
-                if new_datagram['channel_id'] not in self.channel_ids:
-                    #  no, it's not in the list - just return
-                    return result
 
         # Check if we should store this data based on ping bounds.
         if self.read_start_ping is not None:
@@ -832,6 +836,31 @@ class EK80(object):
         # RAW datagrams store raw acoustic data for a channel.
         elif new_datagram['type'].startswith('RAW'):
 
+            #  ES80 systems seem to have a file format that is a precursor to the EK80 raw
+            #  format. They utilize RAW0 datagrams (instead of RAW3) which contain more
+            #  ancillary data that is stored in other datagrams in later raw formats. If
+            #  this is a RAW0 datagram we will unpack that data here.
+            if new_datagram['type'][3] == '0':
+                #  RAW0 datagrams lack the channel ID field so we insert it here
+                new_datagram['channel_id'] = self._param_channel_id
+
+                #  data_type is called "mode" in RAW0 datagrams
+                new_datagram['data_type'] = new_datagram['mode']
+
+                #  I am assuming ES80 cannot generate complex data?
+                new_datagram['complex'] = None
+
+                #  The ES80 parameter telegram is missing a number of fields that are
+                #  instead inside the RAW0 datagram. We unpack those here.
+                self._tx_params[new_datagram['channel_id']]['frequency'] = new_datagram['frequency']
+                self._tx_params[new_datagram['channel_id']]['pulse_duration'] = new_datagram['pulse_length']
+                self._tx_params[new_datagram['channel_id']]['channel_mode'] = new_datagram['mode']
+                self._tx_params[new_datagram['channel_id']]['sample_interval'] = new_datagram['sample_interval']
+                self._tx_params[new_datagram['channel_id']]['transmit_power'] = new_datagram['transmit_power']
+                #  these two field are not present in the file - for now I am assuming ES80 cannot do FM
+                self._tx_params[new_datagram['channel_id']]['pulse_form'] = 0
+                self._tx_params[new_datagram['channel_id']]['slope'] = None
+
             # Check if we're storing this channel
             if new_datagram['channel_id'] in self.channel_ids:
 
@@ -844,10 +873,9 @@ class EK80(object):
                 # Update the last ping number.
                 self.end_ping = self.n_pings
 
-                # Add the raw datagram based on the RAW datagram type.
-                if new_datagram['type'][3] == '3':
+                if new_datagram['type'][3] in ['0', '3']:
 
-                    # RAW3 datagrams store the "regular" sample data
+                    # RAW0 and RAW3 datagrams store the "regular" sample data
 
                     #  loop through the raw_data objects to find the raw_data object
                     #  to store this data.
@@ -860,7 +888,7 @@ class EK80(object):
                         elif (new_datagram['data_type'] == 1 and raw_obj.data_type == 'power' or
                               new_datagram['data_type'] == 2 and raw_obj.data_type == 'angle' or
                               new_datagram['data_type'] == 3 and raw_obj.data_type == 'power/angle'):
-                            # This raw_data object contains the dame data type as the datagram
+                            # This raw_data object contains the same data type as the datagram
                             this_raw_data = raw_obj
                             break
                         elif new_datagram['data_type'] > 3:
@@ -885,9 +913,11 @@ class EK80(object):
                                 store_complex=self.store_complex,
                                 max_sample_number=self.read_max_sample_count,
                                 n_pings=self.raw_data_width)
+
                         # Set the transceiver type
                         this_raw_data.transceiver_type = \
                                 self._config[new_datagram['channel_id']]['transceiver_type']
+
                         # Set the motion_data and nmea_data references
                         this_raw_data.motion_data = self.motion_data
                         this_raw_data.nmea_data = self.nmea_data
@@ -904,6 +934,12 @@ class EK80(object):
                             self._ping_sequence,
                             start_sample=self.read_start_sample,
                             end_sample=self.read_end_sample)
+
+                    #  if this is an ES80 RAW0 datagram we need to extract the motion data
+                    if new_datagram['type'][3] == '0':
+                        self.motion_data.add_datagram(new_datagram['timestamp'],
+                            new_datagram['heave'], new_datagram['pitch'],
+                            new_datagram['roll'], new_datagram['heading'])
 
                 elif new_datagram['type'][3] == '4':
                     # RAW4 datagrams are only generated when saving reduced sample data
@@ -2341,10 +2377,19 @@ class raw_data(ping_data):
             #  set the initial sample offset
             self.sample_offset = sample_datagram['offset']
 
+            #  check if this is ES80 data with effective_pulse_duration in the tx_params
+            if 'effective_pulse_duration' in tx_parms:
+                #  it is, set create_effective_pulse_duration so we can store it
+                create_effective_pulse_duration = True
+            else:
+                #  for all other systems we compute effective_pulse_duration
+                create_effective_pulse_duration = False
+
             #  Initialize the data arrays
             self._create_arrays(self.chunk_width, n_samples, initialize=False,
                     create_power=create_power, create_angles=create_angles,
-                    create_complex=create_complex, n_complex=n_complex)
+                    create_complex=create_complex, n_complex=n_complex,
+                    create_effective_pulse_duration=create_effective_pulse_duration)
 
             # Initialize the ping counter to indicate that our data arrays
             # have been allocated.
@@ -2471,6 +2516,11 @@ class raw_data(ping_data):
         else:
             # I don't know if this is possible but just in case...
             self.pulse_duration[this_ping] = np.nan
+
+        #  ES80 files will contain precomputed effective_pulse_duration
+        if 'effective_pulse_duration' in tx_parms:
+            self.effective_pulse_duration[this_ping] = \
+                    tx_parms['effective_pulse_duration']
 
         # Update sample count and sample offset values
         if start_sample:
@@ -4129,7 +4179,8 @@ class raw_data(ping_data):
 
 
     def _create_arrays(self, n_pings, n_samples, initialize=False, create_power=False,
-            create_angles=False, create_complex=True, n_complex=4):
+            create_angles=False, create_complex=True, n_complex=4,
+            create_effective_pulse_duration=False):
         """Initializes raw_data data arrays.
 
         This is an internal method. Note that all arrays must be numpy arrays.
@@ -4140,8 +4191,10 @@ class raw_data(ping_data):
             initialize (bool): Set to True to initialize arrays.
             create_power (bool): Set to True to create the power attribute.
             create_angles (bool): Set to True to create the angles_alongship_e
-                                  angles_athwartship_e attributes.
+                    angles_athwartship_e attributes.
             create_complex (bool): Set to True to create the complex attribute.
+            create_effective_pulse_duration (bool): Set to True to create the
+                    effective_pulse_duration attribute which is used for ES80 data.
             n_complex (int): Number of complex values per sample
         """
 
@@ -4154,7 +4207,7 @@ class raw_data(ping_data):
         self.filters = np.empty((n_pings), dtype='object')
         self.initial_parameters = np.empty((n_pings), dtype='object')
 
-        #  the rest of the arrays store syncronous ping data
+        #  the rest of the arrays store synchronous ping data
         self.sample_offset = np.empty((n_pings), np.int32)
         self.channel_mode = np.empty((n_pings), np.int32)
         self.pulse_form = np.empty((n_pings), np.int32)
@@ -4164,6 +4217,9 @@ class raw_data(ping_data):
         else:
             self.frequency = np.empty((n_pings), np.float32)
         self.pulse_duration = np.empty((n_pings), np.float32)
+        if create_effective_pulse_duration:
+            self.effective_pulse_duration = np.empty((n_pings), np.float32)
+            self._data_attributes.append('effective_pulse_duration')
         self.sample_interval = np.empty((n_pings), np.float32)
         self.slope = np.empty((n_pings), np.float32)
         self.sound_velocity = np.empty((n_pings), np.float32)
@@ -4204,6 +4260,8 @@ class raw_data(ping_data):
             self.pulse_form.fill(0)
             self.frequency.fill(np.nan)
             self.pulse_duration.fill(np.nan)
+            if create_effective_pulse_duration:
+                self.effective_pulse_duration.fill(np.nan)
             self.sample_interval.fill(np.nan)
             self.slope.fill(np.nan)
             self.transmit_power.fill(np.nan)
@@ -4343,6 +4401,10 @@ class ek80_calibration(calibration):
         # and instead provides the data to do it.
         self.absorption_method = absorption_method
 
+        # ES80 doesn't store the acidity environment parameter. If acidity is not
+        # provided when working with ES80 data, this value will be used.
+        self.default_acidity = 8.0
+
         # Create a dict containing the hardware sampling frequencies of various
         # Simrad hardware. In EK80 versions prior to 1.12.2 the rx_sampling_frequency
         # configuration property didn't exist. When these files are read, they use
@@ -4425,8 +4487,7 @@ class ek80_calibration(calibration):
         param_data, return_indices = super(ek80_calibration, self).get_attribute_from_raw(
                 raw_data, param_name, return_indices=return_indices)
 
-        # Now handle attributes that need some special handling These are mostly
-        # parameters that must be looked up from a lookup table.
+        # Now handle attributes that need some special handling.
 
         # Files written with EK80 software versions < 1.12.0 lacked xcvr impedance
         # info in the file header. The EK80 software used 1000 ohms so we're going
@@ -4435,11 +4496,17 @@ class ek80_calibration(calibration):
             if param_data is None or np.isnan(param_data):
                 param_data = raw_data.ZTRANSCEIVER
 
+        # acidity is not present in ES80 environment datagrams - if we're not
+        # explicitly provided a value, we use the default value.
+        elif param_name == 'acidity':
+            if param_data is None or np.isnan(param_data):
+                param_data = self.default_acidity
+
         # rx_sample_frequency is a special case because it is a parameter
         # that was recently added to the EK80 raw file configuration datagram
         # and there will be files that do not contain it. In these cases we
         # look up a default value based on the transceiver hardware.
-        if param_name == 'rx_sample_frequency':
+        elif param_name == 'rx_sample_frequency':
             #  create the return array
             param_data = np.empty((return_indices.shape[0]), dtype=np.float32)
 
@@ -4610,13 +4677,19 @@ class ek80_calibration(calibration):
             param_data = new_data
 
         elif param_name == 'effective_pulse_duration':
-            # EK80 hardware uses the effective_pulse_duration
+            # EK80 hardware uses the effective_pulse_duration - most file formats require
+            # this to be computed but ES80 store this in the raw file.
             if self.transceiver_type != 'GPT':
-                # For now we're always converting to pulse compressed Sv/Sp so we return the
-                # effective pulse duration of the pulse compressed Tx signal
-                return_pc = True
-                param_data = simrad_signal_proc.compute_effective_pulse_duration(raw_data, self,
-                        return_pc=return_pc, return_indices=return_indices)
+                #  check if we already have effective_pulse_duration (ES80) or we need to compute
+                if hasattr(raw_data, 'effective_pulse_duration'):
+                    #  this must be ES80 data
+                    param_data = raw_data.effective_pulse_duration[return_indices]
+                else:
+                    # For now we're always converting to pulse compressed Sv/Sp so we return the
+                    # effective pulse duration of the pulse compressed Tx signal
+                    return_pc = True
+                    param_data = simrad_signal_proc.compute_effective_pulse_duration(raw_data, self,
+                            return_pc=return_pc, return_indices=return_indices)
             else:
                 # EK60 hardware power conversion does not require this parameter
                 param_data = None

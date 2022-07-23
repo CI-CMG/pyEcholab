@@ -672,7 +672,7 @@ def read_xyz(xyz_filename, name='xyz_line', as_range=False, calibration=None,
             val = np.nan
         return val
 
-    def dms_to_dec(dms):
+    def dmm_to_dec(dms):
         try:
             parts = dms.split('.')
             val = float(parts[0]) + float(parts[1]) / 60.
@@ -697,8 +697,25 @@ def read_xyz(xyz_filename, name='xyz_line', as_range=False, calibration=None,
 
     # Loop thru the rows of data, parsing each line
     for idx, row in enumerate(xyz_data):
-        # Parse the elements
-        (lat, lon, depth, date, time, draft) = row.split()
+        #  split the row
+        parts = row.split()
+        n_parts = len(parts)
+
+        if n_parts == 8:
+            #  this is the XYZ format introduced in EK80 21.15.x with hemisphere
+            (lat, lat_h, lon, lon_h, depth, date, time, draft) = parts
+
+            #  add the sign to the lat/lon
+            lat *= 1 if lat_h == 'N' else -1
+            lon *= 1 if lon_h == 'E' else -1
+
+        elif n_parts == 6:
+            #  this is the OG XYZ with signed lat/lon
+            (lat, lon, depth, date, time, draft) = parts
+
+        else:
+            #  this XYZ file is not what we were expecting
+            raise Exception('Unknown XYZ format with %d fields' % n_parts)
 
         # Convert the time elements to datetime64
         ping_time[idx] = np.datetime64(datetime.strptime(date + time, "%d%m%Y%H%M%S.%f"))
@@ -710,9 +727,9 @@ def read_xyz(xyz_filename, name='xyz_line', as_range=False, calibration=None,
         else:
             depth_data[idx] = convert_float(depth)
 
-        # Convert lat, lon from DMS to decimal degrees
-        lat_data[idx] = dms_to_dec(lat)
-        lon_data[idx] = dms_to_dec(lon)
+        # Convert lat, lon from DM.M to decimal degrees
+        lat_data[idx] = dmm_to_dec(lat)
+        lon_data[idx] = dmm_to_dec(lon)
 
     # Create the line object to return
     xyz_line = line(ping_time=ping_time, data=depth_data, name=name, **kwargs)
