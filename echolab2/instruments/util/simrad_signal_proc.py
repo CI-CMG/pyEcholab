@@ -54,16 +54,13 @@ def create_ek80_tx(raw_data, calibration, return_pc=False,
     elif type(return_indices) is not np.ndarray:
         return_indices = np.array(return_indices, ndmin=1)
 
-    #  create a dict to hold our calibration data parameters we need
+    #  create a dict to hold the calibration data parameters we need
     cal_parms = {'slope':None,
-                 'transmit_power':None,
                  'pulse_duration':None,
                  'frequency_start':None,
                  'frequency_end':None,
                  'frequency':None,
-                 'impedance':None,
                  'rx_sample_frequency':None,
-                 'sample_interval':None,
                  'filters':None}
 
     # Check if we have already computed the Tx signal - This function is
@@ -108,56 +105,56 @@ def create_ek80_tx(raw_data, calibration, return_pc=False,
         for idx, ping_index in enumerate(return_indices):
 
             #  get the theoretical tx signal
-            t, y = ek80_chirp(cal_parms['transmit_power'][idx], cal_parms['frequency_start'][idx],
+            t, y_t = ek80_chirp2(cal_parms['frequency_start'][idx],
                     cal_parms['frequency_end'][idx], cal_parms['slope'][idx],
-                    cal_parms['pulse_duration'][idx], raw_data.ZTRANSDUCER,
+                    cal_parms['pulse_duration'][idx],
                     cal_parms['rx_sample_frequency'][idx])
 
             #  apply the stage 1 and stage 2 filters
-            y = filter_and_decimate(y, cal_parms['filters'][idx], [1, 2])
+            y, rx_sample_frequency_decimated = filter_and_decimate(y_t,
+                    cal_parms['filters'][idx], [1, 2],
+                    cal_parms['rx_sample_frequency'][idx])
 
             #  compute effective pulse duration
             if return_pc and raw_data.pulse_form[idx] > 0:
-                y_eff = np.convolve(y, np.flipud(np.conj(y))) / np.linalg.norm(y) ** 2
+                y_eff = np.convolve(y, np.flipud(np.conj(y))) / np.linalg.norm(y,2) ** 2
             else:
                 y_eff = y
-
-            fs_dec = 1 / cal_parms['sample_interval'][idx]
             ptxa = np.abs(y_eff) ** 2
-            teff =  np.sum(ptxa) / (np.max(ptxa) * fs_dec)
+            teff = np.sum(ptxa) / (np.max(ptxa) * rx_sample_frequency_decimated)
 
             #  store this ping's tx signal
-            #tx_data[idx] = y
             tx_data.append(y)
-            tau_eff[idx] =  teff
+            tau_eff[idx] = teff
 
         if fast:
             #  We're assuming all pings are the same. Replicate first Tx signal to all pings.
             tx_data = [y] * n_return
-            tau_eff[1:] =  teff
+            tau_eff[1:] = teff
 
         # cache the results in the calibration object
         calibration._tx_signal = tx_data
         calibration._tau_eff = tau_eff
+        calibration._y_t = y_t
 
-        return tx_data, tau_eff
+        return tx_data, tau_eff, y_t
 
     else:
         #  return the cached data
-        return calibration._tx_signal, calibration._tau_eff
+        return calibration._tx_signal, calibration._tau_eff, calibration._y_t
 
 
 def compute_effective_pulse_duration(raw_data, calibration, return_pc=False,
         return_indices=None, fast=False):
 
     # Get the ideal transmit pulse which also returns effective pulse duration
-    tx_data, tau_eff = create_ek80_tx(raw_data, calibration, return_pc=return_pc,
+    tx_data, tau_eff, _ = create_ek80_tx(raw_data, calibration, return_pc=return_pc,
             return_indices=return_indices, fast=fast)
 
     return tau_eff
 
 
-def filter_and_decimate(y, filters, stages):
+def filter_and_decimate(y, filters, stages, rx_sample_frequency):
     '''filter_and_decimate will apply one or more convolution and
     decimation operations on the provided data.
 
@@ -175,8 +172,11 @@ def filter_and_decimate(y, filters, stages):
     except Exception:
         stages = [stages]
 
-    #  get the procided filter stages
+    #  get the provided filter stages
     filter_stages = filters.keys()
+
+    #  initialize rx_sample_frequency_decimated
+    rx_sample_frequency_decimated = rx_sample_frequency
 
     # iterate through the stages and apply filters in order provided
     for stage in stages:
@@ -195,7 +195,55 @@ def filter_and_decimate(y, filters, stages):
         # and decimate
         y = y[0::decimation_factor]
 
-    return y
+        #  compute the decimated sampling rate
+        rx_sample_frequency_decimated /= decimation_factor
+
+    return y, rx_sample_frequency_decimated
+
+
+def ek80_chirp2(f0, f1, slope, tau, fs):
+    '''ek80_chirp2 returns a representation of the EK80 transmit signal
+    as (time, amplitude) with a maximum amplitude of 1.
+
+
+    This method was derived from code provided with the following paper:
+
+    Andersen, L. N., Chu, D. Heimvoll, H, Korneliussen, R, Macaulay, G, Ona, E.
+    Patel R., & Pedersen G. (2021, Apr. 15). Quantitative processing of broadband data
+    as implemented in a scientific splitbeam echosounder. ArXiv.
+    https://doi.org/10.48550/arXiv.2104.07248
+
+    f0 (float) - The starting Frequency of the tx signal obtained
+                    from the raw file configuration datagram in Hz.
+    f1 (float) - The starting Frequency of the tx signal obtained
+                    from the raw file configuration datagram in Hz.
+    slope (float) - The slope of the signal ramp up and ramp down
+    tau (float) - The commanded transmit pulse length in s.
+    fs (float) - the receiver A/D sampling frequency in Hz
+
+    '''
+
+    nsamples = int(np.floor(tau * fs))
+    t = np.linspace(0, nsamples - 1, num=nsamples) * 1 / fs
+    a = np.pi * (f1 - f0) / tau
+    b = 2 * np.pi * f0
+    y = np.cos(a * t * t + b * t)
+    L = int(np.round(tau * fs * slope * 2.0))  # Length of hanning window
+    w = 0.5 * (1.0 - np.cos(2.0 * np.pi * np.arange(0, L, 1) / (L - 1)))
+    N = len(y)
+    w1 = w[0:int(len(w) / 2)]
+    w2 = w[int(len(w) / 2):-1]
+    i0 = 0
+    i1 = len(w1)
+    i2 = N - len(w2)
+    i3 = N
+    y[i0:i1] = y[i0:i1] * w1
+    y[i2:i3] = y[i2:i3] * w2
+
+    #  normalize
+    y[:] = y / np.max(y)
+
+    return t, y
 
 
 def ek80_chirp(txpower, fstart, fstop, slope, tau, z, rx_freq):
@@ -264,8 +312,8 @@ def pulse_compression(raw_data, calibration, return_indices=None, fast=False):
         fm_pings = return_indices[is_fm]
 
         # get the simulated tx signal for these pings
-        tx_signal, _ = create_ek80_tx(raw_data, calibration, return_indices=fm_pings,
-                fast=fast)
+        tx_signal, _, y_t = create_ek80_tx(raw_data, calibration,
+                return_indices=fm_pings, fast=fast)
 
         # create a copy of the data to operate on and return
         p_data = raw_data.complex.copy()
@@ -275,7 +323,7 @@ def pulse_compression(raw_data, calibration, return_indices=None, fast=False):
             # create matched filter using tx signal for this ping
             tx_mf = np.flipud(np.conj(tx))
             ltx = tx_mf.shape[0]
-            tx_n = np.linalg.norm(tx) ** 2
+            tx_n = np.linalg.norm(tx, 2) ** 2
 
             # apply the filter to each of the transducer sectors
             for q_idx in range(p_data[p_idx,:,:].shape[1]):
@@ -288,4 +336,4 @@ def pulse_compression(raw_data, calibration, return_indices=None, fast=False):
         # don't copy if we're not modifying the data
         p_data = raw_data.complex
 
-    return p_data
+    return p_data, tx_signal, y_t

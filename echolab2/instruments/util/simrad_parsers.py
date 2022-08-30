@@ -67,7 +67,6 @@ class _SimradDatagramParser(object):
     def header(self, version=0):
         return self._headers[version][:]
 
-
     def validate_data_header(self, data):
 
         if isinstance(data, dict):
@@ -118,6 +117,65 @@ class _SimradDatagramParser(object):
         datagram_size = len(datagram_content_str)
         final_fmt = '=l%dsl' % (datagram_size)
         return struct.pack(final_fmt, datagram_size, datagram_content_str, datagram_size)
+
+
+class SimradUnknownParser(_SimradDatagramParser):
+    '''
+    Parser for unknown datagram types. This parser only extracts the type
+    and timestampand returns the remainder of the data unparsed.
+
+        type:         string == 'DEP0'
+        low_date:     long uint representing LSBytes of 64bit NT date
+        high_date:    long uint representing MSBytes of 64bit NT date
+        timestamp:    datetime.datetime object of NT date, assumed to be UTC
+        data:         bytearray containing the unknown datagram contents
+
+    '''
+
+    def __init__(self, dg_type):
+        headers = {0: [('type', '4s'),
+                       ('low_date', 'L'),
+                       ('high_date', 'L')
+                      ]
+                  }
+        _SimradDatagramParser.__init__(self, dg_type, headers)
+
+
+    def _unpack_contents(self, raw_string, bytes_read, version):
+        '''
+
+        '''
+
+        header_values = struct.unpack(self.header_fmt(version), raw_string[:self.header_size(version)])
+        data = {}
+
+        for indx, field in enumerate(self.header_fields(version)):
+            data[field] = header_values[indx]
+            if isinstance(data[field], bytes):
+                data[field] = data[field].decode()
+
+        data['timestamp'] = nt_to_unix((data['low_date'], data['high_date']))
+        data['timestamp'] = data['timestamp'].replace(tzinfo=None)
+        data['bytes_read'] = bytes_read
+        data['data'] = raw_string[self.header_size(version):]
+
+        return data
+
+
+    def _pack_contents(self, data, version):
+
+        datagram_fmt      = self.header_fmt(version)
+        datagram_contents = []
+
+        for field in self.header_fields(version):
+            if isinstance(data[field], str):
+                data[field] = data[field].encode('latin_1')
+            datagram_contents.append(data[field])
+
+        datagram_fmt += '%ds' % (len(data['data']))
+        datagram_contents.append(data['data'])
+
+        return struct.pack(datagram_fmt, *datagram_contents)
 
 
 class SimradDepthParser(_SimradDatagramParser):
@@ -771,6 +829,7 @@ class SimradXMLParser(_SimradDatagramParser):
             'FrequencyStart':[float,'frequency_start',''],
             'FrequencyEnd':[float,'frequency_end',''],
             'PulseDuration':[float,'pulse_duration',''],
+            'EffectivePulseDuration':[float,'effective_pulse_duration',''],
             'PulseLength':[float,'pulse_length',''],
             'SampleInterval':[float,'sample_interval',''],
             'TransmitPower':[float,'transmit_power',''],
@@ -1012,10 +1071,12 @@ class SimradXMLParser(_SimradDatagramParser):
                 data['environment']['transducer_name'] = []
                 data['environment']['transducer_sound_speed'] = []
                 for h in root_node.iter('Transducer'):
-                    transducer_xml = h.attrib
-                    data['environment']['transducer_name'].append(transducer_xml['TransducerName'])
-                    data['environment']['transducer_sound_speed'].append(float(transducer_xml['SoundSpeed']))
-
+                    try:
+                        transducer_xml = h.attrib
+                        data['environment']['transducer_name'].append(transducer_xml['TransducerName'])
+                        data['environment']['transducer_sound_speed'].append(float(transducer_xml['SoundSpeed']))
+                    except:
+                        pass
         return data
 
 
@@ -1555,8 +1616,13 @@ class SimradConfigParser(_SimradDatagramParser):
                         raw_string[buf_indx:buf_indx + txcvr_header_size])
                 txcvr_header_values = list(txcvr_header_values_encoded)
                 for tx_idx, tx_val in enumerate(txcvr_header_values_encoded):
+                    #  attempt to decode string values
                     if isinstance(tx_val, bytes):
-                        txcvr_header_values[tx_idx] = tx_val.decode()
+                        try:
+                            txcvr_header_values[tx_idx] = tx_val.decode()
+                        except:
+                            #  error decoding - set to null string
+                            txcvr_header_values[tx_idx] = ''
 
                 channel_id = txcvr_header_values[0].strip('\x00')
                 txcvr = data['configuration'].setdefault(channel_id, {})
