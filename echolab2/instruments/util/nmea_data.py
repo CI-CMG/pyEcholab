@@ -100,9 +100,9 @@ class nmea_data(object):
         """
         Add NMEA datagrams to this object.
 
-        add_datagram adds a NMEA datagram to the class. It adds it to the
-        raw_datagram list as well as parsing the header and adding the
-        talker + mesage ID to the type_index dictionary.
+        add_datagram adds a NMEA datagram to the object. the datagram is
+        added to the raw_datagram list as well as parsing the header and
+        adding the talker + mesage ID to the type_index dictionary.
         Args:
             time (datetime64): Timestamp of NMEA datagram (this is likely
                 different than the timestamp within the NMEA string itself).
@@ -156,6 +156,74 @@ class nmea_data(object):
                 self.talker_ids.append(header[0:2])
             if not header[2:5] in self.message_ids:
                 self.message_ids.append(header[2:5])
+
+
+    def remove_datagrams(self, message_types, start_time=None, end_time=None,
+                      talker_id=None):
+        """
+        Remove the specified message types from the object. You can specify
+        a time range within which the specified messages will be removed. You
+        can also provide a talker ID to limit removal to a specific talker.
+
+        Args:
+            message_types (list): List of NMEA-0183 message types to remove.
+                (e.g. 'GGA', 'GLL', 'RMC', 'HDT') 
+            start_time (datetime or datetime64): Define the starting time of
+                the data to remove. If None, data are remove starting with
+                first time.
+            end_time (datetime or datetime64): Define the ending time of
+                the data to remove. If None, remove through last time.
+            talker_id (str): Set to a specific prefix to limit data to a
+                specific talker. For example, you could set it to "IN" to
+                only remove data from a POS-MV system. When set to None,
+                the talker ID is ignored.
+            
+        Returns: None
+
+        """
+
+        # If we're provided a talker ID - ensure it is uppercase.
+        if talker_id:
+            talker_id = talker_id.upper()
+
+        #  Make sure the message_type is a list.
+        if isinstance(message_types, str):
+            message_types = [message_types]
+
+        # Get the index for all datagrams within the time span and convert to a mask. 
+        time_idxs = self.get_indices(start_time=start_time,
+            end_time=end_time)
+        time_mask = np.full((self.messages.shape[0]), False)
+        time_mask[time_idxs] = True
+    
+        # create the initial remove mask
+        remove_mask = np.full((self.messages.shape[0]), False)
+    
+        # loop thru the provided message types to remove
+        for msg_type in message_types:
+            msg_type = msg_type.upper()
+
+            # Build a mask to remove this message type and talker ID 
+            this_mask = self.messages[time_mask] == msg_type
+            if talker_id:
+                this_mask &= self.talkers[time_mask] == talker_id
+
+            # Apply the mask to the overall mask
+            remove_mask |= this_mask
+            
+        # Now we have a mask that identifies all messages to remove.
+        # Use the inverse of that to index messages to keep.
+        self.raw_datagrams = self.raw_datagrams[~remove_mask]
+        self.nmea_times = self.nmea_times[~remove_mask]
+        self.talkers = self.talkers[~remove_mask]
+        self.messages = self.messages[~remove_mask]
+        
+        # Now clean up the message IDs and talker IDs lists.
+        #
+        #  Credit to StackExchange user @rlat for this solution
+        #    https://stackoverflow.com/questions/12897374/get-unique-values-from-a-list-in-python
+        self.message_ids = list(dict.fromkeys(self.messages))
+        self.talkers = list(dict.fromkeys(self.talkers)) 
 
 
     def get_datagrams(self, message_types, start_time=None, end_time=None,
@@ -370,60 +438,69 @@ class nmea_data(object):
                                           end_time=end_time,
                                           talker_id=talker_id,
                                           return_fields=interp_fields)
+        
+        # Check if we have any data to return
+        has_data = False
+        for msg_type in message_data:
+            has_data |= message_data[msg_type]['time'] is not None
+            
+        if has_data:
+            # Create the dictionary to return and fill
+            out_data = {}
+            for field in interp_fields:
+                # Set the interpolated fields to NaNs
+                out_data[field] = np.empty(p_data.ping_time.shape[0])
+                out_data[field][:] = np.nan
 
-        # Create the dictionary to return
-        out_data = {}
-        for field in interp_fields:
-            # Set the interpolated fields to NaNs
-            out_data[field] = np.empty(p_data.ping_time.shape[0])
-            out_data[field][:] = np.nan
+            # Determine the message types.
+            message_types = message_data.keys()
 
+            # If we find the GLL message type we are going to move it to the end
+            # of the list since it stores position data with less precision
+            # compared to GGA and RMC. Putting it at the end of the list will
+            # ensure that data from GLL datagrams will only be used as a last
+            # resort when no other data is available.
+            try:
+                message_types.append(message_types.pop(message_types.index('GLL')))
+            except:
+                # GLL datagram not in message types.
+                pass
 
-        # Determine the message types.
-        message_types = message_data.keys()
+            # Work through the message types. If a meta-type is specified we will
+            # have multiple types that may or may not contain data. If a specific
+            #  message type was specified we should only have one.
+            for msg_type in message_types:
+                # Check if we have any data for this message type and if so,
+                # work through the fields we're interpolating and interpolate.
+                if message_data[msg_type]['time'] is not None:
+                    for field in interp_fields:
+                        i_field = np.interp(p_data.ping_time.astype('d'),
+                                message_data[msg_type]['time'].astype('d'),
+                                message_data[msg_type][field],
+                                left=np.nan, right=np.nan)
 
-        # If we find the GLL message type we are going to move it to the end
-        # of the list since it stores position data with less precision
-        # compared to GGA and RMC. Putting it at the end of the list will
-        # ensure that data from GLL datagrams will only be used as a last
-        # resort when no other data is available.
-        try:
-            message_types.append(message_types.pop(message_types.index('GLL')))
-        except:
-            # GLL datagram not in message types.
-            pass
+                        # Since it is possible that one type does not cover the
+                        # entire output range, we determine where data is missing
+                        # and attempt to fill it. First we find what we're missing
+                        out_nans = np.isnan(out_data[field])
 
-        # Work through the message types. If a meta-type is specified we will
-        # have multiple types that may or may not contain data. If a specific
-        #  message type was specified we should only have one.
-        for msg_type in message_types:
-            # Check if we have any data for this message type and if so,
-            # work through the fields we're interpolating and interpolate.
-            if message_data[msg_type]['time'] is not None:
-                for field in interp_fields:
-                    i_field = np.interp(p_data.ping_time.astype('d'),
-                            message_data[msg_type]['time'].astype('d'),
-                            message_data[msg_type][field],
-                            left=np.nan, right=np.nan)
+                        # ...and then we determine what data we have from this type.
+                        this_nans = np.isfinite(i_field)
 
-                    # Since it is possible that one type does not cover the
-                    # entire output range, we determine where data is missing
-                    # and attempt to fill it. First we find what we're missing
-                    out_nans = np.isnan(out_data[field])
+                        # Logical_and these to determine what to fill in the output.
+                        insert_idx = np.logical_and(out_nans, this_nans)
 
-                    # ...and then we determine what data we have from this type.
-                    this_nans = np.isfinite(i_field)
+                        # ...and fill the missing fields.
+                        out_data[field][insert_idx] = i_field[insert_idx]
 
-                    # Logical_and these to determine what to fill in the output.
-                    insert_idx = np.logical_and(out_nans, this_nans)
+            # Add the processed data object ping_time array to the out_data array
+            # and return.
+            out_data['ping_time'] = p_data.ping_time.copy()
 
-                    # ...and fill the missing fields.
-                    out_data[field][insert_idx] = i_field[insert_idx]
-
-        # Add the processed data object ping_time array to the out_data array
-        # and return.
-        out_data['ping_time'] = p_data.ping_time.copy()
-
+        else:
+            #  there is no NMEA data for this message_type
+            out_data = None
+            
         return (interp_fields, out_data)
 
 

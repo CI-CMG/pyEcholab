@@ -80,7 +80,6 @@ def create_ek80_tx(raw_data, calibration, return_pc=False,
         # No - compute new Tx signals
 
         # create the return arrays
-        #tx_data = np.empty(return_indices.shape[0], dtype=np.ndarray)
         n_return = return_indices.shape[0]
         tx_data = []
         tau_eff = np.empty(n_return, dtype=np.float32)
@@ -203,10 +202,8 @@ def filter_and_decimate(y, filters, stages, rx_sample_frequency):
 
 def ek80_chirp2(f0, f1, slope, tau, fs):
     '''ek80_chirp2 returns a representation of the EK80 transmit signal
-    as (time, amplitude) with a maximum amplitude of 1.
-
-
-    This method was derived from code provided with the following paper:
+    as (time, amplitude) with a maximum amplitude of 1. This method was
+    derived from code accompanying:
 
     Andersen, L. N., Chu, D. Heimvoll, H, Korneliussen, R, Macaulay, G, Ona, E.
     Patel R., & Pedersen G. (2021, Apr. 15). Quantitative processing of broadband data
@@ -336,4 +333,4 @@ def pulse_compression(raw_data, calibration, return_indices=None, fast=False):
         # don't copy if we're not modifying the data
         p_data = raw_data.complex
 
-    return p_data, tx_signal, y_t
+    return p_data

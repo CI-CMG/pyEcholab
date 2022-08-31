@@ -93,26 +93,30 @@ class line(ping_data):
         self._data_attributes += ['data']
 
 
-    def interpolate(self, new_times):
-        """Interpolates the data values to the provided time vector.
-
-        Interpolate interpolates the data values to the provided ping_data derived
-        object or a vector of datetime64 times.
+    def copy(self, ping_time=None, data=None, color=None,
+                 name=None, linestyle=None, thickness=None):
+        """Returns a copy of this line object.
 
         Args:
-            new_times (ping_data or array): an instance of a ping_data object
-                (raw_data, processed_data) OR a 1D numpy array of new dateTime64
-                times
+            None
+        Returns:
+            A copy of this echolab2 line object.
         """
-
-        #  check if the times are to be grabbed from a ping_data object
-        if isinstance(new_times, ping_data):
-            new_times = new_times.ping_time
-
-        #  and interpolate
-        self.data[:] = np.interp(self.ping_time, new_times,
-                    self.data, left=np.nan, right=np.nan)
-        self.ping_time = new_times.copy()
+        if ping_time is None:
+            ping_time = self.ping_time.copy()
+        if data is None:
+            data = self.data.copy()
+        if color is None:
+            color = self.color.copy()
+        if name is None:
+            name = self.name
+        if linestyle is None:
+            linestyle = self.linestyle
+        if thickness is None:
+            thickness = self.thickness
+        
+        return line(ping_time=ping_time, data=data, color=color, name=name,
+                linestyle=linestyle, thickness=thickness)
 
 
     def _setup_numeric(self, other):
@@ -458,11 +462,8 @@ class line(ping_data):
         msg = "{0} at {1}\n".format(str(self.__class__), str(hex(id(self))))
 
         # Print some other basic information.
-        msg = "{0}                 line name: ({1})\n".format(msg, self.name)
-        msg = "{0}                 ping_time: ({1})\n".format(
-                                                    msg,
-                                                    self.ping_time.shape[0])
-        msg = "{0}                      data: ({1})\n".format(
+        msg = "{0}                 line name: {1}\n".format(msg, self.name)
+        msg = "{0}             n data points: {1}\n".format(
                                                             msg,
                                                             self.data.shape[0])
         msg = "{0}                start time: {1}\n".format(msg,

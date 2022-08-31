@@ -549,12 +549,8 @@ class processed_data(ping_data):
         heave_correct is set and heave compensation has been applied
         nothing happens.
 
-        NOTE! HEAVE CORRECTION PERFORMS LINEAR INTERPOLATION OF THE SAMPLE DATA.
-        IT IS NOT ADVISED TO APPLY HEAVE CORRECTION AND THEN USE THE DATA FOR
-        QUANTITATIVE PURPOSES AT THIS TIME. I have not been able to write a
-        performant regridding method that shifts data on a per-ping basis and
-        doing so is a low priority at this time. You are welcome to add this
-        feature if you need it.
+        The heave correction method shifts samples by sample thickness and
+        can result in an error of up to 1/2 sample thickness.
         """
 
         # Check if vert axis is range or depth
@@ -666,11 +662,8 @@ class processed_data(ping_data):
         This method will replace the range attribute with depth and apply heave
         correction, shifting samples vertically based on the heave attribute.
 
-        NOTE! THIS METHOD PERFORMS LINEAR INTERPOLATION OF THE SAMPLE DATA. IT IS
-        NOT ADVISED TO APPLY HEAVE CORRECTION AND THEN USE THE DATA FOR QUANTITATIVE
-        PURPOSES AT THIS TIME. I have not been able to write a performant regridding
-        method that shifts data on a per-ping basis and doing so is a low priority
-        at this time. You are welcome to add this feature if you need it.
+        Currently this method shifts samples by sample thickness and can result
+        in an error of up to 1/2 sample thickness.
 
         """
 
@@ -698,37 +691,44 @@ class processed_data(ping_data):
         self.to_depth(heave_correct=True)
 
 
-    def shift_pings(self, vert_shift):
+    def shift_pings(self, vert_shift, interpolate=False):
         """Shifts sample data vertically by an arbitrary amount.
 
-        If the shift is constant, the vertical axis is changed but the sample
-        data remains unchaned.
-
-        If the shift is not constant for all pings, the sample data is interpolated
-        to the new vertical axis on a per ping basis.
-
-        NOTE! THE CURRENT IMPLEMENTATION USES LINEAR INTERPOLATION WHEN APPLYING
-        A NON-CONSTANT SHIFT. THIS IS NOT IDEAL.
-
+        If the shift is constant, the vertical axis is changed and the sample
+        data remains unchanged. If the shift is not constant for all pings, the
+        sample data is shifted ping by ping.
+       
         Args:
-            vert_shift (float): A scalar or vector n_pings long that contains the
-                constant shift for all pings or a per-ping shift respectively.
+            vert_shift (float, vector): A scalar or vector n_pings long that
+                contains the constant shift for all pings or a per-ping shift
+                respectively.
+        
+            interpolate (bool): Set to True to interpolate sample data to the
+                new vertical axis. This changes the sample data and is not
+                recommended for quantitative work.
+                
+                Set this value to false to shift samples by sample thickness.
+                This preserves the sample data at the expense of an error of
+                up to 1/2 sample thickness in the total shift.
+                
+                Default: False
+ 
         """
 
         #  get the vertical axis
         _, axis_attr = self.get_v_axis()
 
         #  compute the new axis (sample data is updated if required)
-        new_axis = self._shift_pings(vert_shift)
+        new_axis = self._shift_pings(vert_shift, interpolate=interpolate)
 
         #  update the vertical axis
         setattr(self, axis_attr, new_axis)
 
 
-    def _shift_pings(self, vert_shift):
-        """_shift_pings is an internal method that implents interpolated ping
-        shifts. If you need to shift data by an arbitrary amount, use the
-        processed_data.shift_pings method.
+    def _shift_pings(self, vert_shift, interpolate=False):
+        """_shift_pings is an internal method that implements vertical sample shifts
+        and interpolated sample shifts. If you need to shift data by an arbitrary amount,
+        use the processed_data.shift_pings method.
         """
         # Determine the vertical extent of the shift.
         min_shift = np.min(vert_shift)
@@ -758,20 +758,38 @@ class processed_data(ping_data):
 
         # Check if this is not a constant shift.
         if vert_ext != 0:
-            # Not a constant, work through the 2d attributes and interpolate
-            # the sample data.
+            # Not a constant shift, work through the ping data and interpolate
+            # or sample shift the sample data.
 
             # First convert to linear units if required.
-            if self.is_log:
+            if self.is_log and interpolate:
                 is_log = True
                 self.to_linear()
             else:
                 is_log = False
-
-            # Iterate through the pings and interpolate.
+            
+            # Create an array to store the currently shifting pings data
+            this_ping = np.empty((old_samps))
+            
+            # Iterate through the pings and interpolate or shift
             for ping in range(self.n_pings):
-                self.data[ping, :] = np.interp( new_axis, vert_axis + vert_shift[ping],
-                    self.data[ping, :old_samps], left=np.nan, right=np.nan)
+                #  determine this pings current axis
+                this_axis = vert_axis + vert_shift[ping]
+                
+                if interpolate:
+                    # Use numpy to interpolate sample data values to new axis. This
+                    # results in samples being shifted the precise amount but will
+                    # change the sample values.
+                    self.data[ping, :] = np.interp(new_axis, this_axis,
+                        self.data[ping, :old_samps], left=np.nan, right=np.nan)
+                else:
+                    # This method shifts pings by sample thickness. This results in
+                    # less precise sample placement but does not change any of the
+                    # sample values.
+                    sample_shift = round(abs(new_axis[0]-this_axis[0]) / self.sample_thickness)
+                    this_ping[:] = self.data[ping, :old_samps]
+                    self.data[ping,:] = np.nan
+                    self.data[ping, sample_shift:old_samps+sample_shift] = this_ping
 
             # Convert back to log units if required.
             if is_log:
@@ -1080,6 +1098,15 @@ class processed_data(ping_data):
 
             # iterate through the returned data and add or update it
             for attr_name in attr_names:
+                #  we already have ping time so skip it
+                if attr_name == 'ping_time':
+                    continue
+                    
+                #  check if this attribute has data
+                if data is None:
+                    #  nope - move along...
+                    continue
+                
                 #  check if we had data for this attribute
                 if attr_name in data:
                     #  yes - add or update it

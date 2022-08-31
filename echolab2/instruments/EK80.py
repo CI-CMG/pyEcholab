@@ -2787,15 +2787,10 @@ class raw_data(ping_data):
 
         if pulse_compress:
             # Pulse compress (this function has no effect on CW data)
-            p_data, tx_signal, y_t = simrad_signal_proc.pulse_compression(self, calibration,
+            p_data = simrad_signal_proc.pulse_compression(self, calibration,
                 return_indices=return_indices, fast=fast)
-
-            self.tx_signal=tx_signal
-            self.ideal_td_signal=y_t
-
         else:
             p_data = raw_data.complex
-
 
         # Check if we're supposed to return angles
         if return_angles:
@@ -2916,22 +2911,22 @@ class raw_data(ping_data):
         n_sectors = self.complex.shape[2]
 
         # Compute power (from Demer, D. A. et. al.)
-#        vrsplit = (Zer + Zet) / Zer
-#        Prx = (n_sectors * (np.abs(p_data) / (2 * np.sqrt(2)))**2 * vrsplit**2 * 1 / Zet)
-#        Prx[Prx == 0] = 1e-20
-#        p_data = Prx
-
-        # Compute power (from Andersen, L. N. et. al.)
-        K1 = n_sectors / ((2 * np.sqrt(2)) ** 2)
-        K2 = (np.abs(Zer + Zet) / Zer) ** 2
-        K3 = 1.0 / np.abs(Zet)
-        C1Prx = K1 * K2 * K3
-        Prx = C1Prx * np.abs(p_data) ** 2
+        vrsplit = (Zer + Zet) / Zer
+        Prx = (n_sectors * (np.abs(p_data) / (2 * np.sqrt(2)))**2 * vrsplit**2 * 1 / Zet)
         Prx[Prx == 0] = 1e-20
         p_data = Prx
 
+        # Compute power (from Andersen, L. N. et. al.)
+#        K1 = n_sectors / ((2 * np.sqrt(2)) ** 2)
+#        K2 = (np.abs(Zer + Zet) / Zer) ** 2
+#        K3 = 1.0 / np.abs(Zet)
+#        C1Prx = K1 * K2 * K3
+#        Prx = C1Prx * np.abs(p_data) ** 2
+#        Prx[Prx == 0] = 1e-20
+#        p_data = Prx
+
         # convert to log units
-        #p_data = 10 * np.log10(Prx)
+        p_data = 10 * np.log10(Prx)
 
         if return_angles:
             return (p_data, p_data_alongship, p_data_athwartship)
@@ -2977,6 +2972,9 @@ class raw_data(ping_data):
         # Set the is_log attribute and return it.
         p_data.is_log = True
 
+
+
+
         return p_data, return_indices
 
 
@@ -2997,12 +2995,6 @@ class raw_data(ping_data):
 
         else:
             raise AttributeError('Raw data object does not contain complex data.')
-
-
-        # Get the power data - this step also resamples and arranges the raw data.
-        #p_data, return_indices = self._get_complex(calibration=calibration, **kwargs)
-
-
 
         # Set the data type and is_log attribute.
         p_data.data_type = 'complex'
@@ -3197,6 +3189,8 @@ class raw_data(ping_data):
 
         # Get the power data - this step also resamples and arranges the raw data.
         p_data, return_indices = self._get_power(calibration=calibration, **kwargs)
+
+        p_data.power = p_data.data
 
         # Set the data type and is_log attribute.
         if linear:
@@ -3524,11 +3518,7 @@ class raw_data(ping_data):
         cal_parms = {'angle_sensitivity_alongship':None,
                      'angle_sensitivity_athwartship':None,
                      'angle_offset_alongship':None,
-                     'angle_offset_athwartship':None,
-                     'frequency':None,
-                     'frequency_start':None,
-                     'frequency_end':None,
-                     'transducer_frequency':None}
+                     'angle_offset_athwartship':None}
 
         # Next, iterate through the dict, calling the method to extract the
         # values for each parameter.
@@ -3536,21 +3526,14 @@ class raw_data(ping_data):
             cal_parms[key] = calibration.get_parameter(self, key,
                     return_indices)
 
-        # Adjust sensitivities for FM
-        if cal_parms['frequency'] is None:
-            fc = (cal_parms['frequency_start'] + cal_parms['frequency_end']) / 2
-            fc /= cal_parms['transducer_frequency']
-            sens_along = cal_parms['angle_sensitivity_alongship'] * fc
-            sens_athwart = cal_parms['angle_sensitivity_athwartship'] * fc
-        else:
-            sens_along = cal_parms['angle_sensitivity_alongship']
-            sens_athwart = cal_parms['angle_sensitivity_athwartship']
-
         # Compute the physical angles.
-        alongship.data /= sens_along[:, np.newaxis]
+        alongship.data /= cal_parms['angle_sensitivity_alongship'][:, np.newaxis]
         alongship.data -= cal_parms['angle_offset_alongship'][:, np.newaxis]
-        athwartship.data /= sens_athwart[:, np.newaxis]
+        athwartship.data /= cal_parms['angle_sensitivity_athwartship'][:, np.newaxis]
         athwartship.data -= cal_parms['angle_offset_athwartship'][:,np.newaxis]
+
+        print('angle sens along', cal_parms['angle_sensitivity_alongship'][0])
+        print('angle sens athw', cal_parms['angle_sensitivity_athwartship'][0])
 
         # Set the data types.
         alongship.data_type = 'angles_alongship'
@@ -3935,12 +3918,13 @@ class raw_data(ping_data):
         def get_range_vector(num_samples, sample_interval, sound_speed,
                              sample_offset):
             """
-            get_range_vector returns a NON-CORRECTED range vector.
+            get_range_vector returns a non-corrected range vector.
             """
             # Calculate the thickness of samples with this sound speed.
             thickness = sample_interval * sound_speed / 2.0
             # Calculate the range vector.
             range = (np.arange(0, num_samples) + sample_offset) * thickness
+            range[0] = 1e-20
 
             return range
 
@@ -4015,7 +3999,7 @@ class raw_data(ping_data):
         unique_sample_offsets = np.unique(
             cal_parms['sample_offset'][~np.isnan(cal_parms['sample_offset'])])
         min_sample_offset = min(unique_sample_offsets)
-
+        
         # Check if we need to resample our sample data.
         unique_sample_interval = np.unique(
             cal_parms['sample_interval'][~np.isnan(cal_parms['sample_interval'])])
@@ -4179,7 +4163,7 @@ class raw_data(ping_data):
 
 
     def _convert_power(self, power_data, calibration, convert_to, linear,
-            return_indices, tvg_correction):
+            return_indices, tvg_correction, theta=0, phi=0):
         """Converts power to Sv/sv/Sp/sp
 
         Args:
@@ -4207,7 +4191,11 @@ class raw_data(ping_data):
                      'pulse_duration':None,
                      'absorption_coefficient':None,
                      'sa_correction':None,
-                     'pulse_form':None}
+                     'pulse_form':None,
+                     'angle_offset_alongship':None,
+                     'angle_offset_athwartship':None,
+                     'beam_width_alongship':None,
+                     'beam_width_athwartship':None}
 
         # Next, iterate through the dictionary, calling the method to extract
         # the values for each parameter.
@@ -4230,15 +4218,41 @@ class raw_data(ping_data):
             effective_pulse_duration = calibration.get_parameter(self,
                 'effective_pulse_duration', return_indices)
 
+        #  compute transceiver gain compensation for fm signals. From:
+        #
+        #  Andersen, L. N., Chu, D. Heimvoll, H, Korneliussen, R, Macaulay, G, Ona, E.
+        #  Patel R., & Pedersen G. (2021, Apr. 15). Quantitative processing of broadband data
+        #  as implemented in a scientific splitbeam echosounder. ArXiv.
+        #  https://doi.org/10.48550/arXiv.2104.07248
+        #
+        #  https://github.com/CRIMAC-WP4-Machine-learning/CRIMAC-Raw-To-Svf-TSf
+        #
+        B_theta_phi_m = np.ones((cal_parms['pulse_form'].shape[0]))
+        is_fm = cal_parms['pulse_form'] > 0
+        B_theta_phi_m[is_fm] = (0.5 * 6.0206 *
+                ((np.abs(theta - cal_parms['angle_offset_alongship'][is_fm]) /
+                (cal_parms['beam_width_alongship'][is_fm] / 2)) ** 2 + 
+                (np.abs(phi - cal_parms['angle_offset_athwartship'][is_fm]) /
+                (cal_parms['beam_width_athwartship'][is_fm] / 2)) ** 2 -
+                0.18 * ((np.abs(theta - cal_parms['angle_offset_alongship'][is_fm])) /
+                (cal_parms['beam_width_alongship'][is_fm] / 2)) ** 2 *
+                (np.abs(phi - cal_parms['angle_offset_athwartship'][is_fm]) /
+                (cal_parms['beam_width_athwartship'][is_fm] / 2)) ** 2))
+        B_theta_phi_m[is_fm] = 10**(B_theta_phi_m[is_fm] / 10)
+        #  convert transceiver gain to linear units
+        transceiver_gain = 10**(cal_parms['gain'] / 10)
+        #  and apply gain compensation
+        transceiver_gain *= B_theta_phi_m
+
         # Calculate the system gains.
         wavelength = cal_parms['sound_speed'] / power_data.frequency
         if convert_to in ['sv','Sv']:
-            gains = 10 * np.log10((cal_parms['transmit_power'] * (10**(cal_parms['gain'] / 10.0))**2 *
+            gains = 10 * np.log10((cal_parms['transmit_power'] * transceiver_gain**2 *
                 wavelength**2 * cal_parms['sound_speed'] * effective_pulse_duration *
                 10**(cal_parms['equivalent_beam_angle']/10.0)) / (32 * np.pi**2))
         else:
-            gains = 10 * np.log10((cal_parms['transmit_power'] * (10**(
-                cal_parms['gain']/10.0))**2 * wavelength**2) / (16 * np.pi**2))
+            gains = 10 * np.log10((cal_parms['transmit_power'] * (transceiver_gain)**2 *
+                wavelength**2) / (16 * np.pi**2))
 
         # Get the range for TVG calculation.  The method used depends on the
         # hardware used to collect the data.
@@ -4256,11 +4270,10 @@ class raw_data(ping_data):
                 c_range -= (power_data.sound_speed * cal_parms['pulse_duration'] / 4.0)[:,np.newaxis]
 
             #  zero out negative ranges
-            c_range[c_range < 0] = 0
+            c_range[c_range < 0] = 1e-20
 
-        # Calculate time varied gain. Do not apply at ranges < 1 m.
+        # Calculate time varied gain.
         tvg = c_range.copy()
-        tvg[tvg < 1] = 1
         if convert_to in ['sv','Sv']:
             tvg = 20.0 * np.log10(tvg)
         else:
@@ -4272,12 +4285,10 @@ class raw_data(ping_data):
         # Add in power and TVG.
         data += power_data.data + tvg
 
-        # Subtract the applied gains.
+        # Subtract the system gains.
         data -= gains[:, np.newaxis]
 
-        # Apply sa correction for Sv/sv. As of 3/17/21 Echoview doesn't apply
-        # Sa Correction to FM Sv data. We're going to do the same thing here
-        # until advised otherwise.
+        # Apply sa correction for non FM Sv/sv. 
         if convert_to in ['sv','Sv']:
             # Only apply to CW data
             not_fm = cal_parms['pulse_form'] == 0
@@ -4610,16 +4621,12 @@ class ek80_calibration(calibration):
             if param_data is None or np.isnan(param_data):
                 param_data = raw_data.ZTRANSCEIVER
 
-        # acidity is not present in ES80 environment datagrams - if we're not
-        # explicitly provided a value, we use the default value.
+        # older file formats also lacked acidity
         elif param_name == 'acidity':
             if param_data is None or np.isnan(param_data):
                 param_data = self.default_acidity
 
-        # rx_sample_frequency is a special case because it is a parameter
-        # that was recently added to the EK80 raw file configuration datagram
-        # and there will be files that do not contain it. In these cases we
-        # look up a default value based on the transceiver hardware.
+        # older file formats also lacked acidity rx_sample_frequency 
         elif param_name == 'rx_sample_frequency':
             #  create the return array
             param_data = np.empty((return_indices.shape[0]), dtype=np.float32)
@@ -4639,39 +4646,7 @@ class ek80_calibration(calibration):
                     param_data[ret_idx] = self.default_sampling_frequency[t_type]
                 ret_idx += 1
 
-
-            '''
-                The handling of the sa_correction and gain parameters have changed during
-                the development of this library. Initially it was assumed that lookups for
-                FM data were obtained from the pulse_duration_fm table. In February 2021,
-                Echoview published this bug fix which went against this assumption and stated
-                that:
-
-                "EK80 data files can include both PulseDuration and PulseDurationFM attributes.
-                Echoview was incorrectly using the PulseDurationFM lookup table for wideband
-                data when PulseDuration should have been used."
-
-                pyEcholab was changed to follow Echoview's lead and was altered to always obtain
-                lookups from the PulseDuration table.
-
-                In September 2021 an issue was found where the extraction of calibration
-                parameters failed for certain FM files that did not have a wideband calibration.
-                When the wideband calibration is absent, gain and sa_correction (if used) are
-                obtained from the gain and sa_correction tables from the file header just like
-                narrowband data. This process was failing because there was no match for the
-                pulse length in the PulseDuration table. There *was* a match in the
-                PulseDurationFM table which, along with the name "PulseDurationFM" leads me
-                to believe that the intent of Simrad is that this field should be used for FM
-                lookups and that the Echoview bug fix was not a fix.
-
-                In October 2021, pyEcholab was changed to use the PulseDuration table for
-                narrowband data and the PulseDurationFM table for FM data without a wideband
-                calibration.
-
-               The full EV post can be found here:
-                 https://echoview.com/news-and-events/echoview-bug-fix-correction-to-transducer-gain-calculations-in-simrad-ek80-wideband-data/
-            '''
-
+        # sa_correction is extracted from a table
         elif param_name == 'sa_correction':
             # sa correction is extracted from a list that is indexed by pulse duration
             new_data = np.empty((return_indices.shape[0]), dtype=np.float32)
@@ -4681,22 +4656,19 @@ class ek80_calibration(calibration):
                 if raw_data.pulse_form[idx] > 0:
                     # The data are FM, extract the index from the pulse_duration_fm table.
                     # Currently this parameter isn't used for FM conversions.
-                    match_idx = np.where(config_obj['pulse_duration_fm'] == raw_data.pulse_duration[idx])[0]
+                    match_idx = np.where(config_obj['pulse_duration_fm'] ==
+                            raw_data.pulse_duration[idx])[0]
                     new_data[idx] = param_data[match_idx][0]
                 else:
                     # This is CW data - extract the param using the index from the pulse_duration table.
-                    # (I think this if statement is vestigial and have commented it out. Initial testing
-                    # supports this but IF YOUR CODE FAILS HERE UNCOMMENT AND RETRY. IF IT THEN WORKS LET ME KNOW.
-                    #if param_data.ndim == 1:
-                    new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
-                    #else:
-                    #    new_data[idx] = param_data[idx, config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
+                    new_data[idx] = (param_data[config_obj['pulse_duration'] ==
+                            raw_data.pulse_duration[idx]][0])
 
             param_data = new_data
 
+        #  gain is extracted from a table for CW and FM without wideband calibration
+        #  and for FM with wideband cal data it is extracted from the wideband cal params.
         elif param_name == 'gain':
-            # Gain needs to be handled differently depending on if the data are FM or CW.
-            # If the data are FM, we also have to check if there are wideband cal data.
             new_data = np.empty((return_indices.shape[0]), dtype=np.float32)
 
             # Get the frequencies - this returns the center freq for FM
@@ -4706,46 +4678,41 @@ class ek80_calibration(calibration):
             for idx, config_obj in enumerate(raw_data.configuration[return_indices]):
                 # check if this is an fm ping
                 if raw_data.pulse_form[idx] > 0:
-                    # We try to obtain FM gain first from the wideband transducer parameters. The
-                    # transducer_params_wideband key will exist if the data were collected from a
-                    # system with a broadband cal applied.
+                    # We try to obtain FM gain first from the wideband transducer parameters.
                     if 'transducer_params_wideband' in config_obj:
-                        # It looks like there will not always be a match in the transducer_params_wideband
-                        # table for the center freq so we have to find the closest. Wish I would have
-                        # known since the current implementation is not optimal for this.
-                        xdcr_parms_wb_freqs = np.array(list(config_obj['transducer_params_wideband'].keys()))
-
-                        #  I'm not sure if using the closest value or an interpolated value is better.
-                        if False:
-                            #  use the closest value we find in our table
-                            table_freq = xdcr_parms_wb_freqs[np.abs(xdcr_parms_wb_freqs - frequency[idx]).argmin()]
-                            new_data[idx] = config_obj['transducer_params_wideband'][table_freq]['gain']
-                        else:
-                            #  use an interpreted gain value
-                            gains = []
-                            for f in xdcr_parms_wb_freqs:
-                                gains.append(config_obj['transducer_params_wideband'][f]['gain'])
-                            new_data[idx] = np.interp(frequency[idx], xdcr_parms_wb_freqs, gains)
+                        # interpolate the gain using the cal data frequencies and gains
+                        new_data[idx] = np.interp(frequency[idx],
+                                config_obj['transducer_params_wideband']['frequency'],
+                                config_obj['transducer_params_wideband']['gain'])
                     else:
                         # There aren't wideband cal params available so we extract gain from the
                         # gain table using the index obtained from the pulse_duration_fm
-                        match_idx = np.where(config_obj['pulse_duration_fm'] == raw_data.pulse_duration[idx])[0]
+                        match_idx = np.where(config_obj['pulse_duration_fm'] ==
+                                raw_data.pulse_duration[idx])[0]
                         gain = param_data[match_idx][0]
 
                         # Compute an adjusted gain based on the center frequency of the broadband signal
                         # and the nominal frequency of the transducer.
-                        new_data[idx] = gain + (20 * np.log10(frequency[idx] / config_obj['transducer_frequency']))
+                        new_data[idx] = gain + (20 * np.log10(frequency[idx] / 
+                                config_obj['transducer_frequency']))
                 else:
                     # CW gain is obtained from the gain table that is indexed by pulse duration
                     if param_data.ndim == 1:
-                        new_data[idx] = param_data[config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
+                        new_data[idx] = (param_data[config_obj['pulse_duration'] == 
+                                raw_data.pulse_duration[idx]][0])
                     else:
-                        new_data[idx] = param_data[idx, config_obj['pulse_duration'] == raw_data.pulse_duration[idx]][0]
+                        new_data[idx] = (param_data[idx, config_obj['pulse_duration'] ==
+                                raw_data.pulse_duration[idx]][0])
+                                
             param_data = new_data
 
+        #  similar to gain, the angle offset and beamwidth params for calibrated FM data
+        #  are extracted from the wideband cal. For CW and FM data without a wideband cal the
+        #  values are taken from the configuration header.
         elif param_name in ['angle_offset_alongship', 'angle_offset_athwartship',
                             'beam_width_alongship', 'beam_width_athwartship']:
-            # beamwidths and offsets need to be handled differently depending too.
+                                
+            # initialize the return array
             new_data = np.empty((return_indices.shape[0]), dtype=np.float32)
 
             # Get the frequency - this returns the center freq for FM
@@ -4753,25 +4720,49 @@ class ek80_calibration(calibration):
 
             # Work thru the pings, extracting the params
             for idx, config_obj in enumerate(raw_data.configuration[return_indices]):
-                # check if this is an fm ping with a broadband cal
-                if raw_data.pulse_form[idx] > 0 and 'transducer_params_wideband' in config_obj:
-                    # The structure of the transducer_params_wideband dict makes extracting
-                    # params like this awkward.
-                    xdcr_parms_wb_freqs = np.array(list(config_obj['transducer_params_wideband'].keys()))
-
-                    #  I'm not sure if using the closest value or an interpolated value is better.
-                    if False:
-                        #  use the closest value we find in our table
-                        table_freq = xdcr_parms_wb_freqs[np.abs(xdcr_parms_wb_freqs - frequency[idx]).argmin()]
-                        new_data[idx] = config_obj['transducer_params_wideband'][table_freq][param_name]
+                #  check if this is an FM ping
+                if raw_data.pulse_form[idx] > 0:
+                    # check if this is an fm ping with a broadband cal
+                    if 'transducer_params_wideband' in config_obj:
+                        # this is an FM ping with wideband cal
+                        new_data[idx] = np.interp(frequency[idx],
+                                config_obj['transducer_params_wideband']['frequency'],
+                                config_obj['transducer_params_wideband'][param_name])
                     else:
-                        #  use an interpreted gain value
-                        vals = []
-                        for f in xdcr_parms_wb_freqs:
-                            vals.append(config_obj['transducer_params_wideband'][f][param_name])
-                        new_data[idx] = np.interp(frequency[idx], xdcr_parms_wb_freqs, vals)
+                        # this is an FM ping without a wideband calibration
+                        if param_name in ['beam_width_alongship', 'beam_width_athwartship']:
+                            new_data[idx] = param_data * (frequency[idx] / config_obj['transducer_frequency'])
+                        else:
+                            # uncalibrated offsets are not compensated
+                            new_data[idx] = param_data
+                else:
+                    #  this is CW data
+                    new_data[idx] = param_data
 
-                    param_data = new_data
+            param_data = new_data
+
+        #  again for angle sensitivities
+        elif param_name in ['angle_sensitivity_alongship',
+                'angle_sensitivity_athwartship']:
+                                
+            # initialize the return array
+            new_data = np.empty((return_indices.shape[0]), dtype=np.float32)
+
+            # Get the frequency - this returns the center freq for FM
+            frequency = raw_data.get_frequency()
+            
+            # Work thru the pings, extracting the params
+            for idx, config_obj in enumerate(raw_data.configuration[return_indices]):
+                #  check if this is an FM ping
+                if raw_data.pulse_form[idx] > 0:
+                    # as of 8/2022 wideband calibrations do not contain angle sensitivities
+                    new_data[idx] = config_obj[param_name] * (frequency[idx] /
+                            config_obj['transducer_frequency'])
+                else:
+                    #  this is CW data
+                    new_data[idx] = param_data
+
+            param_data = new_data
 
         elif param_name == 'equivalent_beam_angle':
             # equivalent_beam_angle is computed differently for FM and CW applications
@@ -4784,7 +4775,8 @@ class ek80_calibration(calibration):
             for idx, config_obj in enumerate(raw_data.configuration[return_indices]):
                 # check if this is an fm ping
                 if raw_data.pulse_form[idx] > 0:
-                    new_data[idx] = param_data + (20 * np.log10(config_obj['transducer_frequency'] / frequency[idx]))
+                    new_data[idx] = param_data + (20 * np.log10(config_obj['transducer_frequency'] /
+                            frequency[idx]))
                 else:
                     new_data[idx] = param_data
 
@@ -4792,11 +4784,12 @@ class ek80_calibration(calibration):
 
         elif param_name == 'effective_pulse_duration':
             # EK80 hardware uses the effective_pulse_duration - most file formats require
-            # this to be computed but ES80 store this in the raw file.
+            # this to be computed but old EK80/ES80 formats store this in the raw file.
             if self.transceiver_type != 'GPT':
-                #  check if we already have effective_pulse_duration (ES80) or we need to compute
+                #  check if we already have effective_pulse_duration
+                #  (older EK80 format) or we need to compute
                 if hasattr(raw_data, 'effective_pulse_duration'):
-                    #  this must be ES80 data
+                    #  this must be an old EK80/ES80 raw file that has 
                     param_data = raw_data.effective_pulse_duration[return_indices]
                 else:
                     # For now we're always converting to pulse compressed Sv/Sp so we return the
@@ -4809,6 +4802,7 @@ class ek80_calibration(calibration):
                 param_data = None
 
         elif param_name == 'absorption_coefficient':
+            #  compute the absorption coefficient
             param_data = self._compute_absorption(raw_data,
                 return_indices, self.absorption_method)
 

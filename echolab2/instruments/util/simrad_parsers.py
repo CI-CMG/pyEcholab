@@ -1008,7 +1008,31 @@ class SimradXMLParser(_SimradDatagramParser):
                             #this_params['gain'] = this_params['gain'][0]
                             this_params.pop('frequency', None)
                             xdcr_params_wideband[freq] = this_params
-                        if len(xdcr_params_wideband):
+                            
+                        n_xdcr_params_wideband = len(xdcr_params_wideband)
+                        if n_xdcr_params_wideband:
+                            # unpack the wideband cal params
+                            frequency = np.empty((n_xdcr_params_wideband), dtype=np.float32)
+                            gains = np.empty((n_xdcr_params_wideband), dtype=np.float32)
+                            beam_width_along = np.empty((n_xdcr_params_wideband), dtype=np.float32)
+                            beam_width_athwart = np.empty((n_xdcr_params_wideband), dtype=np.float32)
+                            angle_offset_along = np.empty((n_xdcr_params_wideband), dtype=np.float32)
+                            angle_offset_athwart = np.empty((n_xdcr_params_wideband), dtype=np.float32)
+                            
+                            for idx, freq in enumerate(xdcr_params_wideband):
+                                frequency[idx] = freq
+                                gains[idx] = xdcr_params_wideband[freq]['gain']
+                                beam_width_along[idx] = xdcr_params_wideband[freq]['beam_width_alongship']
+                                beam_width_athwart[idx] = xdcr_params_wideband[freq]['beam_width_athwartship']
+                                angle_offset_along[idx] = xdcr_params_wideband[freq]['angle_offset_alongship']
+                                angle_offset_athwart[idx] = xdcr_params_wideband[freq]['angle_offset_athwartship']
+                            xdcr_params_wideband = {'frequency':frequency,
+                                                    'gain':gains,
+                                                    'beam_width_alongship':beam_width_along,
+                                                    'beam_width_athwartship':beam_width_athwart,
+                                                    'angle_offset_alongship':angle_offset_along,
+                                                    'angle_offset_athwartship':angle_offset_athwart
+                                                    }
                             data['configuration'][channel_id]['transducer_params_wideband'] = xdcr_params_wideband
 
                         # If available add the data from the Transducers section for this transducer
@@ -1147,6 +1171,19 @@ class SimradXMLParser(_SimradDatagramParser):
 
                             # Get a reference to this channels configuration data
                             chan_data = data['configuration'][chan]
+                            
+                            # Unpack the wideband configuration data
+                            packed_params = {}
+                            if chan_data['transducer_params_wideband']:
+                                for idx, freq in chan_data['transducer_params_wideband']['frequency']:
+                                    packed_params[freq] = {'gain':chan_data['transducer_params_wideband']['gain'][idx],
+                                            'beam_width_alongship':chan_data['transducer_params_wideband']['beam_width_alongship'][idx],
+                                            'beam_width_athwartship':chan_data['transducer_params_wideband']['beam_width_athwartship'][idx],
+                                            'angle_offset_alongship':chan_data['transducer_params_wideband']['angle_offset_alongship'][idx],
+                                            'angle_offset_athwartship':chan_data['transducer_params_wideband']['angle_offset_athwartship'][idx]}
+    
+                            if packed_params:
+                                chan_data['transducer_params_wideband'] = packed_params
 
                             # Update this channel's transceiver node
                             for xcvr_node in transceivers_node.findall('./Transceiver[@TransceiverName="' +
