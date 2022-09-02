@@ -4218,7 +4218,8 @@ class raw_data(ping_data):
             effective_pulse_duration = calibration.get_parameter(self,
                 'effective_pulse_duration', return_indices)
 
-        #  compute transceiver gain compensation for fm signals. From:
+        #  compute transceiver gain compensation for fm signals. This has no effect
+        #  on CW signals. From:
         #
         #  Andersen, L. N., Chu, D. Heimvoll, H, Korneliussen, R, Macaulay, G, Ona, E.
         #  Patel R., & Pedersen G. (2021, Apr. 15). Quantitative processing of broadband data
@@ -4239,10 +4240,12 @@ class raw_data(ping_data):
                 (np.abs(phi - cal_parms['angle_offset_athwartship'][is_fm]) /
                 (cal_parms['beam_width_athwartship'][is_fm] / 2)) ** 2))
         B_theta_phi_m[is_fm] = 10**(B_theta_phi_m[is_fm] / 10)
+        
         #  convert transceiver gain to linear units
         transceiver_gain = 10**(cal_parms['gain'] / 10)
-        #  and apply gain compensation
-        transceiver_gain *= B_theta_phi_m
+
+        #  and apply fm gain compensation
+        transceiver_gain /= B_theta_phi_m
 
         # Calculate the system gains.
         wavelength = cal_parms['sound_speed'] / power_data.frequency
