@@ -91,7 +91,7 @@ class ping_data(object):
         # exist at instantiation (attributes can also be added later).
 
         # For the base class, we only define ping_time which is the only
-        # required attribut that all data objects must have.
+        # required attribute that all data objects must have.
         self._data_attributes = ['ping_time']
 
         # Attributes are added using the add_data_attribute method. You can add
@@ -294,25 +294,32 @@ class ping_data(object):
                     'type as this object. This data type: ' + self.data_type +
                     ' object to insert data type: ' + obj_to_insert.data_type)
 
-        #  if complex, make sure the number of sectors are the same
-        if self.data_type == 'complex' and not force:
-            if self.n_complex != obj_to_insert.n_complex:
-                raise TypeError('The object you are inserting  does not have the same ' +
-                    'number of complex samples as this object. This n_complex: ' + self.n_complex +
-                    ' object to insert n_complex: ' + obj_to_insert.n_complex)
-
-        # Make sure that the frequencies match.  Don't allow replacing pings
-        # with different frequencies.
+        # Make sure that the frequencies match. We allow NaNs because we allow
+        # empty data to be inserted.
         if not force:
             freq_match = False
-            if isinstance(self.frequency, np.float32):
-                freq_match = self.frequency == obj_to_insert.frequency
+            # check if we have a a frequency axis
+            if isinstance(self.frequency, np.ndarray):
+                # Yes, check if they are the same
+                if np.isnan(obj_to_insert.frequency[0]):
+                    freq_match = True
+                else:
+                    freq_match = np.array_equal(self.frequency,
+                        obj_to_insert.frequency)
             else:
-                freq_match = self.frequency[0] == obj_to_insert.frequency[0]
+                # I'm not sure how we would get here, but if we are we're way off
+                # the beaten path so we'll just go with it.
+                freq_match = True
+               
             if not freq_match:
-                raise TypeError('The frequency of the data you are providing as a '
-                                + 'replacement does not match the frequency of ' +
-                                'this object. The frequencies must match.')
+                if self.frequency.shape[0] == 1:
+                    f = 'frequency'
+                else:
+                    f = 'frequencies'
+                raise TypeError('The ' + f + ' of the object you are inserting' +
+                                '/appending does not match the ' + f + ' of this ' +
+                                'object. Frequencies must match to append or ' +
+                                'insert.')
 
         # Get information about the shape of the data we're working with.
         my_pings = self.n_pings
@@ -395,22 +402,33 @@ class ping_data(object):
                 # Get a reference to our obj_to_insert's attribute.
                 data_to_insert = getattr(obj_to_insert, attribute)
 
-                # We have to handle the 2d and 1d differently.
+                # check if the replacement data has the same number of dimensions
+                if data.ndim != data_to_insert.ndim:
+                    raise ValueError('The replacement data for the' + attribute + ' does not have ' +
+                        'the same number of dimensions as the data you are trying to replace. Replacement ' +
+                        'data must have the same number of dimensions.')
+                        
+                # insert the replacement data on top of the existing data.
                 if data.ndim == 1:
-                    # Concatenate the 1d data.  Replace existing pings with
-                    # this data.
                     data[replace_index] = data_to_insert[:]
                 elif data.ndim == 2:
-                    # Insert the new data.
                     data[replace_index, :] = data_to_insert[:,:]
                 elif data.ndim == 3:
-                    # Insert the new data.
                     data[replace_index, :, :] = data_to_insert[:,:,:]
-
-        # Update our global properties.
+            else:
+                raise TypeError('The object providing the replacement data does not have ' +
+                        'the ' + attribute + ' attribute. Objects containing replacement data ' +
+                        'must at least have the same data attributes as the object whose ' +
+                        'data you are replacing.')
+                        
+        # Now update our global properties.
         if hasattr(obj_to_insert, 'channel_id'):
             if obj_to_insert.channel_id not in self.channel_id:
-                self.channel_id += obj_to_insert.channel_id
+                self.channel_id += " :: " + obj_to_insert.channel_id
+
+        # Update the size/shape attributes.
+        self.n_samples = my_samples
+        self.shape = self._shape()
 
 
     def delete(self, start_ping=None, end_ping=None, start_time=None,
@@ -558,51 +576,30 @@ class ping_data(object):
             raise TypeError('The object you are inserting/appending must ' +
                             'be an instance of ' + str(self.__class__))
 
-        # Make sure the two objects contain the same data type
-        if self.data_type != obj_to_insert.data_type:
-            raise TypeError('The object you are inserting/appending contains a different ' +
-                            'data type than this object. You cannot insert objects containing ' +
-                            'different data types.')
-
-        # Make sure that the frequencies match.  This isn't perfect and there are
-        # a lot of ways this can go bad. It is up to the user to ensure they insert
-        # responsibly. We allow NaNs because we allow empty data to be inserted.
+        # Make sure that the frequencies match. We allow NaNs because we allow
+        # empty data to be inserted.
         if not force:
             freq_match = False
-            # Need to handle FM and reduced data differently
-            if self.data_type == 'complex-FM':
-                if isinstance(self.frequency_start, np.ndarray):
-                    # We get lazy with vectors of frequency since there isn't a simple solution.
-                    # We will just check the first values.
-                    if np.isnan(obj_to_insert.frequency_start[0]):
-                        freq_match = True
-                    else:
-                        freq_match = self.frequency_start[0] == obj_to_insert.frequency_start[0]
-                        freq_match &= self.frequency_end[0] == obj_to_insert.frequency_end[0]
+            # check if we have a a frequency axis
+            if isinstance(self.frequency, np.ndarray):
+                # Yes, check if they are the same
+                if np.isnan(obj_to_insert.frequency[0]):
+                    freq_match = True
                 else:
-                    # we must have been passed a single value
-                    if obj_to_insert.frequency_start == np.nan or obj_to_insert.frequency_start == 0:
-                        freq_match = True
-                    else:
-                        freq_match = self.frequency_start == obj_to_insert.frequency_start
-                        freq_match &= self.frequency_end == obj_to_insert.frequency_end
+                    freq_match = np.array_equal(self.frequency,
+                        obj_to_insert.frequency)
             else:
-                if isinstance(self.frequency, np.ndarray):
-                    # Same deal here. We're lazy. Just check the first values
-                    if np.isnan(obj_to_insert.frequency[0]):
-                        freq_match = True
-                    else:
-                        freq_match = self.frequency[0] == obj_to_insert.frequency[0]
-                else:
-                    # we must have been passed a single value
-                    if obj_to_insert.frequency == np.nan or obj_to_insert.frequency == 0:
-                        freq_match = True
-                    else:
-                        freq_match = self.frequency == obj_to_insert.frequency
-
+                # I'm not sure how we would get here, but if we are we're way off
+                # the beaten path so we'll just go with it.
+                freq_match = True
+               
             if not freq_match:
-                raise TypeError('The frequency of the object you are inserting' +
-                                '/appending does not match the frequency of this ' +
+                if self.frequency.shape[0] == 1:
+                    f = 'frequency'
+                else:
+                    f = 'frequencies'
+                raise TypeError('The ' + f + ' of the object you are inserting' +
+                                '/appending does not match the ' + f + ' of this ' +
                                 'object. Frequencies must match to append or ' +
                                 'insert.')
 
@@ -702,6 +699,11 @@ class ping_data(object):
                 # Get a reference to our obj_to_insert's attribute.
                 data_to_insert = getattr(obj_to_insert, attribute)
 
+                # check if the sata we're inserting data has the same number of dimensions
+                if data.ndim != data_to_insert.ndim:
+                    raise ValueError('The ' + attribute + ' data you are inserting/appending does not have ' +
+                        'the same number of dimensions as the data you are inserting into or appending to.')
+
                 # We have to handle the 2d and 1d differently.
                 if data.ndim == 1 and data.shape[0] != my_samples:
                     # Skip vertical axis attributes, but move the other 1d data
@@ -721,6 +723,11 @@ class ping_data(object):
                     data[move_index[::-1], :, :] = data[move_idx[::-1], :, :]
                     # Insert the new data.
                     data[insert_index, :, :] = data_to_insert[:, :, :]
+            else:
+                raise TypeError('The object you are inserting/appending does not have ' +
+                        'the ' + attribute + ' attribute. Objects that you insert or ' +
+                        'append must at least have the same data attributes as the object you are ' +
+                        'inserting into or appending to.')
 
         # Now update our global properties.
         if hasattr(obj_to_insert, 'channel_id'):
@@ -735,24 +742,25 @@ class ping_data(object):
 
     def match_pings(self, other_data, match_to='cs'):
         """Matches the ping times in this object to the ping times in the object
-        provided. It does this by matching times, inserting and/or deleting
-        pings as needed. It does not interpolate. Ping times in the other object
-        that aren't in this object are inserted. Ping times in this object that
-        aren't in the other object are deleted. If the time axes do not intersect
-        at all, all of the data in this object will be deleted and replaced with
-        empty pings for the ping times in the other object.
-
+        provided. It does this by inserting and/or deleting pings. Ping times in
+        the other object that aren't in this object are inserted. Ping times in
+        this object that aren't in the other object are deleted from this object.
+        If the time axes do not intersect at all, all of the data in this object
+        will be deleted and replaced with empty pings for the ping times in the
+        other object.
 
         Args:
             other_data (ping_data): A ping_data type object that this object
             will be matched to.
 
             match_to (str): Set to a string defining the precision of the match.
+            A lower precision allows matching in cases where there is a slight
+            time difference between the two data sources.
 
                 cs : Match to a 100th of a second or
                 ds : Match to a 10th of a second
                 s  : Match to the second
-
+                
         Returns:
             A dictionary with the keys 'inserted' and 'removed' containing the
             indices of the pings inserted and removed.
@@ -822,6 +830,9 @@ class ping_data(object):
 
     def roll(self, roll_pings):
         """Rolls our data array elements along the ping axis.
+
+
+        THIS METHOD IS UNTESTED AND PROBABLY DOESN'T WORK
 
         Elements that roll beyond the last position are re-introduced at the
         first position.
@@ -934,7 +945,6 @@ class ping_data(object):
             new_array[0:n_pings, 0:n_samps, :] = data[0:n_pings, 0:n_samps, :]
             return new_array
 
-
         # Store the old sizes.
         old_sample_dim = self.n_samples
         old_ping_dim = self.ping_time.shape[0]
@@ -951,10 +961,9 @@ class ping_data(object):
             # Get a reference to this attribute.
             attr = getattr(self, attr_name)
 
-            # Resize the arrays using a technique dependent on the array
-            # dimension.
+            # Resize the arrays using a technique dependent on the array dimension.
             if attr.ndim == 1:
-                # 1d arrays can be on the ping axes or sample axes and have
+                # 1d arrays can be an axis or be on the ping axes or sample axes and have
                 # to be handled differently.
                 if attr.shape[0] == old_sample_dim != new_sample_dim:
                     # Resize this sample axes attribute.
@@ -1329,6 +1338,7 @@ class ping_data(object):
         obj.shape = self.shape
         obj._data_attributes = list(self._data_attributes)
         obj._object_attributes  = list(self._object_attributes)
+        
 
         # Copy object attributes
         for attr_name in self._object_attributes:

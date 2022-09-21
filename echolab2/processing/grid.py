@@ -33,7 +33,7 @@ import numpy as np
 class grid(object):
 
     """
-    The grid class generates grid vertices and associated propertes for the provided
+    The grid class generates grid vertices and associated properties for the provided
     processed_data object and can be used both for display purposes and echo-integration.
 
     The grid is generated using the specified horizontal axis and width value, and the
@@ -58,8 +58,7 @@ class grid(object):
         interval_length = numpy.timedelta64(30, 'm')
 
 
-
-    The primary grid attribues are
+    The primary grid attributes are
 
         n_intervals: the number of intervals in the grid
 
@@ -79,23 +78,39 @@ class grid(object):
 
     def __init__(self, interval_length=0.5, interval_axis='trip_distance_nmi',
             layer_thickness=10, layer_axis='depth', data=None, color=[0.0, 0.0, 0.0],
-                 name='grid', linestyle='solid', linewidth=1.0, layer_start=0,
-                 interval_start=None):
+                 name='grid', linestyle='solid', linewidth=1.0,
+                 round_interval_starts=True):
         """Initializes a new grid class object.
 
     Arguments:
 
-        interval_length (float OR timedelta64):
-        interval_axis (string):
+        interval_length (int OR float OR timedelta64): Specify the length of the grid intervals in
+                units specified in the interval_axis keyword argument.
+        interval_axis (string): A string specifying the horizontal axis to use when creating
+                the grid. Valid values are:
+                    trip_distance_nmi: The horizontal grid will be based on the vessel log
+                            distance in nautical miles. Interval length is specified as a float.
+                    trip_distance_m: The horizontal grid will be based on the vessel log
+                            distance in meters. Interval length is specified as a float.
+                    ping_time: The horizontal grid will be based on the ping time. Interval
+                            length is specified as a timedelta64 object.
+                    ping_number: The horizontal grid will be based on the ping number. Interval
+                            length is specified as a integer.
+
+        round_interval_starts (bool): When set to True, the grid will 
+        
+        
         layer_thickness (float): specify the layer thickness in meters
         layer_axis (string): specify the processed_data attribute to use for the vertical
                 axis. Can be 'range' or 'depth'
 
+        
+
         color: color is a list of 3 floats [R, G, B] which defines the color
                 of the grid line when plotted. Values are in the range of [0,1]
         name (string): name or label for the grid.
-        linestyle: linestyle is a string that defines the style of the line.
-        linewidth: linewidth is a float the defines the width of the line.
+        linestyle: linestyle is a string that defines the style of the line when plotted.
+        linewidth: linewidth is a float the defines the width of the line when plotted.
 
         """
         super(grid, self).__init__()
@@ -103,10 +118,9 @@ class grid(object):
         # Initialize the grid attributes
         self.interval_length = interval_length
         self.interval_axis = interval_axis
-        self.interval_start = interval_start
+        self.round_interval_starts = round_interval_starts
         self.layer_thickness = layer_thickness
         self.layer_axis = layer_axis
-        self.layer_start = layer_start
         self.name = name
         self.linestyle = linestyle
         self.linewidth = linewidth
@@ -169,29 +183,98 @@ class grid(object):
             # Since the interval length can be specified in arbitrary time units
             # we must first get the interval length in ms then get that as a float64
             int_len = self.interval_length.astype('<m8[ms]').astype('float64')
-            if self.interval_start:
-                int_start = self.interval_start.astype('<m8[ms]').astype('float64')
+            
+            if self.round_interval_starts:
+                #  we're creating a grid with inner intervals that start at times rounded
+                #  to the interval length. For example, if you have a 5 minute interval and
+                #  your data starts at 12:03 and stops at 12:26, the grid edges would be at
+                #  12:03, 12:05, 12:10, 12:15, 12:20, and 12:26.
+                
+                #  determine the interval length units and set the rounding units
+                dtype_str = str(self.interval_length.dtype)
+                dtype_units = dtype_str[dtype_str.find('['):]
+                round_dtype = 'datetime64' + dtype_units
+                
+                # find the pings closest to the rounded interval - this will also include
+                # the first ping which we will ignore later.
+                rounded_edges = np.mod(axis_data, int_len)
+                rounded_edges = (np.r_[True, rounded_edges[1:] < rounded_edges[:-1]] &
+                        np.r_[rounded_edges[:-1] < rounded_edges[1:], True])
+                # now convert back to datetime64[ms] so we can round
+                rounded_edges = axis_data[rounded_edges].astype('datetime64[ms]')
+                # and then round to the interval length unit
+                rounded_edges =  rounded_edges.astype(round_dtype)
+                # finally convert back to datetime64[ms] and then to float
+                rounded_edges =  rounded_edges.astype('datetime64[ms]').astype('float64')
+                n_rounded = len(rounded_edges)
+                        
+                # now build the array of edges including the start, the rounded edges
+                # and the last ping. First create the edges array
+                axis_edges = np.empty((n_rounded + 1), dtype='float64')
+                # add the first and last edge
+                axis_edges[0] = axis_data[0]
+                axis_edges[-1] = axis_data[-1]
+                # and add the rounded inner edges (discarding the rounded first ping)
+                axis_edges[1:n_rounded] = rounded_edges[1:]
+                
             else:
-                int_start = axis_data[0]
+                # for non-rounded interval starts we compute the edges in the _grid_axis() method
+                axis_edges = None
+                
         else:
             # This is a distance or ping number based interval
 
             # Set the interval length
             int_len = self.interval_length
 
-            # Set the interval start
-            if self.interval_start:
-                if self.interval_axis == 'ping_number' and self.interval_start > 0:
-                    # Ping number based intervals start at ping number 1
-                    int_start = self.interval_start - 1
+            # Check if we're rounding the interval starts
+            if self.round_interval_starts:
+                #  we're creating a grid with inner intervals that start at distance/pings 
+                #  rounded to the interval length. For example, if you have an interval
+                #  length of 0.5 nmi and the data starts at 231.3 nmi and stops at 233.6,
+                #  the grid edges will be at 231.3, 231.5, 232.0, 232.5, 233.0, 233.5, and
+                #  233.6.
+                
+                # find the pings closest to the rounded interval - this will also include
+                # the first ping which we will ignore later.
+                rounded_edges = np.mod(axis_data, int_len)
+                rounded_edges = (np.r_[True, rounded_edges[1:] < rounded_edges[:-1]] &
+                        np.r_[rounded_edges[:-1] < rounded_edges[1:], True])
+
+                # determine the rounding factor
+                int_len_parts = repr(float(int_len)).split('.')
+                if int(int_len_parts[1]) > 0:
+                    # the interval length is fractional - we'll round on the RHS of the decimal
+                    round_factor = len(int_len_parts[1])
                 else:
-                    int_start = self.interval_start
+                    # the interval length is a whole number - figure out what position to
+                    # round to on the LHS of the decimal
+                    round_factor = 0
+                    for x in range(len(int_len_parts[0]) - 1, -1, -1):
+                        if int_len_parts[0][x] != '0':
+                            break
+                        round_factor -= 1
+                
+                # and round the edges
+                rounded_edges = np.round(axis_data[rounded_edges], round_factor)
+                n_rounded = len(rounded_edges)
+                        
+                # now build the array of edges including the start, the rounded edges
+                # and the last ping. First create the edges array
+                axis_edges = np.empty((n_rounded + 1), dtype='float64')
+                # add the first and last edge
+                axis_edges[0] = axis_data[0]
+                axis_edges[-1] = axis_data[-1]
+                # and add the rounded inner edges (discarding the rounded first ping)
+                axis_edges[1:n_rounded] = rounded_edges[1:]
+                
             else:
-                int_start = axis_data[0]
+                # for non-rounded interval starts we compute the edges in the _grid_axis() method
+                axis_edges = None
 
         # Update the horizontal axis properties
         self.n_intervals, interval_edges, self.interval_pings, self.ping_interval_map = \
-                self._grid_axis(axis_data, int_start, int_len)
+                self._grid_axis(axis_data, int_len, axis_edges=axis_edges)
 
         if self.interval_axis == 'ping_time':
             # Convert the edges back to datetime64[ms]
@@ -211,7 +294,7 @@ class grid(object):
 
         # Update the vertical axis properties
         self.n_layers, self.layer_edges, self.layer_samples, self.sample_layer_map = \
-                self._grid_axis(axis_data, self.layer_start, self.layer_thickness)
+                self._grid_axis(axis_data, self.layer_thickness)
 
         #  store a reference to the data used to generate the grid
         self.grid_data = p_data
@@ -303,20 +386,27 @@ class grid(object):
         return self._layer_samples & self._interval_pings[:, np.newaxis]
 
 
-    def _grid_axis(self, axis_data, axis_start, axis_size):
+    def _grid_axis(self, axis_data, axis_size, axis_edges=None):
+
         '''
         _grid_axis is an internal method that generates the grid parameters for the
         provided axis_data and size (horizontal length or vertical height)
         '''
 
-        # Get the span of the axis data
-        span = axis_data[-1] - float(axis_start)
+        #  check if we've been given explicit edges
+        if axis_edges is None:
+            # Get the span of the axis data
+            span = axis_data[-1] - float(axis_data[0])
 
-        # Compute the number of intervals/cells
-        n_intervals = np.ceil(span / axis_size).astype('uint32')
+            # Compute the number of intervals/cells
+            n_intervals = np.ceil(span / axis_size).astype('uint32')
 
-        # compute the interval/cell edges, including the rightmost/bottommost edge
-        axis_edges = (np.arange(n_intervals + 1) * axis_size) + float(axis_start)
+            # compute the interval/cell edges, including the rightmost/bottommost edge
+            axis_edges = (np.arange(n_intervals + 1) * axis_size) + float(axis_data[0])
+            axis_edges[-1] = axis_data[-1]
+        else:
+            # we have, get the number of intervals 
+            n_intervals = len(axis_edges) - 1
 
         # create the axis mapping array - we include all pings/samples in an
         # interval/cell that are >= to the interval/cell start and < the interval/cell end

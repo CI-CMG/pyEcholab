@@ -1013,10 +1013,6 @@ class EK80(object):
                     # This is hokey, but there is no way to know which data object
                     # this depth applies to so we just try for all data objects.
                     for data in self.raw_data[this_chan]:
-                        # In order to avoid checking the index array below for every
-                        # chan/datatype, we'll check for and add if needed the
-                        # bottom detection attribute to alldata objects if any
-                        # bottom data is read.
                         if not hasattr(data, 'detected_bottom'):
                             # This data object doesn't have the detected_bottom attribute.
                             # Create and add it.
@@ -2632,9 +2628,9 @@ class raw_data(ping_data):
     def get_power(self, calibration=None, **kwargs):
         """Returns a processed data object that contains the power data.
 
-        This method performs all of the required transformations to place the
-        raw power data into a rectangular array where all samples share the same
-        thickness and are correctly arranged relative to each other.
+        This method performs the required transformations to place the raw power
+        data into a rectangular array where all samples share the same thickness
+        and are correctly arranged relative to each other.
 
         This process happens in 3 steps:
 
@@ -2642,9 +2638,7 @@ class raw_data(ping_data):
                 Data are shifted vertically to account for the sample offsets.
                 Data are then regridded to a fixed time, range grid.
 
-        Each step is performed only when required. Calls to this method will
-        return much faster if the raw data share the same sample thickness,
-        offset and sound speed.
+        Each step is performed only when required.
 
         If calibration is set to an instance of EK80.ek80_ calibration the
         values in that object (if set) will be used when performing the
@@ -2783,14 +2777,14 @@ class raw_data(ping_data):
         # extract the fast keyword. If present - The fast keyword tells the pulse
         # compression function to assume the Tx params for all FM pings are constant
         # and thus a single Tx signal is computed and used for all conversions.
-        fast = kwargs.get('fast',False)
+        fast = kwargs.get('fast', False)
 
         if pulse_compress:
             # Pulse compress (this function has no effect on CW data)
             p_data = simrad_signal_proc.pulse_compression(self, calibration,
                 return_indices=return_indices, fast=fast)
         else:
-            p_data = raw_data.complex
+            p_data = self.complex
 
         # Check if we're supposed to return angles
         if return_angles:
@@ -2885,12 +2879,12 @@ class raw_data(ping_data):
 
         #  first get the pulse compressed and sector averaged complex data
         if return_angles:
-            p_data, p_data_alongship, p_data_athwartship = \
+            complex_data, angles_alongship, angles_athwartship = \
                     self._get_complex(calibration,return_indices,
                     return_angles=True, pulse_compress=pulse_compress,
                     **kwargs)
         else:
-            p_data = self._get_complex(calibration,return_indices,
+            complex_data = self._get_complex(calibration,return_indices,
                     return_angles=True, pulse_compress=pulse_compress,
                     **kwargs)[0]
 
@@ -2912,26 +2906,16 @@ class raw_data(ping_data):
 
         # Compute power (from Demer, D. A. et. al.)
         vrsplit = (Zer + Zet) / Zer
-        Prx = (n_sectors * (np.abs(p_data) / (2 * np.sqrt(2)))**2 * vrsplit**2 * 1 / Zet)
+        Prx = (n_sectors * (np.abs(complex_data) / (2 * np.sqrt(2)))**2 * vrsplit**2 * 1 / Zet)
         Prx[Prx == 0] = 1e-20
-        p_data = Prx
-
-        # Compute power (from Andersen, L. N. et. al.)
-#        K1 = n_sectors / ((2 * np.sqrt(2)) ** 2)
-#        K2 = (np.abs(Zer + Zet) / Zer) ** 2
-#        K3 = 1.0 / np.abs(Zet)
-#        C1Prx = K1 * K2 * K3
-#        Prx = C1Prx * np.abs(p_data) ** 2
-#        Prx[Prx == 0] = 1e-20
-#        p_data = Prx
-
+        
         # convert to log units
-        p_data = 10 * np.log10(Prx)
+        complex_data = 10 * np.log10(Prx)
 
         if return_angles:
-            return (p_data, p_data_alongship, p_data_athwartship)
+            return (complex_data, angles_alongship, angles_athwartship)
         else:
-            return p_data
+            return complex_data
 
 
     def _get_power(self, calibration=None, **kwargs):
@@ -3532,9 +3516,6 @@ class raw_data(ping_data):
         athwartship.data /= cal_parms['angle_sensitivity_athwartship'][:, np.newaxis]
         athwartship.data -= cal_parms['angle_offset_athwartship'][:,np.newaxis]
 
-        print('angle sens along', cal_parms['angle_sensitivity_alongship'][0])
-        print('angle sens athw', cal_parms['angle_sensitivity_athwartship'][0])
-
         # Set the data types.
         alongship.data_type = 'angles_alongship'
         athwartship.data_type = 'angles_athwartship'
@@ -3781,7 +3762,7 @@ class raw_data(ping_data):
         return bottom_line
 
 
-# The following 3 methods are probbaly more complicated than they need to be
+# The following 3 methods are probably more complicated than they need to be
 # considering that normally mixed CW and FM data (or in the case of the
 # get_frequency method mixed frequencies) can't occur in a normal raw file
 # as the data would be in different channels.
@@ -3956,10 +3937,24 @@ class raw_data(ping_data):
                 # transform complex data to power
                 raw_power = self._complex_to_power(calibration, return_indices, **kwargs)
                 data_refs.append(raw_power)
-            if property_name == 'complex':
+            elif property_name == 'power+angles_e':
+                # transform complex data to power
+                raw_power, raw_along_e, raw_athwart_e = self._complex_to_power(calibration, return_indices,
+                        return_angles=True, **kwargs)
+                data_refs.append(raw_power)
+                data_refs.append(raw_along_e)
+                data_refs.append(raw_athwart_e)
+            elif property_name == 'complex':
                 # transform complex data to power
                 raw_complex = self._get_complex(calibration, return_indices, **kwargs)
                 data_refs.append(raw_complex)
+            elif property_name == 'complex+angles_e':
+                # transform complex data to power
+                raw_complex, raw_along_e, raw_athwart_e = self._get_complex(calibration, return_indices,
+                        return_angles=True, **kwargs)
+                data_refs.append(raw_complex)
+                data_refs.append(raw_along_e)
+                data_refs.append(raw_athwart_e)
             elif property_name == 'angles_e':
                 # transform complex data to angles
                 _, raw_along_e, raw_athwart_e = self._complex_to_power(calibration, return_indices,
@@ -3968,15 +3963,31 @@ class raw_data(ping_data):
                 data_refs.append(raw_athwart_e)
         else:
             # No complex data - this is reduced data
-            if property_name == 'power' and hasattr(self, 'power'):
-                data_refs.append(getattr(self, property_name))
-            elif (property_name == 'angles_e' and hasattr(self, 'angles_alongship_e') and
-                hasattr(self, 'angles_athwartship_e')):
+            has_power = hasattr(self, 'power')
+            has_angles = (hasattr(self, 'angles_alongship_e') and
+                hasattr(self, 'angles_athwartship_e'))
+            
+            if property_name == 'power':
+                if has_power:
+                    data_refs.append(getattr(self, property_name))
+                else:
+                    raise AttributeError("Unable to convert raw sample data. The raw_data " + 
+                            "object is missing the power attribute.")
+            elif (property_name == 'angles_e'):
+                if has_angles:
                     data_refs.append(getattr(self, 'angles_alongship_e'))
                     data_refs.append(getattr(self, 'angles_athwartship_e'))
-            else:
-                raise AttributeError("Unable to convert raw sample data. The attribute name " +
-                        property_name + " does not exist.")
+                else:
+                    raise AttributeError("Unable to convert raw sample data. The raw_data " + 
+                            "object is missing one or both of the angles attribute.")
+            elif (property_name == 'power+angles_e'):
+                if has_angles and has_power:
+                    data_refs.append(getattr(self, property_name))
+                    data_refs.append(getattr(self, 'angles_alongship_e'))
+                    data_refs.append(getattr(self, 'angles_athwartship_e'))
+                else:
+                    raise AttributeError("Unable to convert raw sample data. The raw_data " + 
+                            "object is missing one or more of the power or angle attributes.")
 
         # Populate the calibration parameters required for this method.
         # First, create a dict with key names that match the attributes names

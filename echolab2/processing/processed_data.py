@@ -140,6 +140,10 @@ class processed_data(ping_data):
         # offset away from the transducer face.
         self.sample_offset = 0
 
+        self.range = None
+        self.depth = None
+
+
         # Define the attribute names for "navigation" data. These are the
         # list of possible field names that store data related to the movement
         # and motion of the sampling platform.
@@ -147,14 +151,17 @@ class processed_data(ping_data):
                 'spd_over_grnd_kts', 'pitch', 'heave', 'roll']
 
         #  extend the _data_attributes list adding our data attribute
-        self._data_attributes += ['data']
+        #self._data_attributes += ['data']
+        
+        # create a list to track which data attributes are log based
+        self._log_data = []
 
         #  create a list that stores the scalar object attributes
         self._object_attributes += ['sample_thickness',
                                     'sample_offset',
                                     'sound_velocity',
-                                    'frequency',
-                                    'data_type',
+                                    #'frequency',
+                                    #'data_type',
                                     'is_log',
                                     'is_heave_corrected']
 
@@ -187,6 +194,8 @@ class processed_data(ping_data):
         Raises:
             TypeError: Data isn't the same type.
         """
+        # we will assume that we
+        
 
         # Determine how many pings we're inserting.
         if index_array:
@@ -200,11 +209,23 @@ class processed_data(ping_data):
         if obj_to_insert is None:
             # When obj_to_insert is None, we automatically create a matching
             # object that contains no data (all NaNs).
+            empty_insert = True
             obj_to_insert = self.empty_like(n_inserting, empty_times=True)
 
             # When replacing, we copy the ping times.
             obj_to_insert.ping_times = self.ping_times[index_array]
-
+        else:
+            # We're not inserting empty data
+            empty_insert = False
+            
+            # check that we have the same data attributes
+            for data_attr in self._data_attributes:
+                other_attr = getattr(obj_to_insert, data_attr, None)
+                if other_attr is None:
+                    raise TypeError('The object that .')
+                    
+                
+            
         # When inserting/replacing data in processed_data objects we have to
         # make sure the data are the same type. The parent method will check
         # if the frequencies are the same.
@@ -225,7 +246,7 @@ class processed_data(ping_data):
         # anything).
         obj_to_insert.interpolate(this_vaxis)
 
-        # We are now coexisting in harmony - call parent's insert.
+        # We are now coexisting in harmony - call parent's replace method.
         super(processed_data, self).replace(obj_to_insert, ping_number=None,
                 ping_time=None, insert_after=True, index_array=None)
 
