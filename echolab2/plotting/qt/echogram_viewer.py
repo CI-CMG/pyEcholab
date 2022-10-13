@@ -24,32 +24,6 @@ class echogram_viewer(QtWidgets.QMainWindow, ui_echogram_viewer.Ui_echogram_view
         self.QEchogramViewer.mouseMove.connect(self.echogramMouseInWidget)
         self.QEchogramViewer.mouseRelease.connect(self.echogramUnClick)
 
-        #  restore the application state
-        self.appSettings = QtCore.QSettings('afsc.noaa.gov', 'echogram_viewer')
-        size = self.appSettings.value('winsize', QtCore.QSize(1000,600))
-        position = self.appSettings.value('winposition', QtCore.QPoint(5,5))
-
-        #  et the virtual screen size
-        screen = QtWidgets.QApplication.primaryScreen()
-        v_screen_size = screen.availableVirtualSize()
-
-        #  check if our last window size is too big for our current screen
-        if (size.width() > v_screen_size.width()):
-            size.setWidth(v_screen_size.width() - 50)
-        if (size.height() > v_screen_size.height()):
-            size.setHeight(v_screen_size.height() - 50)
-
-        #  now check if our last position is at least on our current desktop
-        #  if it is off the screen we just throw it up at 0
-        if (position.x() > size.width() - 50):
-            position.setX(0)
-        if (position.y() > size.height() - 50):
-            position.setY(0)
-
-        #  now move and resize the window
-        self.move(position)
-        self.resize(size)
-
         #  set the base directory path - this is the full path to this application
         self.baseDir = functools.reduce(lambda l,r: l + os.path.sep + r,
                 os.path.dirname(os.path.realpath(__file__)).split(os.path.sep))
@@ -62,40 +36,11 @@ class echogram_viewer(QtWidgets.QMainWindow, ui_echogram_viewer.Ui_echogram_view
             self.update_echogram(p_data, plot_attribute)
 
 
-    @pyqtSlot(object, object, int, object, list)
-    def echogramClick(self, imageObj, clickLoc, button, modifier, items):
-        pass
-#        if (items):
-#            print("Picked:",items)
-
-
-    @pyqtSlot(object, object, int, object, list)
-    def echogramUnClick(self, imageObj, clickLoc, button, modifier, items):
-        pass
-
-
-    @pyqtSlot(object, object, object, list, list)
-    def echogramMouseInWidget(self, imageObj, location, modifier, draggedItems, items):
-
-#        if (items):
-#            print("Dragged:", items)
-
-        if (location[0] != None):
-            #  update the depth/time at cursor label
-            locationString = 'Depth: %.2fm    Time: %s  ' % (location[1],
-                    location[0].tolist().strftime('%m/%d/%Y %H:%M:%S'))
-            self.echogramLabel.setText(locationString)
-
-            #  force a redraw of the echogram so the label is refreshed
-            self.QEchogramViewer.viewport().update()
-
-
     def update_echogram(self, p_data, plot_attribute='Sv', h_scale=None):
         """
         update_echogram updates the echogram image using data from the provided
         processed_data object
         """
-
         #  clear out the echogram viewer
         self.QEchogramViewer.clearViewer()
 
@@ -156,37 +101,62 @@ class echogram_viewer(QtWidgets.QMainWindow, ui_echogram_viewer.Ui_echogram_view
         style, and width of the line is defined in the line object.
         '''
 
-        #TODO: Setting isCosmetic and moveBy should be done in
-        #      QEchogramViewer since they are applicable to all echograms,
-        #      not just ones created with this simple app.
-
-        #  add the cosmetic properties to the arguments. Note that we
-        #  explicitly set the line as cosmetic so it is not scaled when
-        #  drawn. This is especially important with Echograms where we
-        #  normally scale the X:Y axis in a 2:1 or 4:1 ratio to reduce
-        #  vertical exxageration.
+        #  add the cosmetic properties to the arguments.
         kwargs = dict(kwargs, color=line.color, linestyle=line.linestyle,
-                thickness=line.thickness, isCosmetic=True)
+                thickness=line.thickness)
 
-        line=self.QEchogramViewer.addLine([line.ping_time, line.data],
-            **kwargs)
+        line = self.QEchogramViewer.addLine([line.ping_time, line.data],
+                **kwargs)
 
-        #  shift the line so the vertexes are horizontally centered on
-        #  the samples
-        line.moveBy(0.5,0)
+        return line
+        
+
+
+    def add_grid(self, grid, **kwargs):
+        '''
+        Add a echolab2.processing.grid object to the echogram. The color
+        style, and width of the line is defined in the grid object.
+        '''
+        grid=self.QEchogramViewer.addGrid(grid, **kwargs)
+        
+        return grid
+
 
     def closeEvent(self, event):
-
-        #  store the application size and position
-        self.appSettings.setValue('winposition', self.pos())
-        self.appSettings.setValue('winsize', self.size())
-
+        # add cleanup here...
+        
         event.accept()
 
 
-#    def _convertColor(self, color_val):
-#
-#        for c in color_val:
-#            if c <
+#    def resizeEvent(self, event):
+#        self.QEchogramViewer.fillExtent(verticalOnly=True)
+
+
+    @pyqtSlot(object, object, int, object, list)
+    def echogramClick(self, imageObj, clickLoc, button, modifier, items):
+        pass
+#        if (items):
+#            print("Picked:",items)
+
+
+    @pyqtSlot(object, object, int, object, list)
+    def echogramUnClick(self, imageObj, clickLoc, button, modifier, items):
+        pass
+
+
+    @pyqtSlot(object, object, object, list, list)
+    def echogramMouseInWidget(self, imageObj, location, modifier, draggedItems, items):
+
+#        if (items):
+#            print("Dragged:", items)
+
+        if (location[0] != None):
+            #  update the depth/time at cursor label
+            locationString = 'Depth: %.2fm    Time: %s  ' % (location[1],
+                    location[0].tolist().strftime('%m/%d/%Y %H:%M:%S'))
+            self.echogramLabel.setText(locationString)
+
+            #  force a redraw of the echogram so the label is refreshed
+            self.QEchogramViewer.viewport().update()
 
 

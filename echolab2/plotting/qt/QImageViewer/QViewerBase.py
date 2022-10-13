@@ -127,6 +127,7 @@ from .QIVHudText import QIVHudText
 from .QIVMarker import QIVMarker
 from .QIVPolygon import QIVPolygon
 from .QIVPolygonItem import QIVPolygonItem
+from .QIVGrid import QIVGrid
 
 class QViewerBase(QGraphicsView):
 
@@ -627,6 +628,37 @@ class QViewerBase(QGraphicsView):
         return QViewerBase.addPolygon(self, verts, color=color, thickness=thickness, alpha=alpha,
                     linestyle=linestyle, selectable=selectable, movable=movable,
                     closed=False, isCosmetic=isCosmetic)
+
+
+    def addGrid(self, layer_verts, layer_edges, interval_verts, interval_edges,
+            color=[0,0,0], thickness=1.0, alpha=255, linestyle='=', isCosmetic=True):
+        """
+        Add an arbitrary line to the scene.
+
+                verts (list)  - A list of [x,y] pairs or a list of QPointF objects
+                color (list)  - A 3 element list or tuple containing the RGB triplet
+                                specifying the color of the text.
+            thickness (float) - A float specifying the line thickness. Note that thickness
+                                is related to scale. The larger your scene is, the thicker
+                                your lines will need to be to be visible when zoomed out.
+                alpha (int)   - An integer specifying the opacity of the text. 0 is transparent
+                                and 255 is solid.
+            linestyle (string)- A character specifying the polygon outline style. "=" is a solid
+                                line, "-" is a dashed line, and "." is a dotted line.
+
+        """
+
+        gridItem = QIVGrid(layer_verts, layer_edges, interval_verts, interval_edges, color=color,
+                             thickness=thickness, alpha=alpha, view=self)
+
+        #  add the grid to the scene
+        self.scene.addItem(gridItem)
+
+        #  and add the grid to our internal list of items
+        self.sceneItems.append(gridItem)
+
+        return gridItem
+
 
 
     def addMark(self, position, style='+', color=[220,0,0], selectColor=[5,220,250],

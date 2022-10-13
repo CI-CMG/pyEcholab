@@ -3190,8 +3190,13 @@ class raw_data(ping_data):
         sv_data = self._convert_power(p_data, calibration, attribute_name,
                 linear, return_indices, tvg_correction)
 
-        # Set the data attribute in the processed_data object.
+        # Set the data attribute in the processed_data object. This is the generic
+        # label we use within pyEcholab to access data within processed data objects.
         p_data.data = sv_data
+        
+        # Also create an attribute named after the data type that points to our data.
+        # Some people think their code is more readable when they use the this label.
+        setattr(p_data, p_data.data_type, p_data.data)
 
         # Check if we need to convert to depth
         if return_depth:
@@ -3393,8 +3398,13 @@ class raw_data(ping_data):
         sp_data = self._convert_power(p_data, calibration, attribute_name,
                 linear, return_indices, tvg_correction)
 
-        # Set the data attribute in the processed_data object.
+        # Set the data attribute in the processed_data object. This is the generic
+        # label we use within pyEcholab to access data within processed data objects.
         p_data.data = sp_data
+        
+        # Also create an attribute named after the data type that points to our data.
+        # Some people think their code is more readable when they use the this label.
+        setattr(p_data, p_data.data_type, p_data.data)
 
         # Check if we need to convert to depth or heave correct.
         if return_depth:
@@ -3519,6 +3529,11 @@ class raw_data(ping_data):
         # Set the data types.
         alongship.data_type = 'angles_alongship'
         athwartship.data_type = 'angles_athwartship'
+
+        # Also create an attribute named after the data type that points to our data.
+        # Some people think their code is more readable when they use the this label.
+        setattr(alongship, alongship.data_type, alongship.data)
+        setattr(athwartship, athwartship.data_type, athwartship.data)
 
         # We do not need to convert to depth here since the electrical_angle
         # data will already have been converted to depth if requested.
@@ -4187,7 +4202,8 @@ class raw_data(ping_data):
             linear (bool):  Set to True to return linear values.
             return_indices (array): A numpy array of indices to return.
             tvg_correction (bool): Set to True to apply a correction to the
-                range of 2 * sample thickness.
+                range of (2 * sample thickness) for GPTs and 
+                (sound speed * transmitted pulse length / 4) for WBTs.
 
         Returns:
             An array with the converted data.
@@ -4540,8 +4556,9 @@ class ek80_calibration(calibration):
         # and instead provides the data to do it.
         self.absorption_method = absorption_method
 
-        # ES80 doesn't store the acidity environment parameter. If acidity is not
-        # provided when working with ES80 data, this value will be used.
+        # Older EK80 raw formats do not store the acidity environment parameter.
+        # If acidity is not provided when working with ES80 data, this value will
+        # be used.
         self.default_acidity = 8.0
 
         # Create a dict containing the hardware sampling frequencies of various
@@ -4599,7 +4616,8 @@ class ek80_calibration(calibration):
         Args:
             raw_data (raw_data): The object where parameters will be extracted
                 from and used to populate the calibration object.
-            return_indices (array): A numpy array of indices to return.
+            return_indices (array): A numpy array of indices to return cal
+                values for.
         """
 
         #  call the parent method
@@ -4635,12 +4653,12 @@ class ek80_calibration(calibration):
             if param_data is None or np.isnan(param_data):
                 param_data = raw_data.ZTRANSCEIVER
 
-        # older file formats also lacked acidity
+        # older file formats lacked acidity
         elif param_name == 'acidity':
             if param_data is None or np.isnan(param_data):
                 param_data = self.default_acidity
 
-        # older file formats also lacked acidity rx_sample_frequency 
+        # older file formats also lack rx_sample_frequency 
         elif param_name == 'rx_sample_frequency':
             #  create the return array
             param_data = np.empty((return_indices.shape[0]), dtype=np.float32)

@@ -33,18 +33,25 @@ from ..ping_data import ping_data
 
 
 class line(ping_data):
-    #   TODO: Review attributes in this docstring
     """The line class implements lines based on ping_time and depth/range values.
     The class provides methods manipulating these values in various ways. The
     numerical operators operate on the data, allowing offset lines to easily
     be created. Color and name properties can be used in plotting the lines.
 
     Attributes:
-        ping_time: ping_time is a datetime object that defines the time the
-            ping was recorded.
-        data: data is a numpy array which contains the float data.
-        color: color is a list which defines the color of the line.
-        name (string): name or label for the line is a string.
+        ping_time (numpy array): ping_time is a array of datetime64 objects
+                defining the horizontal vertices of the line.
+        data: (None, float or numpy array): data can be None, a float or a 1d numpy
+                array defining the line's vertical vertices. If data is None, the
+                vertex data will be NaNs. If it is a float, the vertex values
+                will be replicated for all vertices creating a flat horizontal line
+                at the specified range/depth. If data is a numpy array, its shape
+                must match the ping_time array.
+        color: color is 3 element tuple [r, g, b] which defines the color of the line.
+               What values you supply and how they are used is dependent on your
+               plotting library. For example, Matplotlib accepts floats in the range
+               0-1 while Qt accepts integers in the range 0-255.
+        name (string): name or label for the line.
         linestyle: linestyle is a string that defines the style of the line.
         thickness: thickness is a float the defines the width of the line.
     """
@@ -52,36 +59,59 @@ class line(ping_data):
     def __init__(self, ping_time=None, data=None, color=[0.58, 0.0, 0.83],
                  name='line', linestyle='solid', thickness=1.0, **_):
         """Initializes line class object.
+        
+        Args:
+            ping_time (numpy array): ping_time is a array of datetime64 objects
+                    defining the horizontal vertices of the line.
+            data: (None, float or numpy array): data can be None, a float or a 1d numpy
+                    array defining the line's vertical vertices. If data is None, the
+                    vertex data will be NaNs. If it is a float, the vertex values
+                    will be replicated for all vertices creating a flat horizontal line
+                    at the specified range/depth. If data is a numpy array, its shape
+                    must match the ping_time array.
+            color: color is 3 element tuple [r, g, b] which defines the color of the line.
+                   What values you supply and how they are used is dependent on your
+                   plotting library. For example, Matplotlib accepts floats in the range
+                   0-1 while Qt accepts integers in the range 0-255.
+            name (string): name or label for the line.
+            linestyle: linestyle is a string that defines the style of the line.
+            thickness: thickness is a float the defines the width of the line.
 
-        Creates and sets several internal properties.
         """
         super(line, self).__init__()
 
         # Set the ping time.
         self.ping_time = ping_time
 
+        # if None is passed as data, change it to nan
+        if data is None:
+            data = np.nan
+
         # Set the number of pings.
         if ping_time is not None:
             self.n_pings = ping_time.shape[0]
 
         # Assign data based on what we're given. Arrays must be the same shape
-        # as ping_time, scalars are expanded to the same shape as ping_time
-        # and None is None.
+        # as ping_time, scalars are expanded to the same shape as ping_time.
         if isinstance(data, np.ndarray):
             if data.ndim == 0:
-                data = np.full(ping_time.shape[0], data, dtype='float32')
+                self.data = np.full(ping_time.shape[0], data, dtype='float32')
             else:
-                if data.shape[0] != ping_time.shape[0]:
+                if data.shape[0] == ping_time.shape[0]:
+                    # assume that if we have been given the data as an array,
+                    # we don't need to copy it. IOW, it is the user's responsibility.
+                    self.data = data
+                else:
+                    # data array has a different number of elements
                     raise ValueError("The data array must be None, a scalar "
                                      "or an array the same size as ping_time.")
-        elif data is not None:
+        else:
             try:
                 data = float(data)
-                data = np.full(ping_time.shape[0], data, dtype='float32')
+                self.data = np.full(ping_time.shape[0], data, dtype='float32')
             except Exception:
                 raise ValueError("The data array must be None, a scalar or an"
                                  " array the same size as ping_time.")
-        self.data = data
 
         # Set the initial attribute values.
         self.color = color
@@ -93,31 +123,80 @@ class line(ping_data):
         self._data_attributes += ['data']
 
 
-    def copy(self, ping_time=None, data=None, color=None,
-                 name=None, linestyle=None, thickness=None):
-        """Returns a copy of this line object.
+#    def empty_like(self, **kwargs):
+#        """Creates a line that matches "this" line except the depth/range values
+#        are NaNs.
+#
+#        This method creates a line with the same number of vertices (i.e. ping_times)
+#        as "this" line with the depth/range values set to NaNs. You can optionally
+#        set the keywords defined below. If they are not provided, the values are copied
+#        from "this" line.
+#
+#        Args:
+#            color: color is 3 element tuple [r, g, b] which defines the color of the line.
+#                    What values you supply and how they are used is dependent on your
+#                    plotting library. For example, Matplotlib accepts floats in the range
+#                    0-1 while Qt accepts integers in the range 0-255. If not provided, it
+#                    is copied "this" line.
+#            name (string): name or label for the line. If not provided, it is copied
+#                    "this" line.
+#            linestyle: linestyle is a string that defines the style of the line. If not
+#                    provided, it is copied "this" line.
+#            thickness: thickness is a float the defines the width of the line. If not
+#                    provided, it is copied "this" line.
+#        """
+#        
+#        return line.empty_like(self, **kwargs)
+#
+#
+#    def like(self, data=None, **kwargs):
+#        """Creates a line that matches "this" line. It may or may not be an exact copy
+#        depending on the arguments passed.
+#
+#        This method creates a line with the same number of vertices (i.e.
+#        ping_times) as "this" line. If no arguments are provided, this method
+#        will return a copy of this line. You can provide arguments to 
+#
+#        Args:
+#            data: (None, float or numpy array): data can be None, a float or a 1d numpy
+#                    array defining the line's vertical vertices. If data is None, the
+#                    vertex data will be NaNs. If it is a float, the vertex values
+#                    will be replicated for all vertices creating a flat horizontal line
+#                    at the specified range/depth. If data is a numpy array, its shape
+#                    must match the ping_time array.
+#            color: color is 3 element tuple [r, g, b] which defines the color of the line.
+#                    What values you supply and how they are used is dependent on your
+#                    plotting library. For example, Matplotlib accepts floats in the range
+#                    0-1 while Qt accepts integers in the range 0-255. If not provided, it
+#                    is copied "this" line.
+#            name (string): name or label for the line. If not provided, it is copied
+#                    "this" line.
+#            linestyle: linestyle is a string that defines the style of the line. If not
+#                    provided, it is copied "this" line.
+#            thickness: thickness is a float the defines the width of the line. If not
+#                    provided, it is copied "this" line.
+#
+#        Raise:
+#            ValueError: The length of the data array does not match the length of
+#                    the ping_time attribute.
+#
+#        """
+#        
+#        return line.like(self, **kwargs)
+
+
+    def copy(self, **kwargs):
+        """Returns a copy of this line object. 
 
         Args:
             None
         Returns:
-            A copy of this echolab2 line object.
+            A copy of this echolab2 line object with attributes that are the
+            same as "this" object.
         """
-        if ping_time is None:
-            ping_time = self.ping_time.copy()
-        if data is None:
-            data = self.data.copy()
-        if color is None:
-            color = self.color.copy()
-        if name is None:
-            name = self.name
-        if linestyle is None:
-            linestyle = self.linestyle
-        if thickness is None:
-            thickness = self.thickness
         
-        return line(ping_time=ping_time, data=data, color=color, name=name,
-                linestyle=linestyle, thickness=thickness)
-
+        return line.like(self)
+        
 
     def _setup_numeric(self, other):
         """Internal method containing generalized numeric operators code.
@@ -474,8 +553,7 @@ class line(ping_data):
         return msg
 
 
-def empty_like(obj, name=None, color=None, linestyle=None, thickness=None,
-    initialize=True):
+def empty_like(like_obj, **kwargs):
     """Creates an empty line object with the same time values as the provided object.
 
     empty_like creates an empty line (where data values are NaN) that is the same
@@ -483,77 +561,88 @@ def empty_like(obj, name=None, color=None, linestyle=None, thickness=None,
     the name and color attributes are copied if not explicitly provided. If a
     processed data object is passed the returned line will have the default line
     attributes if not explicitly provided.
-
+    
     Args:
-        obj (line or processed_data object): The line or processed_data object
-            instance that is the template for the new object being created.
-        name (str): Optional name for the new line object.
-        color (): Optional color for the new line object.
-        linestyle(str): Optional linestyle is a string that defines the style of the line.
-        thickness(float): Optional thickness is a float the defines the width of the line.
-        initialize (bool): This argument is used internally to skip intializing the data
-            attribute.
-
-    Returns:
-        New empty instance of line object with name and color ether
-        copied from line object passed in or using optional parameters
-        passed to method.
-    """
-    # Create a new line object to return.
-    new_line = line(ping_time=obj.ping_time.copy())
-
-    # Check if new properties were provided, otherwise copy from original.
-    if color:
-        new_line.color = color
-    else:
-        if isinstance(obj, line):
-            new_line.color = obj.color
-    if name:
-        new_line.name = name
-    else:
-        if isinstance(obj, line):
-            new_line.name = obj.name
-    if linestyle:
-        new_line.linestyle = linestyle
-    else:
-        if isinstance(obj, line):
-            new_line.linestyle = obj.linestyle
-    if thickness:
-        new_line.thickness = thickness
-    else:
-        if isinstance(obj, line):
-            new_line.thickness = obj.thickness
-
-    # Set the data array to NaNs.
-    new_line.data = np.full(new_line.ping_time.shape[0], np.nan)
-
-    return new_line
-
-
-def like(obj, **kwargs):
-    """Creates a new line object that is a copy of the provided line.
-
-    like creates an copy of an existing line where both the ping time and data
-    values are the same. The name and color attributes are copied if not
-    explicitly provided.
-
-    Args:
-        obj (line object): The line object that is to be copied.
-        name (str): Optional name for the new line object.
-        color (): Optional color for the new line object.
-        linestyle(str): Optional linestyle is a string that defines the style of the line.
-        thickness(float): Optional thickness is a float the defines the width of the line.
-
-    Returns:
-        A copy of the provided line object
+        like_obj (processed_data obj or line object): The object to base the
+            mask off of. The line will have the same number of pings with the
+            same ping times as the "like" object. If a processed_data object
+            is provided, the ancillary properties such as color and thickness
+            will be set to the default values. If a line object is provided
+            these attributes will be copied.
+    
     """
 
-    # Create a new line object that is the same as the provided line.
-    # Set the initialize leyword to False to skip initializing the data attribute.
-    new_line = empty_like(obj, initialize=False, **kwargs)
+    # make sure the user didn't pass the data keyword
+    kwargs.pop('data', None)
+    
+    # call line.like not passing anything for data which results in nans
+    return like(like_obj, **kwargs)
+    
 
-    # Set the new line data attribute to a copy of the provided line's data
-    new_line.data = obj.data.copy()
+def like(like_obj, data=None, **kwargs):
+    """Creates a line that matches a provided data object. It may or may not be
+    an exact copy depending on the arguments passed.
+
+    This method creates a line with shape and axes properties that match an
+    existing processed_data or line object. This 
+
+    Args:
+        like_obj (processed_data obj or line object): The object to base the
+                line off of. The line will have the same number of pings with the
+                same ping times as the "like" object. If a processed_data object
+                is provided, the ancillary properties such as color and thickness
+                will be set to the default values if none are provided. If a line
+                object is provided these attributes will be copied if not
+                explicitly provided.
+        data: (None, float or numpy array): data can be None, a float or a 1d numpy
+                array defining the line's vertical vertices. If data is None, the
+                vertex data will be NaNs. If it is a float, the vertex values
+                will be replicated for all vertices creating a flat horizontal line
+                at the specified range/depth. If data is a numpy array, its shape
+                must match the ping_time array.
+        color: color is 3 element tuple [r, g, b] which defines the color of the line.
+                What values you supply and how they are used is dependent on your
+                plotting library. For example, Matplotlib accepts floats in the range
+                0-1 while Qt accepts integers in the range 0-255. If not provided, it
+                is copied "this" line.
+        name (string): name or label for the line. If not provided, it is copied
+                "this" line.
+        linestyle: linestyle is a string that defines the style of the line. If not
+                provided, it is copied "this" line.
+        thickness: thickness is a float the defines the width of the line. If not
+                provided, it is copied "this" line.
+
+    Raise:
+        ValueError: The length of the data array does not match the length of
+                the ping_time attribute.
+    """
+
+    # lines must be based on processed_data objects or other lines.
+    # Use type().__name__ to determine if class of "like_obj" is a 
+    # processed_data object to avoid circular import references
+    if type(like_obj).__name__ == 'processed_data':
+        # Base this line off of a processed_data object.
+        new_line = line(ping_time=like_obj.ping_time.copy(),
+            data=data, **kwargs)
+        
+    elif isinstance(like_obj, line):
+        # Base this line off of another line. If the user doesn't provide an 
+        # argument we copy the attribute from the provided line.
+        
+        if data is None:
+            data = like_obj.data.copy()
+        if 'color' not in kwargs:
+            color = like_obj.color.copy()
+        if 'name' not in kwargs:
+            name = like_obj.name
+        if 'linestyle' not in kwargs:
+            linestyle = like_obj.linestyle
+        if 'thickness' not in kwargs:
+            thickness = like_obj.thickness
+
+        new_line = line(ping_time=like_obj.ping_time.copy(),
+            data=data, color=color, name=name, linestyle=linestyle,
+            thickness=thickness)
 
     return new_line
 

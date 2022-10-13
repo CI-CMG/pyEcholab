@@ -239,7 +239,7 @@ class QEchogramViewer(QViewerBase):
         if (not useXY):
             verts = self.axesToPixels(verts)
 
-        return super(QEchogramViewer, self).addPolygon(verts, closed=closed, **kwargs)
+        return super(QEchogramViewer, self).addPolygon(verts, isCosmetic=True, closed=closed, **kwargs)
 
 
     def addLine(self, verts, useXY=False, **kwargs):
@@ -277,7 +277,64 @@ class QEchogramViewer(QViewerBase):
         if (not useXY):
             verts = self.axesToPixels(verts)
 
-        return super(QEchogramViewer, self).addLine(verts, **kwargs)
+        #  create the line
+        line = super(QEchogramViewer, self).addLine(verts, isCosmetic=True, **kwargs)
+        
+        # for echograms, we shift the line a half sample to center the line vertices horizontally
+        line.moveBy(0.5,0)
+        
+        return line
+
+
+    def addGrid(self, grid, useXY=False, **kwargs):
+        """
+        Add an arbitrary line to the scene. Verts can be a list of 2 x,y
+        pairs (line start, line end) or a list of 2 Point2f objects defining
+        the line.
+
+        The x,y values should be provided in the units specified for the axes when the echogram was
+        created. So, for example, if the X axis was defined with time values, you must pass x vertices
+        that are datetime objects. If the y axis was defined with range values, you must pass y
+        vertices that are in range units. This method will then transform the vertices to the underlying
+        ping/sample coordinate system before plotting.
+
+        If you set the useXY keyword to true, this method will not transform the coordinates. This can
+        be used if you want to pass vertices as ping number, sample number pairs.
+
+                color (list)  - A 3 element list or tuple containing the RGB triplet
+                                specifying the color of the text.
+            thickness (float) - A float specifying the line thickness. Note that thickness
+                                is related to scale. The larger your scene is, the thicker
+                                your lines will need to be to be visible when zoomed out.
+                alpha (int)   - An integer specifying the opacity of the text. 0 is transparent
+                                and 255 is solid.
+            linestyle (string)- A character specifying the polygon outline style. "=" is a solid
+                                line, "-" is a dashed line, and "." is a dotted line.
+           selectable (bool)  - Set to True to make the polygon selectable. If selectable the item
+                                will be included in QImageView mousePressEvent and mouseReleaseEvent
+                                events.
+              movable (bool)  - Set to True to make the polygon movable. If movable the item
+                                will be moved if it is selected and dragged.
+
+        """
+
+
+        layer_verts = []
+        interval_verts = []
+        
+        for layer in grid.layer_edges:
+            layer_verts.append([grid.interval_edges[0], layer])
+            layer_verts.append([grid.interval_edges[-1], layer])
+        for interval in grid.interval_edges:
+            interval_verts.append([interval, grid.layer_edges[0]])
+            interval_verts.append([interval, grid.layer_edges[-1]])
+
+        if (not useXY):
+            layer_verts = self.axesToPixels(layer_verts)
+            interval_verts = self.axesToPixels(interval_verts)
+
+        return super(QEchogramViewer, self).addGrid(layer_verts, grid.layer_edges,
+                interval_verts, grid.interval_edges, **kwargs)
 
 
     def addMark(self, position, useXY=False, name='QEGMarker', **kwargs):
@@ -376,6 +433,25 @@ class QEchogramViewer(QViewerBase):
             position = self.axesToPixels(point)
 
         return super(QEchogramViewer, self).zoomToPoint(QPointF(position[0][0], position[0][1]))
+
+
+    def zoomToRegion(self, upperRight, lowerLeft):
+        """
+        zoomToRegion zooms the view to the rectangular region defined by the provided
+        upper right and lower left corner points. The units are determined by the
+        axes
+        """
+        
+        yIdx = (numpy.abs(self.yAxis - axesVerts[1][i])).argmin()
+        
+
+        #  center the view at the center of the region
+        self.centerOnPoint(regionRect.center())
+
+        #  zoom so that we will display the entire region while maintaining aspect ratio.
+        vScaleRatio = float(self.width() - 2) / float(regionRect.width())
+        hScaleRatio = float(self.height() - 2) / float(regionRect.height())
+        self.scale(min(vScaleRatio, hScaleRatio), min(vScaleRatio, hScaleRatio))
 
 
     def pixelToAxes(self, pixel):

@@ -41,7 +41,8 @@ class QIVMarkerText(QGraphicsSimpleTextItem):
 
     def __init__(self, position, text, offset=QPointF(0,0), size=10, font='helvetica', italics=False,
                  weight=-1, color=[0,0,0], alpha=255, halign='left', valign='bottom',
-                 selectable=False, movable=False, name='MarkerText', view=None, rotation=0):
+                 selectable=False, movable=False, name='MarkerText', view=None, rotation=0,
+                 isCosmetic=False, drawBackdrop=False, backdropColor=[0,0,0], backdropAlpha=150):
 
         super(QIVMarkerText, self).__init__(text)
 
@@ -52,7 +53,8 @@ class QIVMarkerText(QGraphicsSimpleTextItem):
         self.size = size
         self.alpha = alpha
         #  check if the position was passed as a list
-        if isinstance(position[0], list):
+        if not isinstance(position, QPointF):
+        #if isinstance(position[0], list):
             #  it was, assume it is in the form [x,y]
             position = QPointF(position[0][0], position[0][1])
         self.position = position
@@ -61,6 +63,10 @@ class QIVMarkerText(QGraphicsSimpleTextItem):
         self.view = view
         self.offset = offset
         self.rotation = rotation
+        self.isCosmetic = isCosmetic
+        self.backdrop_color = backdropColor
+        self.draw_backdrop = drawBackdrop
+        self.backdrop_alpha = backdropAlpha
 
         #  set the movable and selectable flags
         self.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)
@@ -161,8 +167,18 @@ class QIVMarkerText(QGraphicsSimpleTextItem):
         #  determine the scaling factor required to maintain correct text placement when zooming
         scale = 1.0 / self.view.transform().m11()
 
+        self.setRotation(self.rotation)
+
         #  set the scaled position of the text
         self.setPos(self.position, scale)
+
+        if self.draw_backdrop:
+            backBrush = QBrush(QColor(self.backdrop_color[0],self.backdrop_color[1],
+                    self.backdrop_color[2],self.backdrop_alpha))
+            painter.setBrush(backBrush)
+            painter.drawRect(self.boundingRect())
+        else:
+            painter.setBrush(QBrush())
 
         #  set the painter font and brush
         painter.setFont(self.font)
@@ -172,7 +188,8 @@ class QIVMarkerText(QGraphicsSimpleTextItem):
         boundingRect = self.boundingRect()
 
         #  draw the text
-        painter.drawText(boundingRect.x(), boundingRect.y() + boundingRect.height(), self.text())
+        painter.drawText(boundingRect.x(), boundingRect.y() +\
+                boundingRect.height(), self.text())
 
         #  draw the bounding box (for testing)
         #painter.setBrush(QBrush())
@@ -191,5 +208,8 @@ class QIVMarkerText(QGraphicsSimpleTextItem):
             pen.setStyle(Qt.DotLine)
         else:
             pen.setStyle(Qt.SolidLine)
+
+        if self.isCosmetic:
+            pen.setCosmetic(True)
 
         return pen
