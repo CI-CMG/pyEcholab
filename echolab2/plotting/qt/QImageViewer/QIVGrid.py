@@ -21,7 +21,7 @@ class QIVGrid(QGraphicsItemGroup):
       position (QPointF) - The position of the text anchor point.
           size (int)     - The text size, in point size
 
-        weight (int)     - Set to an integer in the range 0-99. 50 is normal, 75 is bold.
+
          color (list)    - A 3 element list or tuple containing the RGB triplet
                            specifying the color of the text.
          alpha (int)     - An integer specifying the opacity of the text. 0 is transparent
@@ -29,9 +29,10 @@ class QIVGrid(QGraphicsItemGroup):
 
     """
 
-    def __init__(self, layer_verts, layer_labels, interval_verts, interval_labels,
-            color=[0,0,0], thickness=1.0, alpha=255, view=None, label_grid=True,
-            label_color=[255,255,255], label_backdrop=True):
+    def __init__(self, layerVerts, layerLabels, intervalVerts, intervalLabels,
+            color=[0,0,0], thickness=2.0, alpha=255, view=None, labelGrid=True,
+            labelColor=[255,255,255], labelBackdrop=True, backdropColor=[0,0,0],
+            backdropAlpha=150):
         super(QIVGrid, self).__init__()
 
         self.gridColor = color
@@ -40,28 +41,31 @@ class QIVGrid(QGraphicsItemGroup):
         self.view = view
         self.labels = []
         self.gridLines = []
+        self.gridLabels = []
         self.intervalBounds = []
         self.layerBounds = []
         self.isCosmetic = True
-        self.labelColor = label_color
-        self.labelBackdrop = label_backdrop
+        self.labelColor = labelColor
+        self.labelBackdrop = labelBackdrop
+        self.backdropColor = backdropColor
+        self.backdropAlpha = backdropAlpha
 
         #  get the pen to paint the mark
         gridPen = self.getPen(self.gridColor, self.gridAlpha, '=', self.gridThickness)
 
         #  add the grid layer lines
-        n_layers = int(len(layer_verts) / 2)
+        n_layers = int(len(layerVerts) / 2)
         for h in range(n_layers):
             i = h * 2
             j = i + 1
             
-            gridLine = QGraphicsLineItem(layer_verts[i][0],layer_verts[i][1],
-                    layer_verts[j][0],layer_verts[j][1])
+            gridLine = QGraphicsLineItem(layerVerts[i][0],layerVerts[i][1],
+                    layerVerts[j][0],layerVerts[j][1])
             gridLine.setPen(gridPen)
             self.gridLines.append(gridLine)
             
             if h < n_layers - 1:
-                self.layerBounds.append([layer_verts[i][1],layer_verts[j+1][1]])
+                self.layerBounds.append([layerVerts[i][1],layerVerts[j+1][1]])
             
             #  disable transforms for the marker and set the movable and selectable flags
             #self.markItem.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)
@@ -70,54 +74,54 @@ class QIVGrid(QGraphicsItemGroup):
             
             self.addToGroup(gridLine)
             
-            if label_grid:
+            if labelGrid:
                 #  now add the grid label
-                labelPos = QPointF(layer_verts[i][0],layer_verts[i][1])
-                labelOffset = QPointF(1,3)
-                label = '%2.1f m' % (layer_labels[h])
+                labelPos = QPointF(layerVerts[i][0],layerVerts[i][1])
+                labelOffset = QPointF(0.5,3)
+                label = '%2.1f m' % (layerLabels[h])
                 self.addLabel(label, labelPos, size=10, color=self.labelColor,
                         alpha=self.gridAlpha, halign='left', valign='top',
                         offset=labelOffset, isCosmetic=True,
                         drawBackdrop=self.labelBackdrop, name='gridLabel')
                         
         #  add the interval lines
-        n_intervals = int(len(interval_verts) / 2)
+        n_intervals = int(len(intervalVerts) / 2)
         for h in range(n_intervals):
             i = h * 2
             j = i + 1
             
-            gridLine = QGraphicsLineItem(interval_verts[i][0],interval_verts[i][1],
-                    interval_verts[j][0],interval_verts[j][1])
+            gridLine = QGraphicsLineItem(intervalVerts[i][0],intervalVerts[i][1],
+                    intervalVerts[j][0],intervalVerts[j][1])
             gridLine.setPen(gridPen)
             self.gridLines.append(gridLine)
             
             if h < n_intervals - 1:
-                self.intervalBounds.append([interval_verts[i][0],interval_verts[j+1][0]])
+                self.intervalBounds.append([intervalVerts[i][0],intervalVerts[j+1][0]])
             
             
             #  disable transforms for the marker and set the movable and selectable flags
-            #self.markItem.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)
+
             gridLine.setFlag(QGraphicsItem.ItemIsSelectable, False)
             gridLine.setFlag(QGraphicsItem.ItemIsMovable, False)
             
             self.addToGroup(gridLine)
             
             #  add the label if needed (skip the first one since it obscures layer labels)
-            if label_grid and h > 0:
+            if labelGrid and h > 0:
                 #  now add the grid label
-                labelPos = QPointF(interval_verts[i][0],interval_verts[i][1])
-                labelOffset = QPointF(3,1)
-                label = str(interval_labels[h])
+                labelPos = QPointF(intervalVerts[i][0],intervalVerts[i][1])
+                labelOffset = QPointF(0,5)
+                label = str(intervalLabels[h])
                 self.addLabel(label, labelPos, size=10, color=self.labelColor,
                         alpha=self.gridAlpha, halign='left', valign='top',
                         offset=labelOffset, rotation=90,
-                        isCosmetic=False, drawBackdrop=self.labelBackdrop,
+                        isCosmetic=True, drawBackdrop=self.labelBackdrop,
                         name='gridLabel')
 
-        #self.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)
+        #self.moveBy(0.5,0)
+
         self.setFlag(QGraphicsItem.ItemIsSelectable, False)
         self.setFlag(QGraphicsItem.ItemIsMovable, False)
-
 
 
     def getLabelsFromName(self, labelName):
@@ -206,7 +210,7 @@ class QIVGrid(QGraphicsItemGroup):
     def addLabel(self, text, position, size=10, font='helvetica', italics=False, weight=-1,
                 color=[0,0,0], alpha=255, halign='left', valign='top', name='gridLabel',
                 offset=None, rotation=0, isCosmetic=False, drawBackdrop=False,
-                backdropColor=[0,0,0]):
+                backdropColor=[0,0,0], backdropAlpha=150):
         """
         Add a label to the gridline.
 
@@ -245,7 +249,8 @@ class QIVGrid(QGraphicsItemGroup):
         textItem = QIVMarkerText(position, text, size=size, font=font, italics=italics,
                                  weight=weight, color=color, alpha=alpha, halign=halign,
                                  valign=valign, view=self.view, rotation=rotation,
-                                 isCosmetic=isCosmetic, drawBackdrop=drawBackdrop)
+                                 isCosmetic=isCosmetic, drawBackdrop=drawBackdrop,
+                                 backdropColor=backdropColor, backdropAlpha=backdropAlpha)
 
         #  add the label to our list of labels
         self.labels.append(textItem)

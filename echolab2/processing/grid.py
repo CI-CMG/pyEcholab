@@ -149,12 +149,12 @@ class grid(object):
         self.sample_layer_map = np.array([])
         self.grid_data = None
         self.interval_axis_data = None
-        self.interval_ping_start = np.array([])
-        self.interval_ping_middle = np.array([])
-        self.interval_ping_end = np.array([])
-        self.interval_time_start = np.array([])
-        self.interval_time_middle = np.array([])
-        self.interval_time_end = np.array([])
+        self.ping_start = np.array([])
+        self.ping_middle = np.array([])
+        self.ping_end = np.array([])
+        self.time_start = np.array([])
+        self.time_middle = np.array([])
+        self.time_end = np.array([])
         self._iter_interval = 0
         self._iter_layer = 0
         self._gc_last_interval = -1
@@ -411,9 +411,11 @@ class grid(object):
 
     def get_cell_mask(self, interval, layer):
         '''
-        get_cell_data will return a numpy array of the sample data contained
-        in the provided interval and layer as well as a mask
-
+        get_cell_mask will return a mask array the size of the processed
+        data object used to create the grid where the samples in the
+        specified interval and layer are set to True and all other values
+        False. This mask can be used to extract sample data or other mask
+        data for the specified grid cell.
         '''
 
         #  make sure we've been given sane interval and layer values
@@ -463,15 +465,16 @@ class grid(object):
 
         # create the axis mapping array - we include all pings/samples in an interval/cell
         # that are >= to the interval/cell start and < the interval/cell end EXCEPT FOR
-        # THE LAST INTERVAL where we include the last ping if it <= the interval/cell end.
-        axis_map = np.full(axis_data.shape, 0, dtype='uint32')
+        # THE LAST INTERVAL where we include the last ping/sample if it <= the interval/cell
+        # end. intervals/samples that do not map to the grid are assigned a map value of -1.
+        axis_map = np.full(axis_data.shape, -1, dtype='int32')
         n_els = np.full((n_units), 0, dtype='uint32')
         for b in range(n_units):
             if b < (n_units - 1):
-                # for all intervals up to the last interval - include >= start and < end
+                # for all intervals up to the last interval/layer - include >= start and < end
                 mask = np.logical_and(axis_data >= axis_edges[b], axis_data < axis_edges[b+1])
             else:
-                # for the last interval, include >= start and <= end to ensure last ping is captured
+                # for the last interval/layer, include >= start and <= end to ensure last ping/sample is captured
                 mask = np.logical_and(axis_data >= axis_edges[b], axis_data <= axis_edges[b+1])
             n_els[b] = mask.sum()
             axis_map[mask] = b
@@ -491,12 +494,12 @@ class grid(object):
         '''
         
         # initialize attributes all data objects should have.
-        self.interval_ping_start = np.empty((self.n_intervals), dtype='uint32')
-        self.interval_ping_middle = np.empty((self.n_intervals), dtype='uint32')
-        self.interval_ping_end = np.empty((self.n_intervals), dtype='uint32')
-        self.interval_time_start = np.empty((self.n_intervals), dtype='datetime64[ms]')
-        self.interval_time_middle = np.empty((self.n_intervals), dtype='datetime64[ms]')
-        self.interval_time_end = np.empty((self.n_intervals), dtype='datetime64[ms]')
+        self.ping_start = np.empty((self.n_intervals), dtype='uint32')
+        self.ping_middle = np.empty((self.n_intervals), dtype='uint32')
+        self.ping_end = np.empty((self.n_intervals), dtype='uint32')
+        self.time_start = np.empty((self.n_intervals), dtype='datetime64[ms]')
+        self.time_middle = np.empty((self.n_intervals), dtype='datetime64[ms]')
+        self.time_end = np.empty((self.n_intervals), dtype='datetime64[ms]')
         
         # initialize the layer property arrays - we will assign these to an attribute below
         ax_start = np.empty((self.n_layers), dtype='float32')
@@ -505,19 +508,19 @@ class grid(object):
         
         # now initialize attributes for optional attributes.
         if hasattr(self.grid_data, 'latitude'):
-            self.interval_lat_start = np.full((self.n_intervals), np.nan)
-            self.interval_lat_middle = np.full((self.n_intervals), np.nan)
-            self.interval_lat_end = np.full((self.n_intervals), np.nan)
+            self.latitude_start = np.full((self.n_intervals), np.nan)
+            self.latitude_middle = np.full((self.n_intervals), np.nan)
+            self.latitude_end = np.full((self.n_intervals), np.nan)
         if hasattr(self.grid_data, 'longitude'):
-            self.interval_lon_start = np.full((self.n_intervals), np.nan)
-            self.interval_lon_middle = np.full((self.n_intervals), np.nan)
-            self.interval_lon_end = np.full((self.n_intervals), np.nan)
+            self.longitude_start = np.full((self.n_intervals), np.nan)
+            self.longitude_middle = np.full((self.n_intervals), np.nan)
+            self.longitude_end = np.full((self.n_intervals), np.nan)
         if hasattr(self.grid_data, 'spd_over_grnd_kts'):
-            self.interval_mean_sog = np.full((self.n_intervals), np.nan)
+            self.mean_sog = np.full((self.n_intervals), np.nan)
         if hasattr(self.grid_data, 'trip_distance_nmi'):
-            self.interval_trip_distance_nmi_start = np.full((self.n_intervals), np.nan)
-            self.interval_trip_distance_nmi_middle = np.full((self.n_intervals), np.nan)
-            self.interval_trip_distance_nmi_end = np.full((self.n_intervals), np.nan)
+            self.distance_nmi_start = np.full((self.n_intervals), np.nan)
+            self.distance_nmi_middle = np.full((self.n_intervals), np.nan)
+            self.distance_nmi_end = np.full((self.n_intervals), np.nan)
         
         # generate the layer properties
         for l in range(self.n_layers):
@@ -527,9 +530,9 @@ class grid(object):
             
         # assign layer attributes based on the vertical axis
         _, v_axis = self.grid_data.get_v_axis()
-        setattr(self, 'layer_' + v_axis + '_start', ax_start)
-        setattr(self, 'layer_' + v_axis + '_middle', ax_middle)
-        setattr(self, 'layer_' + v_axis + '_end', ax_end)
+        setattr(self, v_axis + '_start', ax_start)
+        setattr(self, v_axis + '_middle', ax_middle)
+        setattr(self, v_axis + '_end', ax_end)
         
         # now generate the interval properties
         # first create a ping vector (processed data objects don't usually have a ping number attribute)
@@ -539,40 +542,40 @@ class grid(object):
             # get a bool mask of this interval's pings
             ping_map = self.ping_interval_map == i
             #  and get the middle ping relative to this interval
-            int_middle_ping = np.floor(self.interval_pings[i] / 2.0).astype('uint32')
+            int_middle_ping = np.floor(self.interval_pings[i] / 2.0).astype('uint32') - 1
             
-            #  create the ping number axis (pings start at 1) and assign values
-            ax_data = ping_idx[ping_map] + 1
-            self.interval_ping_start[i] = ax_data[0]
-            self.interval_ping_middle[i] = ax_data[0] + int_middle_ping
-            self.interval_ping_end[i] = ax_data[-1]
+            #  create the ping number axis (pings start at 0) and assign values
+            ax_data = ping_idx[ping_map] # + 1
+            self.ping_start[i] = ax_data[0]
+            self.ping_middle[i] = ax_data[0] + int_middle_ping
+            self.ping_end[i] = ax_data[-1]
             
             # get the time axis and assign values
             ax_data = self.grid_data.ping_time[ping_map]
-            self.interval_time_start[i] = ax_data[0]
-            self.interval_time_middle[i] = ax_data[int_middle_ping]
-            self.interval_time_end[i] = ax_data[-1]
+            self.time_start[i] = ax_data[0]
+            self.time_middle[i] = ax_data[int_middle_ping]
+            self.time_end[i] = ax_data[-1]
         
             # now do some of the optional attributes
             if hasattr(self.grid_data, 'latitude'):
                 ax_data = self.grid_data.latitude[ping_map]
-                self.interval_lat_start[i] = ax_data[0]
-                self.interval_lat_middle[i] = ax_data[int_middle_ping]
-                self.interval_lat_end[i] = ax_data[-1]
+                self.latitude_start[i] = ax_data[0]
+                self.latitude_middle[i] = ax_data[int_middle_ping]
+                self.latitude_end[i] = ax_data[-1]
             if hasattr(self.grid_data, 'longitude'):
                 ax_data = self.grid_data.longitude[ping_map]
-                self.interval_lon_start[i] = ax_data[0]
-                self.interval_lon_middle[i] = ax_data[int_middle_ping]
-                self.interval_lon_end[i] = ax_data[-1]
+                self.longitude_start[i] = ax_data[0]
+                self.longitude_middle[i] = ax_data[int_middle_ping]
+                self.longitude_end[i] = ax_data[-1]
             if hasattr(self.grid_data, 'spd_over_grnd_kts'):
                 ax_data = self.grid_data.spd_over_grnd_kts[ping_map]
                 ax_data = np.nanmean(ax_data)
-                self.interval_mean_sog[i] = ax_data
+                self.mean_sog[i] = ax_data
             if hasattr(self.grid_data, 'trip_distance_nmi'):
                 ax_data = self.grid_data.trip_distance_nmi[ping_map]
-                self.interval_trip_distance_nmi_start[i] = ax_data[0]
-                self.interval_trip_distance_nmi_middle[i] = ax_data[int_middle_ping]
-                self.interval_trip_distance_nmi_end[i] = ax_data[-1]
+                self.distance_nmi_start[i] = ax_data[0]
+                self.distance_nmi_middle[i] = ax_data[int_middle_ping]
+                self.distance_nmi_end[i] = ax_data[-1]
 
  
     def __str__(self):

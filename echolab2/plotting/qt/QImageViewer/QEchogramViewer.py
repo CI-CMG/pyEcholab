@@ -288,15 +288,8 @@ class QEchogramViewer(QViewerBase):
 
     def addGrid(self, grid, useXY=False, **kwargs):
         """
-        Add an arbitrary line to the scene. Verts can be a list of 2 x,y
-        pairs (line start, line end) or a list of 2 Point2f objects defining
-        the line.
+        Add a grid to the echogram. The grid must be an instance of pyEcholab.processing.grid 
 
-        The x,y values should be provided in the units specified for the axes when the echogram was
-        created. So, for example, if the X axis was defined with time values, you must pass x vertices
-        that are datetime objects. If the y axis was defined with range values, you must pass y
-        vertices that are in range units. This method will then transform the vertices to the underlying
-        ping/sample coordinate system before plotting.
 
         If you set the useXY keyword to true, this method will not transform the coordinates. This can
         be used if you want to pass vertices as ping number, sample number pairs.
@@ -310,15 +303,15 @@ class QEchogramViewer(QViewerBase):
                                 and 255 is solid.
             linestyle (string)- A character specifying the polygon outline style. "=" is a solid
                                 line, "-" is a dashed line, and "." is a dotted line.
-           selectable (bool)  - Set to True to make the polygon selectable. If selectable the item
-                                will be included in QImageView mousePressEvent and mouseReleaseEvent
-                                events.
-              movable (bool)  - Set to True to make the polygon movable. If movable the item
-                                will be moved if it is selected and dragged.
+
 
         """
 
-
+        #  the pyEcholab grid stores layer edges and interval edges. We need to convert
+        #  this to vertices for plotting. Create a couple of lists to hold the verts
+        #  then iterate thru the grid layers and intervals and build verts that define
+        #  a line spanning the start to end of the intervals (for the layer line) and
+        #  the start to end of the layers (for the interval line).
         layer_verts = []
         interval_verts = []
         
@@ -329,6 +322,7 @@ class QEchogramViewer(QViewerBase):
             interval_verts.append([interval, grid.layer_edges[0]])
             interval_verts.append([interval, grid.layer_edges[-1]])
 
+        #  convert the echogram vertices to pixel coords
         if (not useXY):
             layer_verts = self.axesToPixels(layer_verts)
             interval_verts = self.axesToPixels(interval_verts)
@@ -435,23 +429,18 @@ class QEchogramViewer(QViewerBase):
         return super(QEchogramViewer, self).zoomToPoint(QPointF(position[0][0], position[0][1]))
 
 
-    def zoomToRegion(self, upperRight, lowerLeft):
+    def zoomToDepth(self, startDepth, EndDepth):
         """
         zoomToRegion zooms the view to the rectangular region defined by the provided
         upper right and lower left corner points. The units are determined by the
         axes
         """
         
-        yIdx = (numpy.abs(self.yAxis - axesVerts[1][i])).argmin()
+        startIdx = (numpy.abs(self.yAxis - startDepth)).argmin()
+        endIdx = (numpy.abs(self.yAxis - EndDepth)).argmin()
         
-
-        #  center the view at the center of the region
-        self.centerOnPoint(regionRect.center())
-
-        #  zoom so that we will display the entire region while maintaining aspect ratio.
-        vScaleRatio = float(self.width() - 2) / float(regionRect.width())
-        hScaleRatio = float(self.height() - 2) / float(regionRect.height())
-        self.scale(min(vScaleRatio, hScaleRatio), min(vScaleRatio, hScaleRatio))
+        hScaleRatio = float(self.scene.height() - 2) / float(endIdx - startIdx)
+        self.scale(hScaleRatio, hScaleRatio)
 
 
     def pixelToAxes(self, pixel):

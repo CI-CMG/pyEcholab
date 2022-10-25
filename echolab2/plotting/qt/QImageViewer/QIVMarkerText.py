@@ -80,6 +80,8 @@ class QIVMarkerText(QGraphicsSimpleTextItem):
         #  and set our font
         self.setFont(self.font)
 
+        self.setRotation(self.rotation)
+
         #  set the text position
         self.setPos(self.position, 1)
 
@@ -99,9 +101,9 @@ class QIVMarkerText(QGraphicsSimpleTextItem):
         '''
 
         #  check if the position was passed as a list
-        if isinstance(position, list):
-            #  it was, assume it is in the form [x,y]
-            position = QPointF(position[0], position[1])
+#        if isinstance(position, list):
+#            #  it was, assume it is in the form [x,y]
+#            position = QPointF(position[0], position[1])
 
         #  determine the text's X and Y location based on the specified mark position, the text
         #  alignment, and the text offset.
@@ -167,11 +169,10 @@ class QIVMarkerText(QGraphicsSimpleTextItem):
         #  determine the scaling factor required to maintain correct text placement when zooming
         scale = 1.0 / self.view.transform().m11()
 
-        self.setRotation(self.rotation)
-
         #  set the scaled position of the text
         self.setPos(self.position, scale)
 
+        #  paint the text backdrop if enabled
         if self.draw_backdrop:
             backBrush = QBrush(QColor(self.backdrop_color[0],self.backdrop_color[1],
                     self.backdrop_color[2],self.backdrop_alpha))

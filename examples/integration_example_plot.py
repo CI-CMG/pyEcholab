@@ -57,7 +57,9 @@ apply_max_threshold = False
 # specify the interval axis. The interval axis can be trip_distance_nmi,
 # trip_distance_m, ping_time, or ping_number. If you specify a distance based
 # unit, your raw data must contain GPS data. See echolab2.processing.grid for
-# more details. 
+# more details.
+# Currently the Qt Echogram viewer can only plot time based intervals and
+# will raise an error if you specify a non-time based grid.
 interval_axis = 'ping_time'
 
 # specify the interval length. for time based intervals the length must be
@@ -65,10 +67,14 @@ interval_axis = 'ping_time'
 # See the docs for timedelta64 for more info.
 interval_length = np.timedelta64('5', 'm')
 
+
 # define the vertical axis for the grid. This can be 'range' or 'depth' and it
 # must match the vertical axis of your data. (in this example we will make sure
 # the data is in range or depth depending on what you specify here.)
-layer_axis = 'depth'
+# Currently there is a bug in the grid plotting code that makes depth grids
+# plot a little funny so the best visual results are obtained with range based
+# layers.
+layer_axis = 'range'
 
 # specify the layer thickness. This is always in meters.
 layer_thickness = 10
@@ -314,7 +320,7 @@ We are now ready to integrate. We use the echolab2.processing.integration
 module to do this. 
 """
 
-# first create an instance of the integrator. IWe pass it the threshold we
+# first create an instance of the integrator. We pass it the threshold we
 # specified above and the booleans specifying if the thresholds should be
 # applied. These values are persistent over the life of the object.
 int_object = integration.integrator(min_threshold=min_integration_threshold,
@@ -349,7 +355,7 @@ print('Plotting...')
 app = QtWidgets.QApplication([])
 
 # Create the main application window and show it
-eg_viewer = echogram_viewer.echogram_viewer()
+eg_viewer = echogram_viewer.echogram_viewer(h_scale=2.0)
 
 #  show the application window
 eg_viewer.show()
@@ -378,10 +384,12 @@ for cell_results in int_results:
         label = '%5.2f' % (cell_results['nasc'])
         
         # and add it to the cell
-        echogram_grid.addCellLabel(label, [0.5,0.5], cell_results['interval']-1,
-                cell_results['layer']-1, color=[255,0,0],
+        echogram_grid.addCellLabel(label, [0.5,0.4], cell_results['interval']-1,
+                cell_results['layer']-1, color=[255,0,0], size=14, weight=75,
                 halign='center', valign='center')
 
+eg_viewer.setGeometry(40,40,1600,1000)
+eg_viewer.zoom_to_depth(0,100)
         
 #  save the echogram at full resolution. Curently this does not
 #  include the horizontal scaling that is appled to the sample data

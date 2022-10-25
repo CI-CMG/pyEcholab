@@ -15,7 +15,7 @@ class echogram_viewer(QtWidgets.QMainWindow, ui_echogram_viewer.Ui_echogram_view
         if h_scale:
             self.h_scale = h_scale
         else:
-            self.h_scale = 6.0
+            self.h_scale = 4.0
 
         self.QEchogramViewer.maxZoom = maxZoom
 
@@ -111,6 +111,8 @@ class echogram_viewer(QtWidgets.QMainWindow, ui_echogram_viewer.Ui_echogram_view
         return line
         
 
+    def zoom_to_depth(self, start_depth, end_depth):
+        self.QEchogramViewer.zoomToDepth(start_depth, end_depth)
 
     def add_grid(self, grid, **kwargs):
         '''

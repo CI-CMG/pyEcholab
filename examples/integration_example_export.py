@@ -40,7 +40,7 @@ min_integration_threshold = -70
 
 # Set apply_min_threshold to True to apply the threshold. If False, the min 
 # threshold is ignored.
-apply_min_threshold = True
+apply_min_threshold = False
 
 # specify the maximum Sv value for integration. Samples with Sv values above this
 # threshold are "zeroed" out. The sample volume is still included in the integration
@@ -59,17 +59,19 @@ apply_max_threshold = False
 # trip_distance_m, ping_time, or ping_number. If you specify a distance based
 # unit, your raw data must contain GPS data. See echolab2.processing.grid for
 # more details. 
-interval_axis = 'ping_time'
+#interval_axis = 'ping_time'
+interval_axis = 'ping_number'
 
 # specify the interval length. for time based intervals the length must be
 # specified as a numpy timedelta64 object. Here we'll create a 5 minute interval.
 # See the docs for timedelta64 for more info.
-interval_length = np.timedelta64('5', 'm')
+#interval_length = np.timedelta64('5', 'm')
+interval_length = 200
 
 # define the vertical axis for the grid. This can be 'range' or 'depth' and it
 # must match the vertical axis of your data. (in this example we will make sure
 # the data is in range or depth depending on what you specify here.)
-layer_axis = 'depth'
+layer_axis = 'range'
 
 # specify the layer thickness. This is always in meters.
 layer_thickness = 10
@@ -188,6 +190,7 @@ Sv_data = raw38_data.get_Sv(calibration=cal_obj,
         return_depth=return_depth)
 print(Sv_data)
 
+
 # We also are going to need some of the "NMEA" data such as GPS and
 # (possibly) vessel motion recorded along with the acoustic data. This
 # data is collected asynchronously from the acoustic data and is
@@ -277,11 +280,11 @@ detected_bottom = raw38_data.get_bottom(calibration=cal_obj)
 # this example data) and if we specified a range based grid.
 
 # first we'll remove heave corrections from the bottom line if heave
-# data exists.
+# data exists. THIS IS NOT TESTED YET
 if hasattr(Sv_data, 'heave'):
     # we do have heave data which means heave will be included in
     # the bottom detections. Subtract that out here:
-    detected_bottom += Sv_data.heave
+    detected_bottom -= Sv_data.heave
     
 # then we'll remove the transducer offset if we're working with a range
 # based data and grid.
@@ -301,7 +304,7 @@ We are now ready to integrate. We use the echolab2.processing.integration
 module to do this. 
 """
 
-# first create an instance of the integrator. IWe pass it the threshold we
+# first create an instance of the integrator. We pass it the threshold we
 # specified above and the booleans specifying if the thresholds should be
 # applied. These values are persistent over the life of the object.
 int_object = integration.integrator(min_threshold=min_integration_threshold,

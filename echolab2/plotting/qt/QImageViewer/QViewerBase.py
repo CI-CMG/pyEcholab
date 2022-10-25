@@ -849,11 +849,13 @@ class QViewerBase(QGraphicsView):
         between subsequent calls.
         """
 
+        self.isZooming = True
         if sticky:
             self.stickyScale = (x, y)
             QGraphicsView.scale(self, x, y)
         else:
             QGraphicsView.scale(self, x * self.stickyScale[0], y * self.stickyScale[1])
+        self.isZooming = False
 
 
     def zoomToMark(self, mark, zoomLevel):

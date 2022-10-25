@@ -2324,7 +2324,7 @@ class raw_data(ping_data):
                     self.data_type = 'complex-FM'
                     self._data_attributes += ['frequency_start', 'frequency_end']
 
-                # Set the file's complex data type
+                # Set the file's complex data type so we know what dtype to use when writing
                 if sample_datagram['data_type'] & 0b1000:
                     self.file_complex_dtype = np.float32
                 else:
@@ -2373,7 +2373,7 @@ class raw_data(ping_data):
             #  set the initial sample offset
             self.sample_offset = sample_datagram['offset']
 
-            #  check if this is ES80 data with effective_pulse_duration in the tx_params
+            #  check if this is older file format with effective_pulse_duration in the tx_params
             if 'effective_pulse_duration' in tx_parms:
                 #  it is, set create_effective_pulse_duration so we can store it
                 create_effective_pulse_duration = True
@@ -2489,8 +2489,13 @@ class raw_data(ping_data):
         self.channel_mode[this_ping] = tx_parms['channel_mode']
         self.pulse_form[this_ping] = tx_parms['pulse_form']
         if tx_parms['pulse_form'] == 0:
-            # CW files will have the frequency parameter
-            self.frequency[this_ping] = tx_parms['frequency']
+            # CW files will have the frequency parameter - well, except some 
+            # files which omit frequency and instead populate start/stop with
+            # the same value.
+            if 'frequency' in tx_parms:
+                self.frequency[this_ping] = tx_parms['frequency']
+            elif 'frequency_start' in tx_parms:
+                self.frequency[this_ping] = tx_parms['frequency_start']
         else:
             # FM files will have the frequency_start and frequency_end parameters
             self.frequency_start[this_ping] = tx_parms['frequency_start']
