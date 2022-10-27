@@ -104,6 +104,13 @@ upper_exclusion_line_depth = 15
 # above the bottom
 lower_exclusion_line_offset = -0.5
 
+# Echoview assigns range/depth to samples differently than pyEcholab. pyEcholab's
+# first sample starts at a range of 0, while EV's first sample starts at a range
+# of 1 sample thickness. If you want the integration output here to match EV,
+# you can set match_echoview to True. This will result in pyEcholab's range/depth
+# axis to be shifted to match Echoview.
+match_echoview = True
+
 
 '''
 The next thing we need to do is get the data we want to integrate and any
@@ -206,6 +213,18 @@ Sv_data.set_navigation(raw38_data.nmea_data)
 # For our DY1807 data this includes latitude, longitude, heave,
 # vessel speed (spd_over_grnd_kts), and vessel log (trip_distance_nmi)
 print(Sv_data)
+
+# Echoview discards the first sample read from .raw files and it starts EV's
+# first sample at a range of 1 sample thickness. If you want to compare the
+# integration output of pyEcholab with Echoview, we have to shift the pyEcholab
+# data, starting at the 2nd sample, buy the sample thickness. The extra sample
+# that pyEcholab carries will already be ignored during integration since it
+# has a negative range and we start are grid at a range of 0.
+if match_echoview:
+    if layer_axis == 'depth':
+        Sv_data.depth[1:] = Sv_data.depth[1:] + Sv_data.sample_thickness
+    else:
+        Sv_data.range[1:] = Sv_data.range[1:] + Sv_data.sample_thickness
 
 
 """

@@ -1922,6 +1922,17 @@ def read_ev_mat(channel_id, frequency, ev_mat_filename, data_type='Sv',
         sample_dtype=np.float32, pad_n_samples=0):
     '''read_ev_mat will read a .mat file exported by Echoview v7 or newer and
     return a processed data object containing the data.
+    
+        IMPORTANT NOTE - Echoview discards the first sample in all pings when reading Simrad
+                     .raw files and it centers its first sample (pyEcholab's 2nd sample)
+                     at a range of 1 sample thickness. pyEcholab centers the first sample
+                     at range of -1 sample thickness with the second sample (which is
+                     EV's first sample) at a range of 0. When loading exported EV data,
+                     the range vector will use pyEcholab's convention, resulting in the
+                     first sample starting at a range of 0. The result of this is that
+                     samples are shifted 1 sample thickness closer to the transducer in
+                     pyEcholab when compared to Echoview. This may result in differences
+                     between computations in EV and in pyEcholab.
     '''
 
     import os
@@ -1998,6 +2009,18 @@ def read_ev_csv(channel_id, frequency, ev_csv_filename, data_type='Ts',
         sample_dtype=np.float32):
     '''read_ev_csv will read a .csv file exported by Echoview v7 or newer and
     return a processed data object containing the data.
+    
+    IMPORTANT NOTE - Echoview discards the first sample in all pings when reading Simrad
+                     .raw files and it centers its first sample (pyEcholab's 2nd sample)
+                     at a range of 1 sample thickness. pyEcholab centers the first sample
+                     at range of -1 sample thickness with the second sample (which is
+                     EV's first sample) at a range of 0. When loading exported EV data,
+                     the range vector will use pyEcholab's convention, resulting in the
+                     first sample starting at a range of 0. The result of this is that
+                     samples are shifted 1 sample thickness closer to the transducer in
+                     pyEcholab when compared to Echoview. This may result in differences
+                     between computations in EV and in pyEcholab.
+    
     '''
 
     import os
