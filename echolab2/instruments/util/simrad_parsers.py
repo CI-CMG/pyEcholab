@@ -1174,7 +1174,7 @@ class SimradXMLParser(_SimradDatagramParser):
                             
                             # Unpack the wideband configuration data
                             packed_params = {}
-                            if chan_data['transducer_params_wideband']:
+                            if 'transducer_params_wideband' in chan_data:
                                 for idx, freq in chan_data['transducer_params_wideband']['frequency']:
                                     packed_params[freq] = {'gain':chan_data['transducer_params_wideband']['gain'][idx],
                                             'beam_width_alongship':chan_data['transducer_params_wideband']['beam_width_alongship'][idx],
