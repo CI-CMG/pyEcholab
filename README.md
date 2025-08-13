@@ -1,3 +1,5 @@
+## The active repository for pyExholab has been moved to https://github.com/noaa-afsc-mace/pyEcholab. This repository was archived on 8/13/2025
+
 # pyEcholab
 
 pyEcholab is a python package for reading, writing, processing, and plotting data from Simrad/Kongsberg sonar systems.
